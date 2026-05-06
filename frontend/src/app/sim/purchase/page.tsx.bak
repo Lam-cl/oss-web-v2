@@ -1,0 +1,1163 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { searchNumbers, getRandomNumbers, getBundleProducts, createOrder, initiatePayment, verifyPromoter } from '@/lib/api';
+import { formatRM } from '@/lib/utils';
+import { MALAYSIAN_STATES } from '@/lib/constants';
+import type { NumberResult } from '@/types';
+
+/* ═══════════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════════ */
+const STEPS = [
+  'Choose Data Plan',
+  'Protection',
+  'Choose Number',
+  'Details & Shipping',
+  'Checkout',
+];
+
+const BASE_SIM_PRICE = 19.50;
+const PLAN_DISCOUNT = 5;
+
+/* FU Data Plans from tonewow.com/Prepaid_Plans */
+interface DataPlan {
+  id: string;
+  name: string;
+  price: number;         // actual plan price e.g. 35
+  discountedAddon: number; // price - PLAN_DISCOUNT e.g. 30
+  data: string;
+  validity: string;
+  calls: string;
+  hotspot: string;
+  badge5g: boolean;
+}
+
+const FU_PLANS: DataPlan[] = [
+  { id: 'fu35',  name: 'FU35',  price: 35,  discountedAddon: 30,   data: '150 GB', validity: '30 Days', calls: '*Unlimited', hotspot: 'Shared with Data', badge5g: true },
+  { id: 'fu50',  name: 'FU50',  price: 50,  discountedAddon: 45,   data: '300 GB', validity: '30 Days', calls: '*Unlimited', hotspot: 'Shared with Data', badge5g: true },
+  { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,   data: '500 GB', validity: '30 Days', calls: '*Unlimited', hotspot: 'Shared with Data', badge5g: true },
+  { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,   data: '650 GB', validity: '30 Days', calls: '*Unlimited', hotspot: 'Shared with Data', badge5g: true },
+  { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115,  data: '800 GB', validity: '30 Days', calls: '*Unlimited', hotspot: 'Shared with Data', badge5g: true },
+];
+
+/* Takaful options */
+interface TakafulOption {
+  id: string;
+  name: string;
+  addonPrice: number;
+  totalCoverage: number;
+  coverageBreakdown: string[];
+  freePlan: string | null;    // free data plan for 1st month
+  freePlanValue: number;
+}
+
+const TAKAFUL_34K: TakafulOption = {
+  id: 'takaful-34k',
+  name: 'Takaful Protection RM34,000',
+  addonPrice: 30,
+  totalCoverage: 34000,
+  coverageBreakdown: ['RM30,000 Accident Takaful — Zurich Takaful', 'RM4,000 Life Insurance — Ammet Life'],
+  freePlan: 'FU35',
+  freePlanValue: 35,
+};
+
+const TAKAFUL_54K: TakafulOption = {
+  id: 'takaful-54k',
+  name: 'Takaful Protection RM54,000',
+  addonPrice: 108.50,
+  totalCoverage: 54000,
+  coverageBreakdown: ['RM50,000 Accident Takaful — Zurich Takaful', 'RM4,000 Life Insurance — Ammet Life'],
+  freePlan: 'FU60',
+  freePlanValue: 60,
+};
+
+/* Number categories */
+const CATEGORY_CONFIG: Record<string, { bg: string; border: string }> = {
+  VVIP: { bg: '#1a1a1a', border: '#000' },
+  VIP: { bg: '#ea580c', border: '#c2410c' },
+  PREMIUM: { bg: '#2563eb', border: '#1d4ed8' },
+};
+
+const ITEMS_PER_PAGE = 5;
+
+/* Shared inline styles */
+const card: React.CSSProperties = {
+  background: '#fff', borderRadius: 14, padding: '24px 28px',
+  border: '1px solid #e5e7eb',
+};
+const label: React.CSSProperties = {
+  display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6,
+};
+const input: React.CSSProperties = {
+  width: '100%', padding: '12px 14px', border: '1.5px solid #d1d5db',
+  borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff',
+};
+
+/* ═══════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════ */
+export default function SIMPurchaseWizard() {
+  const router = useRouter();
+  const [step, setStep] = useState(0);
+
+  /* ── Step 1: Data Plan (optional) ── */
+  const [selectedDataPlan, setSelectedDataPlan] = useState<DataPlan | null>(null);
+
+  /* ── Step 2: Takaful ── */
+  const [selectedTakaful, setSelectedTakaful] = useState<TakafulOption | null>(null);
+
+  /* ── Step 3: Number ── */
+  const [numberMode, setNumberMode] = useState<'random' | 'search'>('random');
+  const [digits, setDigits] = useState('');
+  const [allResults, setAllResults] = useState<NumberResult[]>([]);
+  const [loadingNumbers, setLoadingNumbers] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [numPage, setNumPage] = useState(1);
+  const [selectedNumber, setSelectedNumber] = useState<NumberResult | null>(null);
+
+  /* Dice roll state */
+  const [diceRolling, setDiceRolling] = useState(false);
+  const [diceDigits, setDiceDigits] = useState<number[]>([0, 0, 0, 0]);
+  const [randomNumbers, setRandomNumbers] = useState<string[]>([]);
+  const [randomLoading, setRandomLoading] = useState(false);
+  const [randomSelected, setRandomSelected] = useState<string | null>(null);
+  const [showRandomList, setShowRandomList] = useState(false);
+  const diceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  /* User-typed random digits */
+  const [userDigitError, setUserDigitError] = useState('');
+  const digitRefs = useRef<(HTMLInputElement | null)[]>([null, null, null, null]);
+
+  /* ── Add-ons (dialog) ── */
+  const [bundleDevices, setBundleDevices] = useState<any[]>([]);
+  const [selectedBundle, setSelectedBundle] = useState<any | null>(null);
+  const [showBundleDialog, setShowBundleDialog] = useState(false);
+
+  /* ── Step 5: KYC + Shipping ── */
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', nric: '', email: '', phone: '',
+    address1: '', address2: '', city: '', state: 'W.P. Kuala Lumpur', postcode: '',
+    promoterPrefix: 'TWE', promoterCode: '',
+  });
+  const [icFile, setIcFile] = useState<File | null>(null);
+  const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
+
+  /* ── Step 6: Checkout ── */
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [paymentData, setPaymentData] = useState<{ paymentUrl: string; paymentParams: Record<string, string> } | null>(null);
+
+  /* Promoter */
+  const [promoterName, setPromoterName] = useState('');
+  const [promoterError, setPromoterError] = useState('');
+  const [promoterVerifying, setPromoterVerifying] = useState(false);
+  const promoterDebounce = useRef<NodeJS.Timeout | null>(null);
+
+  const doVerifyPromoter = useCallback(async (prefix: string, code: string) => {
+    if (!code.trim()) { setPromoterName(''); setPromoterError(''); setPromoterVerifying(false); return; }
+    setPromoterVerifying(true); setPromoterName(''); setPromoterError('');
+    const result = await verifyPromoter(`${prefix}-${code.trim()}`);
+    setPromoterVerifying(false);
+    if (result.valid && result.name) { setPromoterName(result.name); } else { setPromoterError(result.error || 'Not found'); }
+  }, []);
+
+  /* ── Load data ── */
+  useEffect(() => {
+    getBundleProducts(20).then(setBundleDevices).catch(() => {});
+  }, []);
+
+  /* ── When data plan changes, auto-assign takaful ── */
+  useEffect(() => {
+    if (selectedDataPlan) {
+      // User picked a data plan → auto-assign 34K takaful
+      setSelectedTakaful(TAKAFUL_34K);
+    } else {
+      // User skipped data plan → reset takaful choice
+      setSelectedTakaful(null);
+    }
+  }, [selectedDataPlan]);
+
+  /* ── Number helpers ── */
+  const totalNumPages = Math.ceil(allResults.length / ITEMS_PER_PAGE);
+  const paginatedResults = allResults.slice((numPage - 1) * ITEMS_PER_PAGE, numPage * ITEMS_PER_PAGE);
+
+  const handleSearch = async () => {
+    if (!digits) return;
+    setLoadingNumbers(true); setSearched(true); setNumPage(1); setSelectedNumber(null);
+    try { const res = await searchNumbers(digits); setAllResults(res.data || []); }
+    catch { setAllResults([]); }
+    finally { setLoadingNumbers(false); }
+  };
+
+  /* ── Dice roll logic ── */
+  const generateValidDigits = (): number[] => {
+    let attempts = 0;
+    while (attempts < 100) {
+      const d = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10));
+      const unique = new Set(d).size;
+      if (unique < 3) { attempts++; continue; }
+      const isSequential =
+        (d[1] === d[0] + 1 && d[2] === d[1] + 1 && d[3] === d[2] + 1) ||
+        (d[1] === d[0] - 1 && d[2] === d[1] - 1 && d[3] === d[2] - 1);
+      if (isSequential) { attempts++; continue; }
+      return d;
+    }
+    return [5, 8, 3, 7];
+  };
+
+  const rollDice = async () => {
+    if (diceRolling || randomLoading) return;
+    setDiceRolling(true); setRandomNumbers([]); setRandomSelected(null); setShowRandomList(false);
+    let count = 0;
+    diceIntervalRef.current = setInterval(() => {
+      setDiceDigits(Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)));
+      count++;
+      if (count > 15) {
+        if (diceIntervalRef.current) clearInterval(diceIntervalRef.current);
+        const final = generateValidDigits();
+        setDiceDigits(final);
+        setDiceRolling(false);
+        fetchRandomNumbers(final.join(''));
+      }
+    }, 100);
+  };
+
+  const fetchRandomNumbers = async (d: string) => {
+    setRandomLoading(true);
+    try { const nums = await getRandomNumbers(d); setRandomNumbers(nums); setShowRandomList(true); }
+    catch { setRandomNumbers([]); }
+    finally { setRandomLoading(false); }
+  };
+
+  const handleDigitBoxChange = (index: number, value: string) => {
+    if (diceRolling || randomLoading) return;
+    // If list is showing, clear it so user can start fresh
+    if (showRandomList) {
+      setShowRandomList(false);
+      setRandomNumbers([]);
+      setRandomSelected(null);
+    }
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const newDigits = [...diceDigits];
+    if (digit) {
+      newDigits[index] = parseInt(digit);
+      setDiceDigits(newDigits);
+      setUserDigitError('');
+      // Auto-focus next box
+      if (index < 3) {
+        digitRefs.current[index + 1]?.focus();
+      } else {
+        // Last box filled — validate and auto-search
+        const uniqueCount = new Set(newDigits).size;
+        if (uniqueCount < 3) {
+          setUserDigitError('Must have at least 3 different digits');
+        } else {
+          setUserDigitError('');
+          setRandomSelected(null);
+          fetchRandomNumbers(newDigits.join(''));
+        }
+      }
+    } else {
+      newDigits[index] = 0;
+      setDiceDigits(newDigits);
+    }
+  };
+
+  const handleDigitBoxKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      if (showRandomList) { setShowRandomList(false); setRandomNumbers([]); setRandomSelected(null); }
+      const newDigits = [...diceDigits];
+      newDigits[index] = 0;
+      setDiceDigits(newDigits);
+      if (index > 0) digitRefs.current[index - 1]?.focus();
+      e.preventDefault();
+    }
+    if (e.key === 'Enter') {
+      // Trigger search if all 4 filled
+      const uniqueCount = new Set(diceDigits).size;
+      if (uniqueCount < 3) {
+        setUserDigitError('Must have at least 3 different digits');
+      } else {
+        setUserDigitError('');
+        setRandomSelected(null);
+        fetchRandomNumbers(diceDigits.join(''));
+      }
+    }
+  };
+
+  const formatMsisdn = (msisdn: string) => {
+    if (msisdn.startsWith('60')) {
+      const local = '0' + msisdn.slice(2);
+      if (local.length === 11) return local.slice(0, 3) + '-' + local.slice(3, 7) + ' ' + local.slice(7);
+      if (local.length === 12) return local.slice(0, 4) + '-' + local.slice(4, 7) + ' ' + local.slice(7);
+      return local;
+    }
+    return msisdn;
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+  };
+
+  /* ── Price calculations ── */
+  const baseSim = BASE_SIM_PRICE;                                           // RM19.50 always
+  const dataPlanAddon = selectedDataPlan ? selectedDataPlan.discountedAddon : 0;  // e.g. 30 for FU35
+  const takafulAddon = selectedTakaful ? selectedTakaful.addonPrice : 0;          // e.g. 30 or 108.50
+
+  // Running total before number
+  const runningTotal = baseSim + dataPlanAddon + (selectedDataPlan ? 0 : takafulAddon);
+  // If user picked a data plan, takaful 34K is auto-included in the plan price conceptually
+  // But if they upgrade to 54K, they pay difference
+  const takafulUpgradePrice = selectedDataPlan && selectedTakaful?.id === 'takaful-54k' ? 78.50 : 0;
+  const monthlyTotal = baseSim + dataPlanAddon + (selectedDataPlan ? takafulUpgradePrice : takafulAddon);
+
+  const numberPrice = selectedNumber?.price || 0;
+  const numberDiscount = numberPrice > 0 ? monthlyTotal : 0; // discount = current total
+  const numberFinalPrice = numberPrice > 0 ? numberPrice - numberDiscount : 0;
+  const bundlePrice = selectedBundle ? selectedBundle.price : 0;
+  const oneTimeTotal = (numberFinalPrice > 0 ? numberFinalPrice : 0) + bundlePrice;
+
+  // Current running total for the pill
+  const currentRunningTotal = baseSim + dataPlanAddon + (selectedDataPlan ? takafulUpgradePrice : takafulAddon) + numberFinalPrice + bundlePrice;
+
+  /* ── Navigation ── */
+  const canGoNext = (): boolean => {
+    if (step === 0) return true; // can skip data plan
+    if (step === 1) return true; // can skip takaful
+    if (step === 2) return true; // can skip number
+    if (step === 3) return !!(form.firstName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
+    return true;
+  };
+
+  const goNext = () => {
+    if (!canGoNext() || step >= 4) return;
+    // When on step 2 (Choose Number), show bundle dialog before advancing
+    if (step === 2) {
+      setShowBundleDialog(true);
+      return;
+    }
+    setStep(step + 1);
+  };
+
+  const closeBundleDialog = () => {
+    setShowBundleDialog(false);
+    // Only advance to step 3 if we came from step 2
+    if (step === 2) setStep(3);
+  };
+  const goBack = () => { if (step === 0) { router.back(); return; } setStep(step - 1); };
+
+  /* ── Submit ── */
+  const handleSubmit = async () => {
+    setSubmitting(true); setError('');
+    try {
+      const customerName = `${form.firstName} ${form.lastName}`.trim();
+      const total = monthlyTotal + oneTimeTotal;
+
+      // Determine plan name
+      let planName = 'Lite SIM';
+      if (selectedDataPlan) planName = `${selectedDataPlan.name} SIM`;
+
+      const order = await createOrder({
+        customer_name: customerName, customer_email: form.email,
+        customer_phone: form.phone, customer_ic: form.nric,
+        shipping_address: { address1: form.address1, address2: form.address2, city: form.city, state: form.state, postcode: form.postcode },
+        items: [
+          {
+            name: planName, type: 'sim',
+            plan: selectedDataPlan?.id || 'lite',
+            number: selectedNumber?.phoneNo || randomSelected || '',
+            price: monthlyTotal, quantity: 1, simType,
+            numberType: selectedNumber?.category || (randomSelected ? 'RANDOM' : ''),
+            takaful: selectedTakaful?.id || 'none',
+          },
+          ...(selectedBundle ? [{ name: selectedBundle.name, type: 'device', plan: 'bundle', number: '', price: selectedBundle.price, quantity: 1, simType: 'physical', productId: selectedBundle.id }] : []),
+        ],
+        total, shipping: 0,
+        promoter_id: form.promoterCode ? `${form.promoterPrefix}-${form.promoterCode}` : undefined,
+        insurance: selectedTakaful?.id || 'none',
+      });
+      if (!order?.order_number) throw new Error('Failed to create order');
+      const payment = await initiatePayment({ orderId: order.order_number, amount: total, customerName, customerEmail: form.email, description: `ToneWow SIM ${planName}` });
+      if (!payment.success || !payment.paymentUrl || !payment.paymentParams) throw new Error(payment.error || 'Failed to initiate payment');
+      localStorage.setItem('tw_pending_order', order.order_number);
+      setPaymentData({ paymentUrl: payment.paymentUrl, paymentParams: payment.paymentParams });
+    } catch (err: any) { setError(err.message || 'Something went wrong.'); }
+    finally { setSubmitting(false); }
+  };
+
+  /* ── GKash redirect ── */
+  if (paymentData) {
+    return (
+      <div className="container" style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 24px' }} />
+        <h3>Redirecting to GKash payment...</h3>
+        <form method="POST" action={paymentData.paymentUrl} ref={f => { if (f) setTimeout(() => f.submit(), 1000); }}>
+          {Object.entries(paymentData.paymentParams).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+        </form>
+      </div>
+    );
+  }
+
+  /* ═══════════════════════════════════════════════
+     RENDER
+     ═══════════════════════════════════════════════ */
+  return (
+    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      {/* ── Progress bar ── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '16px 20px', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div className="container" style={{ maxWidth: 900, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+            {STEPS.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div
+                  onClick={() => i < step && setStep(i)}
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700,
+                    background: i < step ? '#16a34a' : i === step ? '#2563eb' : '#e5e7eb',
+                    color: i <= step ? '#fff' : '#94a3b8',
+                    cursor: i < step ? 'pointer' : 'default', transition: 'all 0.2s',
+                  }}
+                >
+                  {i < step ? '✓' : i + 1}
+                </div>
+                <span style={{ fontSize: 12, fontWeight: i === step ? 700 : 400, color: i === step ? '#1e293b' : '#94a3b8', display: 'none' }} className="step-label-text">{s}</span>
+                {i < STEPS.length - 1 && (
+                  <div style={{ width: 24, height: 2, background: i < step ? '#16a34a' : '#e5e7eb', borderRadius: 1 }} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>{STEPS[step]}</p>
+            <span style={{ background: '#2563eb', color: '#fff', borderRadius: 20, fontSize: 12, fontWeight: 700, padding: '3px 12px', display: 'inline-block' }}>
+              {formatRM(currentRunningTotal)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="container" style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px 40px' }}>
+
+        {/* ════════════ STEP 1: Choose Data Plan ════════════ */}
+        {step === 0 && (
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Choose Data Plan</h2>
+            <p style={{ color: '#64748b', marginBottom: 8, fontSize: 14 }}>Add a 5G data plan to your SIM. Skip if not needed.</p>
+            <div style={{ background: '#eff6ff', borderRadius: 10, padding: '12px 16px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 20 }}>💳</span>
+              <span style={{ fontSize: 13, color: '#1e40af' }}>Base SIM Price: <strong>{formatRM(BASE_SIM_PRICE)}</strong> — Data plan is an add-on to this price.</span>
+            </div>
+
+            <div className="plans-grid-fu">
+              {FU_PLANS.map(plan => {
+                const active = selectedDataPlan?.id === plan.id;
+                return (
+                  <div key={plan.id}
+                    onClick={() => setSelectedDataPlan(active ? null : plan)}
+                    style={{
+                      ...card, cursor: 'pointer', position: 'relative', textAlign: 'center',
+                      border: active ? '2.5px solid #2563eb' : '1px solid #e5e7eb',
+                      background: active ? '#eff6ff' : '#fff',
+                      transform: active ? 'scale(1.02)' : 'scale(1)', transition: 'all 0.2s',
+                    }}
+                  >
+                    {active && (
+                      <div style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: '50%', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                      </div>
+                    )}
+                    {plan.badge5g && (
+                      <span style={{ position: 'absolute', top: 10, left: 10, background: '#2563eb', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20 }}>5G</span>
+                    )}
+
+                    <h3 style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', marginBottom: 2, marginTop: 8 }}>{plan.name}</h3>
+                    <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>{plan.validity}</p>
+
+                    {/* Price display: strikethrough original, show discounted */}
+                    <div style={{ marginBottom: 12 }}>
+                      <span style={{ fontSize: 14, color: '#94a3b8', textDecoration: 'line-through', marginRight: 6 }}>+{formatRM(plan.price)}</span>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: '#2563eb' }}>+{formatRM(plan.discountedAddon)}</span>
+                    </div>
+                    <div style={{ background: '#fef3c7', color: '#92400e', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, display: 'inline-block', marginBottom: 14 }}>
+                      Save RM{PLAN_DISCOUNT}
+                    </div>
+
+                    {/* Features */}
+                    <div style={{ textAlign: 'left', fontSize: 13, color: '#475569' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
+                        <span>Data (5G)</span><strong>{plan.data}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
+                        <span>Calls</span><strong>{plan.calls}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                        <span>Hotspot</span><strong>{plan.hotspot}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 14, padding: '8px 0', borderTop: '1px solid #e5e7eb', fontSize: 13, color: '#64748b' }}>
+                      Total: <strong style={{ color: '#1e293b' }}>{formatRM(BASE_SIM_PRICE + plan.discountedAddon)}</strong>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Skip option */}
+            <div
+              onClick={() => setSelectedDataPlan(null)}
+              style={{
+                ...card, cursor: 'pointer', textAlign: 'center', marginTop: 20,
+                border: !selectedDataPlan ? '2px solid #16a34a' : '1px solid #e5e7eb',
+                background: !selectedDataPlan ? '#f0fdf4' : '#fff',
+              }}
+            >
+              <p style={{ fontSize: 16, fontWeight: 600, color: !selectedDataPlan ? '#16a34a' : '#64748b' }}>
+                {!selectedDataPlan ? '✓ ' : ''}No Data Plan — {formatRM(BASE_SIM_PRICE)} only
+              </p>
+              <p style={{ fontSize: 13, color: '#94a3b8' }}>Lite SIM with base rate. Add a data plan later.</p>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ STEP 2: Takaful & Insurance Protection ════════════ */}
+        {step === 1 && (
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Takaful & Insurance Protection</h2>
+            <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>
+              {selectedDataPlan
+                ? `Plan ${selectedDataPlan.name} already includes Takaful Protection RM34,000. Can upgrade to RM54,000.`
+                : 'Add takaful protection and get a free data plan for the first month!'
+              }
+            </p>
+
+            {selectedDataPlan ? (
+              /* ── User HAS data plan → auto-assigned 34K, can upgrade to 54K ── */
+              <div className="purchase-grid-insurance">
+                {/* 34K - already included */}
+                <div onClick={() => setSelectedTakaful(TAKAFUL_34K)} style={{
+                  ...card, cursor: 'pointer', position: 'relative',
+                  border: selectedTakaful?.id === 'takaful-34k' ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                  background: selectedTakaful?.id === 'takaful-34k' ? '#eff6ff' : '#fff', transition: 'all 0.2s',
+                }}>
+                  {selectedTakaful?.id === 'takaful-34k' && (
+                    <div style={{ position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: '50%', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🛡️</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Takaful RM34,000</h3>
+                  <p style={{ fontSize: 20, fontWeight: 800, color: '#16a34a', marginBottom: 8 }}>Included</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, textAlign: 'left' }}>
+                    {TAKAFUL_34K.coverageBreakdown.map((f, i) => (
+                      <li key={i} style={{ fontSize: 13, color: '#475569', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <svg fill="none" stroke="#16a34a" viewBox="0 0 24 24" width="14" height="14" style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Upgrade to 54K */}
+                <div onClick={() => setSelectedTakaful(TAKAFUL_54K)} style={{
+                  ...card, cursor: 'pointer', position: 'relative',
+                  border: selectedTakaful?.id === 'takaful-54k' ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                  background: selectedTakaful?.id === 'takaful-54k' ? '#eff6ff' : '#fff', transition: 'all 0.2s',
+                }}>
+                  <span style={{ position: 'absolute', top: -10, right: 16, padding: '2px 10px', background: '#16a34a', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>Upgrade</span>
+                  {selectedTakaful?.id === 'takaful-54k' && (
+                    <div style={{ position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: '50%', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🛡️</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Takaful RM54,000</h3>
+                  <p style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', marginBottom: 4 }}>+{formatRM(78.50)}</p>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>Additional to current plan</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, textAlign: 'left' }}>
+                    {TAKAFUL_54K.coverageBreakdown.map((f, i) => (
+                      <li key={i} style={{ fontSize: 13, color: '#475569', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <svg fill="none" stroke="#16a34a" viewBox="0 0 24 24" width="14" height="14" style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              /* ── User SKIPPED data plan → show takaful options with free plan ── */
+              <div className="purchase-grid-insurance-3col">
+                {/* Option A: RM30 → Takaful 34K + FREE FU35 */}
+                <div onClick={() => setSelectedTakaful(TAKAFUL_34K)} style={{
+                  ...card, cursor: 'pointer', position: 'relative',
+                  border: selectedTakaful?.id === 'takaful-34k' ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                  background: selectedTakaful?.id === 'takaful-34k' ? '#eff6ff' : '#fff', transition: 'all 0.2s',
+                }}>
+                  {selectedTakaful?.id === 'takaful-34k' && (
+                    <div style={{ position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: '50%', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🛡️</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Takaful RM34,000</h3>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#2563eb', marginBottom: 4 }}>+{formatRM(TAKAFUL_34K.addonPrice)}</p>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Total: {formatRM(BASE_SIM_PRICE + TAKAFUL_34K.addonPrice)}</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, textAlign: 'left', marginBottom: 12 }}>
+                    {TAKAFUL_34K.coverageBreakdown.map((f, i) => (
+                      <li key={i} style={{ fontSize: 13, color: '#475569', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <svg fill="none" stroke="#16a34a" viewBox="0 0 24 24" width="14" height="14" style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ background: '#dcfce7', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>🎁 FREE {TAKAFUL_34K.freePlan} ({formatRM(TAKAFUL_34K.freePlanValue)}) for the first month</p>
+                  </div>
+                </div>
+
+                {/* Option B: RM108.50 → Takaful 54K + FREE FU60 */}
+                <div onClick={() => setSelectedTakaful(TAKAFUL_54K)} style={{
+                  ...card, cursor: 'pointer', position: 'relative',
+                  border: selectedTakaful?.id === 'takaful-54k' ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                  background: selectedTakaful?.id === 'takaful-54k' ? '#eff6ff' : '#fff', transition: 'all 0.2s',
+                }}>
+                  <span style={{ position: 'absolute', top: -10, right: 16, padding: '2px 10px', background: '#16a34a', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>Recommended</span>
+                  {selectedTakaful?.id === 'takaful-54k' && (
+                    <div style={{ position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: '50%', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🛡️</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Takaful RM54,000</h3>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#2563eb', marginBottom: 4 }}>+{formatRM(TAKAFUL_54K.addonPrice)}</p>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Total: {formatRM(BASE_SIM_PRICE + TAKAFUL_54K.addonPrice)}</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, textAlign: 'left', marginBottom: 12 }}>
+                    {TAKAFUL_54K.coverageBreakdown.map((f, i) => (
+                      <li key={i} style={{ fontSize: 13, color: '#475569', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <svg fill="none" stroke="#16a34a" viewBox="0 0 24 24" width="14" height="14" style={{ flexShrink: 0 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ background: '#dcfce7', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>🎁 FREE {TAKAFUL_54K.freePlan} ({formatRM(TAKAFUL_54K.freePlanValue)}) for the first month</p>
+                  </div>
+                </div>
+
+                {/* Option C: Skip */}
+                <div onClick={() => setSelectedTakaful(null)} style={{
+                  ...card, cursor: 'pointer', textAlign: 'center',
+                  border: !selectedTakaful ? '2px solid #16a34a' : '1px solid #e5e7eb',
+                  background: !selectedTakaful ? '#f0fdf4' : '#fff', transition: 'all 0.2s',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+                }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🙅</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: !selectedTakaful ? '#16a34a' : '#64748b' }}>
+                    {!selectedTakaful ? '✓ ' : ''}No Thanks
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#94a3b8' }}>Continue without additional protection</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════════════ STEP 3: Choose Number ════════════ */}
+        {step === 2 && (
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Choose Number</h2>
+            <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Free random numbers, or search for special numbers</p>
+
+            {/* Toggle */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderRadius: 10, overflow: 'hidden', border: '1.5px solid #e5e7eb', maxWidth: 360 }}>
+              {(['random', 'search'] as const).map(mode => (
+                <button key={mode} onClick={() => setNumberMode(mode)} style={{
+                  flex: 1, padding: '12px 0', border: 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  background: numberMode === mode ? '#2563eb' : '#fff',
+                  color: numberMode === mode ? '#fff' : '#64748b', transition: 'all 0.15s',
+                }}>
+                  {mode === 'random' ? 'Random Number' : 'Premium/VIP'}
+                </button>
+              ))}
+            </div>
+
+            {numberMode === 'random' ? (
+              <div style={card}>
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  {/* Editable dice boxes — type directly or roll */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
+                    {diceDigits.map((d, i) => (
+                      <input
+                        key={i}
+                        ref={el => { digitRefs.current[i] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={diceRolling ? d : (d || '')}
+                        readOnly={diceRolling || randomLoading}
+                        onChange={e => handleDigitBoxChange(i, e.target.value)}
+                        onKeyDown={e => handleDigitBoxKeyDown(i, e)}
+                        onFocus={e => e.target.select()}
+                        style={{
+                          width: 56, height: 56, borderRadius: 12,
+                          background: diceRolling ? '#fef3c7' : showRandomList ? '#dbeafe' : '#fff',
+                          border: diceRolling ? '2px solid #f59e0b' : showRandomList ? '2px solid #2563eb' : '2px solid #d1d5db',
+                          textAlign: 'center',
+                          fontSize: 24, fontWeight: 800, fontFamily: 'monospace',
+                          color: diceRolling ? '#b45309' : '#1e293b', transition: 'all 0.15s',
+                          outline: 'none', caretColor: '#2563eb',
+                          transform: diceRolling ? `rotate(${Math.random() * 20 - 10}deg)` : 'rotate(0deg)',
+                        }}
+                        placeholder="·"
+                      />
+                    ))}
+                  </div>
+                  {!showRandomList && !diceRolling && !randomLoading && (
+                    <p style={{ color: '#94a3b8', fontSize: 12, marginBottom: 16 }}>Type your digits or roll the dice</p>
+                  )}
+                  {userDigitError && <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>{userDigitError}</p>}
+
+                  {!showRandomList && (
+                    <>
+                      <button onClick={rollDice} disabled={diceRolling || randomLoading} style={{
+                        padding: '14px 40px', borderRadius: 50, border: 'none',
+                        background: diceRolling ? '#f59e0b' : '#2563eb', color: '#fff',
+                        fontSize: 16, fontWeight: 700, cursor: diceRolling ? 'not-allowed' : 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'all 0.2s',
+                      }}>
+                        {diceRolling ? (<><span style={{ display: 'inline-block', animation: 'spin 0.5s linear infinite' }}>🎲</span> Rolling...</>)
+                          : randomLoading ? (<><span style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> Finding numbers...</>)
+                          : (<>🎲 Roll Dice</>)}
+                      </button>
+                    </>
+                  )}
+
+                  {showRandomList && randomNumbers.length > 0 && (
+                    <div style={{ marginTop: 8, textAlign: 'left' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{randomNumbers.length} numbers found — pick one:</p>
+                        <button onClick={() => { setShowRandomList(false); setRandomNumbers([]); setRandomSelected(null); setDiceDigits([0,0,0,0]); setUserDigitError(''); }} style={{
+                          padding: '6px 14px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#64748b',
+                        }}>🎲 Roll Again</button>
+                      </div>
+                      <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {randomNumbers.map((msisdn, i) => {
+                          const sel = randomSelected === msisdn;
+                          return (
+                            <div key={i} onClick={() => setRandomSelected(sel ? null : msisdn)} style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 16px', borderRadius: 8, cursor: 'pointer',
+                              border: sel ? '2px solid #2563eb' : '1px solid #f1f5f9',
+                              background: sel ? '#eff6ff' : i % 2 === 0 ? '#fafafa' : '#fff', transition: 'all 0.1s',
+                            }}>
+                              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: sel ? 700 : 500, color: sel ? '#2563eb' : '#1e293b' }}>{formatMsisdn(msisdn)}</span>
+                              {sel && <svg fill="none" stroke="#2563eb" viewBox="0 0 24 24" width="18" height="18"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p style={{ color: '#16a34a', fontWeight: 700, marginTop: 12, fontSize: 14 }}>Free</p>
+                    </div>
+                  )}
+                  {showRandomList && randomNumbers.length === 0 && !randomLoading && (
+                    <div style={{ marginTop: 12 }}>
+                      <p style={{ color: '#94a3b8', fontSize: 14 }}>No numbers found. Try rolling again.</p>
+                      <button onClick={() => { setShowRandomList(false); setDiceDigits([0,0,0,0]); setUserDigitError(''); }} style={{
+                        marginTop: 8, padding: '8px 20px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      }}>🎲 Roll Again</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* ── Premium/VIP/VVIP search ── */
+              <div style={card}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input type="text" placeholder="Enter up to 6 digits" value={digits}
+                      onChange={e => setDigits(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                      style={{ ...input, paddingLeft: 38, height: 46 }}
+                    />
+                  </div>
+                  <button onClick={handleSearch} disabled={loadingNumbers} style={{
+                    height: 46, padding: '0 20px', background: '#2563eb', color: '#fff',
+                    border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                  }}>
+                    {loadingNumbers ? '...' : 'Search'}
+                  </button>
+                </div>
+
+                {loadingNumbers && (
+                  <div style={{ textAlign: 'center', padding: 24 }}>
+                    <div style={{ width: 28, height: 28, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 8px' }} />
+                    <p style={{ fontSize: 13, color: '#64748b' }}>Searching...</p>
+                  </div>
+                )}
+                {searched && !loadingNumbers && allResults.length === 0 && (
+                  <p style={{ textAlign: 'center', color: '#94a3b8', padding: 16, fontSize: 14 }}>No numbers found</p>
+                )}
+                {paginatedResults.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                      {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => (
+                        <span key={cat} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.bg }} />{cat}
+                        </span>
+                      ))}
+                    </div>
+                    {paginatedResults.map((num, i) => {
+                      const cfg = CATEGORY_CONFIG[num.category] || CATEGORY_CONFIG.PREMIUM;
+                      const sel = selectedNumber?.phoneNo === num.phoneNo;
+                      const discount = monthlyTotal;
+                      const finalPrice = num.price - discount;
+                      return (
+                        <div key={i} onClick={() => setSelectedNumber(sel ? null : num)} style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                          borderRadius: 10, marginBottom: 6, cursor: 'pointer',
+                          border: sel ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                          background: sel ? '#eff6ff' : '#fff', transition: 'all 0.15s',
+                        }}>
+                          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, color: '#fff', background: cfg.bg, border: `1px solid ${cfg.border}` }}>{num.category}</span>
+                          <span style={{ flex: 1, fontWeight: 600, fontSize: 15, fontFamily: 'monospace' }}>{num.displayNo || num.phoneNo}</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: 12, color: '#94a3b8', textDecoration: 'line-through', display: 'block' }}>{formatRM(num.price)}</span>
+                            <span style={{ fontWeight: 700, color: '#2563eb', fontSize: 15 }}>{formatRM(finalPrice)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {totalNumPages > 1 && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12 }}>
+                        {Array.from({ length: Math.min(totalNumPages, 7) }, (_, i) => i + 1).map(p => (
+                          <button key={p} onClick={() => setNumPage(p)} style={{
+                            width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: numPage === p ? '#2563eb' : '#f1f5f9', color: numPage === p ? '#fff' : '#64748b',
+                            fontWeight: 600, fontSize: 13,
+                          }}>{p}</button>
+                        ))}
+                      </div>
+                    )}
+                    <p style={{ fontSize: 12, color: '#64748b', marginTop: 12 }}>
+                      * Discount of {formatRM(monthlyTotal)} based on your current total
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════════════ BUNDLE DIALOG (floating) ════════════ */}
+        {showBundleDialog && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Backdrop */}
+            <div onClick={() => { closeBundleDialog(); }} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} />
+            {/* Dialog */}
+            <div style={{ position: 'relative', background: '#fff', borderRadius: 16, padding: '28px 24px', maxWidth: 600, width: '90%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>Device Bundle</h2>
+                  <p style={{ color: '#64748b', fontSize: 13 }}>Add a device bundle with your SIM purchase</p>
+                </div>
+                <button onClick={() => { closeBundleDialog(); }} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #e5e7eb', background: '#f8fafc', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>×</button>
+              </div>
+
+              <div className="purchase-grid-bundles">
+                {bundleDevices.map(dev => {
+                  const sel = selectedBundle?.id === dev.id;
+                  return (
+                    <div key={dev.id} onClick={() => setSelectedBundle(sel ? null : dev)} style={{
+                      ...card, cursor: 'pointer', textAlign: 'center',
+                      border: sel ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                      background: sel ? '#eff6ff' : '#fff', transition: 'all 0.2s',
+                    }}>
+                      {dev.images?.[0]?.url && (
+                        <img src={dev.images[0].url} alt={dev.name} style={{ width: 80, height: 80, objectFit: 'contain', margin: '0 auto 10px' }} />
+                      )}
+                      <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{dev.name}</h4>
+                      <p style={{ fontSize: 15, fontWeight: 800, color: '#2563eb' }}>RM{dev.price}</p>
+                      <button style={{
+                        marginTop: 8, padding: '5px 14px', borderRadius: 20, border: 'none',
+                        background: sel ? '#ef4444' : '#2563eb', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      }}>{sel ? 'Remove' : 'Add'}</button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <button onClick={() => { setSelectedBundle(null); closeBundleDialog(); }} style={{
+                  flex: 1, padding: '12px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#64748b', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                }}>No, thanks</button>
+                <button onClick={() => { closeBundleDialog(); }} style={{
+                  flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                }}>{selectedBundle ? `Select ${selectedBundle.name}` : 'Close'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ STEP 4: Details & Shipping ════════════ */}
+        {step === 3 && (
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Details & Shipping</h2>
+            <p style={{ color: '#64748b', marginBottom: 16, fontSize: 14 }}>Enter personal information and shipping address</p>
+
+            {/* Bundle add-on trigger */}
+            <div onClick={() => setShowBundleDialog(true)} style={{
+              ...card, cursor: 'pointer', marginBottom: 24,
+              border: selectedBundle ? '2px solid #2563eb' : '1px dashed #cbd5e1',
+              background: selectedBundle ? '#eff6ff' : '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 24 }}>📦</span>
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: 14, color: '#1e293b', marginBottom: 2 }}>
+                    {selectedBundle ? selectedBundle.name : 'Add Device Bundle'}
+                  </p>
+                  <p style={{ fontSize: 12, color: '#64748b' }}>
+                    {selectedBundle ? `RM${selectedBundle.price} — Click to change` : 'Optional: Add a device with your SIM'}
+                  </p>
+                </div>
+              </div>
+              <span style={{ fontSize: 20, color: '#2563eb' }}>›</span>
+            </div>
+
+            <div className="purchase-grid-2col">
+              {/* Identity */}
+              <div style={card}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Identity</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div><label style={label}>First Name *</label><input name="firstName" value={form.firstName} onChange={handleChange} required style={input} /></div>
+                  <div><label style={label}>Last Name</label><input name="lastName" value={form.lastName} onChange={handleChange} style={input} /></div>
+                </div>
+                <div style={{ marginBottom: 12 }}><label style={label}>NRIC / Passport *</label><input name="nric" value={form.nric} onChange={handleChange} required placeholder="990101011234" style={input} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div><label style={label}>Email *</label><input name="email" type="email" value={form.email} onChange={handleChange} required style={input} /></div>
+                  <div><label style={label}>Phone *</label><input name="phone" type="tel" value={form.phone} onChange={handleChange} required style={input} /></div>
+                </div>
+
+                <div style={{ marginTop: 16, padding: 16, background: '#f8fafc', borderRadius: 10, border: '1px dashed #cbd5e1', textAlign: 'center' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Upload IC Copy</p>
+                  <input type="file" accept="image/*,.pdf" onChange={e => setIcFile(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
+                  {icFile && <p style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ {icFile.name}</p>}
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <label style={label}>SIM Type</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(['physical', 'esim'] as const).map(t => (
+                      <button key={t} onClick={() => setSimType(t)} style={{
+                        flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                        background: simType === t ? '#2563eb' : '#f1f5f9',
+                        color: simType === t ? '#fff' : '#64748b', fontWeight: 600, fontSize: 14, transition: 'all 0.15s',
+                      }}>{t === 'physical' ? 'Physical SIM' : 'eSIM'}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Shipping */}
+              <div style={card}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Shipping Address</h3>
+                <div style={{ marginBottom: 12 }}><label style={label}>Address *</label><input name="address1" value={form.address1} onChange={handleChange} required style={input} /></div>
+                <div style={{ marginBottom: 12 }}><label style={label}>Address 2</label><input name="address2" value={form.address2} onChange={handleChange} style={input} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div><label style={label}>City *</label><input name="city" value={form.city} onChange={handleChange} required style={input} /></div>
+                  <div><label style={label}>State</label>
+                    <select name="state" value={form.state} onChange={handleChange} style={{ ...input, height: 46 }}>
+                      {MALAYSIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div><label style={label}>Postcode *</label><input name="postcode" value={form.postcode} onChange={handleChange} required style={input} /></div>
+                </div>
+
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e5e7eb' }}>
+                  <label style={label}>Promoter ID (optional)</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select name="promoterPrefix" value={form.promoterPrefix} onChange={e => { setForm(p => ({ ...p, promoterPrefix: e.target.value })); if (form.promoterCode.trim()) doVerifyPromoter(e.target.value, form.promoterCode); }} style={{ ...input, width: 80, height: 42 }}>
+                      <option value="TWE">TWE</option><option value="TWP">TWP</option>
+                    </select>
+                    <input name="promoterCode" placeholder="909707" value={form.promoterCode} onChange={e => {
+                      const v = e.target.value; setForm(p => ({ ...p, promoterCode: v })); setPromoterName(''); setPromoterError('');
+                      if (promoterDebounce.current) clearTimeout(promoterDebounce.current);
+                      if (v.trim()) promoterDebounce.current = setTimeout(() => doVerifyPromoter(form.promoterPrefix, v), 600);
+                    }} style={{ ...input, flex: 1, height: 42 }} />
+                  </div>
+                  {promoterVerifying && <p style={{ fontSize: 12, color: '#2563eb', marginTop: 4 }}>Verifying...</p>}
+                  {promoterName && <p style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ {promoterName}</p>}
+                  {promoterError && <p style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>✗ {promoterError}</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ STEP 6: Checkout ════════════ */}
+        {step === 4 && (
+          <div className="purchase-grid-checkout">
+            {/* Order Summary */}
+            <div style={card}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>Order Summary</h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span>Base SIM</span>
+                  <span style={{ fontWeight: 600 }}>{formatRM(BASE_SIM_PRICE)}</span>
+                </div>
+                {selectedDataPlan && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>Data Plan: <strong>{selectedDataPlan.name}</strong> <span style={{ background: '#fef3c7', color: '#92400e', fontSize: 10, padding: '1px 6px', borderRadius: 10 }}>Save RM{PLAN_DISCOUNT}</span></span>
+                    <span style={{ fontWeight: 600 }}>+{formatRM(dataPlanAddon)}</span>
+                  </div>
+                )}
+                {selectedTakaful && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>Protection: <strong>{selectedTakaful.name}</strong></span>
+                    <span style={{ fontWeight: 600 }}>
+                      {selectedDataPlan
+                        ? (selectedTakaful.id === 'takaful-54k' ? `+${formatRM(78.50)}` : 'Included')
+                        : `+${formatRM(selectedTakaful.addonPrice)}`
+                      }
+                    </span>
+                  </div>
+                )}
+                {selectedTakaful?.freePlan && !selectedDataPlan && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>🎁 FREE {selectedTakaful.freePlan} (first month)</span>
+                    <span style={{ fontWeight: 600, color: '#16a34a' }}>Free</span>
+                  </div>
+                )}
+                {selectedNumber && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>Number: <strong style={{ fontFamily: 'monospace' }}>{selectedNumber.displayNo}</strong> <span style={{ fontSize: 11, padding: '1px 6px', background: CATEGORY_CONFIG[selectedNumber.category]?.bg || '#2563eb', color: '#fff', borderRadius: 10 }}>{selectedNumber.category}</span></span>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: 12, color: '#94a3b8', textDecoration: 'line-through', display: 'block' }}>{formatRM(numberPrice)}</span>
+                      <span style={{ fontWeight: 600 }}>{formatRM(numberFinalPrice)}</span>
+                    </div>
+                  </div>
+                )}
+                {!selectedNumber && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>Number: <strong style={{ fontFamily: randomSelected ? 'monospace' : undefined }}>{randomSelected ? formatMsisdn(randomSelected) : 'Random'}</strong></span>
+                    <span style={{ fontWeight: 600, color: '#16a34a' }}>Free</span>
+                  </div>
+                )}
+                {selectedBundle && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                    <span>Bundle: <strong>{selectedBundle.name}</strong></span>
+                    <span style={{ fontWeight: 600 }}>{formatRM(bundlePrice)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span>Shipping</span>
+                  <span style={{ fontWeight: 700, color: '#16a34a' }}>Free</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span>SIM Type</span>
+                  <span style={{ fontWeight: 600 }}>{simType === 'physical' ? 'Physical SIM' : 'eSIM'}</span>
+                </div>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Total</span>
+                <span style={{ fontWeight: 800, color: '#2563eb', fontSize: 18 }}>{formatRM(monthlyTotal)}</span>
+              </div>
+              {oneTimeTotal > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <span style={{ fontWeight: 600 }}>One-time Payment</span>
+                  <span style={{ fontWeight: 800, color: '#1e293b', fontSize: 18 }}>{formatRM(oneTimeTotal)}</span>
+                </div>
+              )}
+
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                <p><strong>{form.firstName} {form.lastName}</strong></p>
+                <p>{form.email} | {form.phone}</p>
+                <p>{form.address1}{form.address2 ? `, ${form.address2}` : ''}</p>
+                <p>{form.postcode} {form.city}, {form.state}</p>
+              </div>
+            </div>
+
+            {/* Payment */}
+            <div style={card}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Method</h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                {['FPX (Online Banking)', 'Credit / Debit Card', 'E-Wallet'].map((m, i) => (
+                  <div key={i} style={{
+                    padding: '12px 16px', borderRadius: 8,
+                    border: i === 0 ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                    background: i === 0 ? '#eff6ff' : '#fff',
+                    display: 'flex', alignItems: 'center', gap: 10, fontSize: 14,
+                  }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid #2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {i === 0 && <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#2563eb' }} />}
+                    </div>
+                    {m}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16, padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                By placing an order, you agree to our <strong>Terms & Conditions</strong> and <strong>Privacy Policy</strong>.
+              </div>
+
+              {error && <p style={{ color: '#ef4444', fontSize: 14, marginBottom: 12 }}>{error}</p>}
+
+              <button onClick={handleSubmit} disabled={submitting} style={{
+                width: '100%', padding: '14px 0', borderRadius: 50,
+                background: '#eab308', color: '#fff', border: 'none',
+                fontSize: 16, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.7 : 1,
+              }}>
+                {submitting ? 'Processing...' : 'Pay Now'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom nav ── */}
+      {step < 4 && (
+        <div className="step-nav" style={{ marginBottom: 64 }}>
+          <button className="btn btn-blue" onClick={goBack}>Back</button>
+          {canGoNext() && <button className="btn btn-blue" onClick={goNext}>Next</button>}
+        </div>
+      )}
+
+      <style>{`
+        .plans-grid-fu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .purchase-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .purchase-grid-checkout { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
+        .purchase-grid-insurance { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 640px; }
+        .purchase-grid-insurance-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        .purchase-grid-bundles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        @media (max-width: 768px) {
+          .plans-grid-fu { grid-template-columns: 1fr 1fr !important; }
+          .purchase-grid-2col { grid-template-columns: 1fr !important; }
+          .purchase-grid-checkout { grid-template-columns: 1fr !important; }
+          .purchase-grid-insurance { grid-template-columns: 1fr !important; }
+          .purchase-grid-insurance-3col { grid-template-columns: 1fr !important; }
+          .purchase-grid-bundles { grid-template-columns: 1fr 1fr !important; }
+        }
+        @media (max-width: 480px) {
+          .plans-grid-fu { grid-template-columns: 1fr !important; }
+          .purchase-grid-bundles { grid-template-columns: 1fr !important; }
+        }
+        .step-label-text { display: none !important; }
+        @media (min-width: 640px) { .step-label-text { display: inline !important; } }
+      `}</style>
+    </div>
+  );
+}

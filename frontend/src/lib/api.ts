@@ -201,3 +201,59 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
     return { valid: false, error: 'Gagal mengesahkan. Cuba lagi.' };
   }
 }
+
+/** TWP flow — generate referenceID after verification */
+export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string }> {
+  try {
+    const url = `${LEGACY_API}/saveRefAllocation?productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
+    const res = await fetch(url, { method: 'POST' });
+    if (!res.ok) return {};
+    const data = await res.json();
+    if (data.systemCode === '1' && data.data?.length > 0) {
+      return { referenceID: data.data[0].referenceID };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+// New Plans API — dynamic data bundles
+export interface ApiPlanItem {
+  codeKey: string;
+  codeDesc: string;
+  codeData1: string;   // planID for OSS payment
+  codeData2: string;   // price or extra info
+  codeData3: string;   // validity or extra info
+  codeAction: string;
+  codeLang: string;
+  codeSeq: string;
+  remark: string;
+}
+
+export interface ApiPlanGroup {
+  planName: string;
+  codeNo: string;
+  planList: ApiPlanItem[];
+}
+
+const DATABUNDLE_API = 'https://www.tonewow.net/gwp/api/x3/databundle/list';
+
+export async function getDataPlans(productcode: string, documentID: string): Promise<ApiPlanItem[]> {
+  try {
+    const url = `${DATABUNDLE_API}?productcode=${encodeURIComponent(productcode)}&documentID=${encodeURIComponent(documentID || '')}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    // Collect all plans from mainPlan + additionalPlan
+    const allPlans: ApiPlanItem[] = [];
+    for (const group of [...(data.mainPlan || []), ...(data.additionalPlan || [])]) {
+      if (group.planList && Array.isArray(group.planList)) {
+        allPlans.push(...group.planList);
+      }
+    }
+    // Filter FU plans only (codeData2 contains plan name like "FU 35")
+    return allPlans.filter(p => (p.codeData2 || '').toUpperCase().replace(/\s/g, '').startsWith('FU'));
+  } catch {
+    return [];
+  }
+}

@@ -1632,16 +1632,65 @@ h5 { font-size: 1.1rem; }
 /* ─── eSIM Success Page ─── */
 .esim-success-page {
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 auto;
-  padding: 12px 0 40px;
+  padding: 60px 0 40px;
+  position: relative;
 }
 .esim-success-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #0074be;
   border-radius: 20px;
   padding: 40px 28px 32px;
   text-align: center;
+  position: relative;
+  z-index: 1;
+}
+/* decorative organic blobs — painted look */
+.esim-blob {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(18px);
+}
+.esim-blob--1 {
+  width: 200px; height: 180px;
+  top: -30px; left: -60px;
+  background: #0074be;
+  border-radius: 60% 40% 50% 50% / 45% 50% 50% 55%;
+  opacity: 0.13;
+}
+.esim-blob--2 {
+  width: 220px; height: 200px;
+  top: 40%; right: -70px;
+  background: #f59e0b;
+  border-radius: 45% 55% 40% 60% / 55% 45% 55% 45%;
+  opacity: 0.11;
+}
+.esim-blob--3 {
+  width: 170px; height: 190px;
+  bottom: 60px; left: -50px;
+  background: #0074be;
+  border-radius: 50% 50% 40% 60% / 60% 40% 55% 45%;
+  opacity: 0.09;
+}
+.esim-blob--4 {
+  width: 160px; height: 160px;
+  top: 10%; right: -30px;
+  background: #f59e0b;
+  border-radius: 55% 45% 60% 40% / 40% 60% 45% 55%;
+  opacity: 0.08;
+}
+.esim-blob--5 {
+  width: 130px; height: 140px;
+  bottom: -20px; right: 20%;
+  background: #0074be;
+  border-radius: 40% 60% 50% 50% / 55% 45% 55% 45%;
+  opacity: 0.10;
+}
+.esim-success-card > * {
+  position: relative;
+  z-index: 1;
 }
 .esim-success-check {
   width: 80px;
@@ -1652,6 +1701,7 @@ h5 { font-size: 1.1rem; }
   align-items: center;
   justify-content: center;
   margin: 0 auto 20px;
+  position: relative;
 }
 .esim-success-title { font-size: 26px; font-weight: 800; margin: 0 0 6px; color: #1e293b; }
 .esim-success-sub { font-size: 14px; color: #64748b; margin: 0 0 24px; }
@@ -1666,6 +1716,17 @@ h5 { font-size: 1.1rem; }
   flex-direction: column;
   align-items: center;
   gap: 20px;
+}
+.esim-qr-dl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  cursor: pointer;
+  padding-top: 8px;
 }
 .esim-qr-placeholder {
   display: flex;
@@ -1726,6 +1787,121 @@ h5 { font-size: 1.1rem; }
 }
 .esim-steps li { margin-bottom: 4px; }
 .esim-steps strong { color: #1e293b; }
+
+/* ─── Checkmark animation + sparkles ─── */
+.esim-check-circle { position: relative; }
+.esim-check-circle svg { transform: scale(0); transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.esim-check-circle.esim-check-done svg { transform: scale(1); }
+.esim-spark {
+  position: absolute;
+  color: #f59e0b;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+.esim-check-circle.esim-check-done .esim-spark-1 { animation: esimSparkle 1.2s 0.3s ease-out forwards; top: 4px; right: 12px; }
+.esim-check-circle.esim-check-done .esim-spark-2 { animation: esimSparkle 1.4s 0.5s ease-out forwards; bottom: 8px; right: 6px; }
+.esim-check-circle.esim-check-done .esim-spark-3 { animation: esimSparkle 1.3s 0.7s ease-out forwards; top: 4px; left: 10px; }
+.esim-check-circle.esim-check-done .esim-spark-4 { animation: esimSparkle 1.5s 0.9s ease-out forwards; bottom: 6px; left: 14px; }
+@keyframes esimSparkle {
+  0% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.2) rotate(90deg); }
+  100% { opacity: 0; transform: scale(0.6) rotate(180deg); }
+}
+
+/* ─── Copy EID button ─── */
+.esim-copy-btn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.esim-copy-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+/* ─── Referral info ─── */
+.esim-referral-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+.esim-referral-info strong {
+  color: #1e293b;
+}
+
+/* ─── Email note ─── */
+.esim-email-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #1e40af;
+  text-align: left;
+}
+.esim-email-note strong { color: #1d4ed8; }
+
+/* ─── Device tabs ─── */
+.esim-device-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.esim-device-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.esim-device-tab:hover { background: #f8fafc; }
+.esim-device-tab.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+/* ─── Register CTA ─── */
+.esim-register-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #0074be, #273a89);
+  color: #fff;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-top: 16px;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.esim-register-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,116,190,0.3); }
+.esim-register-cta strong { font-size: 14px; }
+.esim-register-cta span { font-size: 12px; opacity: 0.85; }
+.esim-register-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
 
 @media (max-width: 640px) {
   .esim-success-card { padding: 32px 20px 24px; }

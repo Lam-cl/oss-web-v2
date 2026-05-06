@@ -9,7 +9,7 @@ const stepVariants: Variants = {
   exit: (dir: number) => ({ y: dir * -30, opacity: 0, transition: { duration: 0.25, ease: [0.4, 0, 1, 1] as [number,number,number,number] } }),
 };
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getBundleProducts, createOrder, verifyPromoter, getSettings } from '@/lib/api';
+import { getBundleProducts, createOrder, verifyPromoter, getSettings, getDataPlans, saveRefAllocation, type ApiPlanItem } from '@/lib/api';
 import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import type { NumberResult } from '@/types';
@@ -26,7 +26,7 @@ const STEPS = [
 
 const STAGING_MODE = true; // flip to false for production — staging sends RM1 regardless of actual total
 const DEFAULT_BASE_SIM_PRICE = 19.50;
-const OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
+const OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
 
 const PAYMENT_METHODS = [
   { id: '16', label: 'Online Banking (FPX)' },
@@ -110,15 +110,6 @@ interface DataPlan {
   popular?: boolean;
 }
 
-const FU_PLANS: DataPlan[] = [
-  { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: false },
-  { id: 'fu20',  name: 'FU20',  price: 20,  discountedAddon: 17,  data: '35 GB',  validity: '20 Days', calls: 'Unlimited', badge5g: false },
-  { id: 'fu35',  name: 'FU35',  price: 35,  discountedAddon: 30,  data: '150 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
-  { id: 'fu50',  name: 'FU50',  price: 50,  discountedAddon: 45,  data: '300 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
-  { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,  data: '500 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true, popular: true },
-  { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,  data: '650 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
-  { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115, data: '800 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
-];
 
 /* Shared inline styles */
 const cardStyle: React.CSSProperties = {
@@ -161,7 +152,43 @@ function SIMPurchaseWizard() {
   const [hasReferral, setHasReferral] = useState(false);
 
   /* ── Step 1: Data Plan (optional) ── */
+  const [apiPlans, setApiPlans] = useState<ApiPlanItem[]>([]);
   const [selectedDataPlan, setSelectedDataPlan] = useState<DataPlan | null>(null);
+
+  // Fetch plans from new API when entering step 1
+  const DYNAMIC_PLANS: DataPlan[] = apiPlans.map(p => {
+    const nameRaw = (p.codeData2 || '').trim(); // "FU 35"
+    const name = nameRaw.replace(/\s+/g, ''); // "FU35"
+    const id = name.toLowerCase(); // "fu35"
+    const price = parseFloat(p.codeData3) || 0;
+    const descLines = (p.codeDesc || '').split(/[\r\n]+/).filter(Boolean);
+    const dataLine = descLines[0] || '';
+    const validityLine = descLines.find(l => /day/i.test(l)) || '30 Days Validity';
+    const callsLine = descLines.find(l => /min/i.test(l)) || 'Unlimited Calls';
+    return {
+      id, name, price,
+      discountedAddon: Math.max(0, price - 5),
+      data: dataLine.replace('High Speed Data', 'GB').trim(),
+      validity: validityLine.trim(),
+      calls: callsLine.replace(/,/g, '').trim(),
+      badge5g: false,
+      popular: name === 'FU60',
+    };
+  }).filter(p => p.name.toUpperCase().startsWith('FU'));
+
+  const FU_PLANS: DataPlan[] = DYNAMIC_PLANS.length > 0 ? DYNAMIC_PLANS : [
+    { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: false },
+    { id: 'fu20',  name: 'FU20',  price: 20,  discountedAddon: 17,  data: '35 GB',  validity: '20 Days', calls: 'Unlimited', badge5g: false },
+    { id: 'fu35',  name: 'FU35',  price: 35,  discountedAddon: 30,  data: '150 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
+    { id: 'fu50',  name: 'FU50',  price: 50,  discountedAddon: 45,  data: '300 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
+    { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,  data: '500 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true, popular: true },
+    { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,  data: '650 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
+    { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115, data: '800 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
+  ];
+
+  useEffect(() => {
+    getDataPlans('TWE', '').then(p => setApiPlans(p.length > 0 ? p : [])).catch(() => {});
+  }, []);
 
   /* ── Step 1: Plan expand state ── */
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
@@ -203,14 +230,27 @@ function SIMPurchaseWizard() {
   const [promoterName, setPromoterName] = useState('');
   const [promoterError, setPromoterError] = useState('');
   const [promoterVerifying, setPromoterVerifying] = useState(false);
+  const [twpReferenceID, setTwpReferenceID] = useState('');
+  const [alloReferenceID, setAlloReferenceID] = useState('');
   const promoterDebounce = useRef<NodeJS.Timeout | null>(null);
 
   const doVerifyPromoter = useCallback(async (prefix: string, code: string) => {
-    if (!code.trim()) { setPromoterName(''); setPromoterError(''); setPromoterVerifying(false); return; }
+    if (!code.trim()) { setPromoterName(''); setPromoterError(''); setPromoterVerifying(false); setTwpReferenceID(''); setAlloReferenceID(''); return; }
     setPromoterVerifying(true); setPromoterName(''); setPromoterError('');
-    const result = await verifyPromoter(`${prefix}-${code.trim()}`);
+    const memberID = `${prefix}-${code.trim()}`;
+    const result = await verifyPromoter(memberID);
+    if (result.valid) {
+      if (result.name) setPromoterName(result.name);
+      else if (prefix === 'TWP') setPromoterName(memberID); // TWP might not return name
+      // TWP: generate referenceID
+      if (prefix === 'TWP') {
+        const ref = await saveRefAllocation(memberID);
+        if (ref.referenceID) { setTwpReferenceID(ref.referenceID); setAlloReferenceID(ref.referenceID); }
+      }
+    } else {
+      setPromoterError(result.error || 'Not found');
+    }
     setPromoterVerifying(false);
-    if (result.valid && result.name) { setPromoterName(result.name); } else { setPromoterError(result.error || 'Not found'); }
   }, []);
 
   /* ── Load pre-selected special number (VIP flow) — only when ?special=1 ── */
@@ -367,11 +407,18 @@ function SIMPurchaseWizard() {
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || 'null',
         referralCode: promoterId,
+        planID: apiPlans.find(p => (p.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase() === selectedDataPlan?.id)?.codeData1 || '',
+        insurance: insuranceAddon ? '1' : '0',
+        isEsim: simType === 'esim' ? '1' : '0',
+        twpReferenceID,
+        alloReferenceID,
       });
 
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://tonewow-v2.xifuhalim.com/api';
 
       if (simType === 'esim') {
+        const promoData = hasPromoter ? { prefix: form.promoterPrefix, code: form.promoterCode, email: form.email } : { prefix: '', code: '', email: form.email };
+        localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
         setShowEsimSuccess(true);
         setSubmitting(false);
@@ -684,7 +731,7 @@ function SIMPurchaseWizard() {
                     onClick={() => {
                       setHasReferral(false);
                       setForm(p => ({ ...p, promoterCode: '' }));
-                      setPromoterName(''); setPromoterError('');
+                      setPromoterName(''); setPromoterError(''); setTwpReferenceID(''); setAlloReferenceID('');
                     }}
                     type="button"
                   >No</button>

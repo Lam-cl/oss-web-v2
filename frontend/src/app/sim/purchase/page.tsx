@@ -9,7 +9,7 @@ const stepVariants: Variants = {
   exit: (dir: number) => ({ y: dir * -30, opacity: 0, transition: { duration: 0.25, ease: [0.4, 0, 1, 1] as [number,number,number,number] } }),
 };
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getBundleProducts, createOrder, verifyPromoter, getSettings, getDataPlans, saveRefAllocation, type ApiPlanItem } from '@/lib/api';
+import { getBundleProducts, verifyPromoter, getSettings, getDataPlans, saveRefAllocation, type ApiPlanItem } from '@/lib/api';
 import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
 import type { NumberResult } from '@/types';
@@ -24,7 +24,7 @@ const STEPS = [
   'Details & Checkout',
 ];
 
-const STAGING_MODE = true; // flip to false for production — staging sends RM1 regardless of actual total
+const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
 const DEFAULT_BASE_SIM_PRICE = 19.50;
 const OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
 
@@ -352,32 +352,6 @@ function SIMPurchaseWizard() {
     try {
       const customerName = form.fullName.trim();
       const refNo = generateRefNo();
-
-      let planName = 'Lite SIM';
-      if (selectedNumber) planName = `${selectedNumber.category} Number ${selectedNumber.displayNo || selectedNumber.phoneNo}`;
-      else if (selectedDataPlan) planName = `${selectedDataPlan.name} SIM`;
-
-      const order = await createOrder({
-        customer_name: customerName, customer_email: form.email,
-        customer_phone: form.phone, customer_ic: form.nric,
-        shipping_address: { address1: form.address1, address2: form.address2, city: form.city, state: form.state, postcode: form.postcode },
-        items: [
-          {
-            name: planName, type: 'sim',
-            plan: selectedDataPlan?.id || 'lite',
-            number: selectedNumber?.phoneNo || '',
-            price: total, quantity: 1, simType,
-            numberType: selectedNumber?.category || '',
-            takaful: insuranceAddon ? INSURANCE_ADDON.id : 'none',
-          },
-        ],
-        total, shipping: shippingFee,
-        promoter_id: hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : undefined,
-        insurance: insuranceAddon ? INSURANCE_ADDON.id : 'none',
-        payment_ref: `${paymentMethod}${refNo}`,
-      });
-      if (!order?.order_number) throw new Error('Failed to create order');
-      localStorage.setItem('tw_pending_order', order.order_number);
 
       const promoterId = hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : '';
       const totalStr = STAGING_MODE ? '1.00' : String(total);

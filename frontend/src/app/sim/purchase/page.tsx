@@ -171,14 +171,14 @@ function SIMPurchaseWizard() {
       data: dataLine.replace('High Speed Data', 'GB').trim(),
       validity: validityLine.trim(),
       calls: callsLine.replace(/,/g, '').trim(),
-      badge5g: false,
+      badge5g: true,
       popular: name === 'FU60',
     };
   }).filter(p => p.name.toUpperCase().startsWith('FU') && p.name !== 'FU20+');
 
   const FU_PLANS: DataPlan[] = DYNAMIC_PLANS.length > 0 ? DYNAMIC_PLANS : [
-    { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: false },
-    { id: 'fu20',  name: 'FU20',  price: 20,  discountedAddon: 17,  data: '35 GB',  validity: '20 Days', calls: 'Unlimited', badge5g: false },
+    { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: true },
+    { id: 'fu20',  name: 'FU20',  price: 20,  discountedAddon: 17,  data: '35 GB',  validity: '20 Days', calls: 'Unlimited', badge5g: true },
     { id: 'fu35',  name: 'FU35',  price: 35,  discountedAddon: 30,  data: '150 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu50',  name: 'FU50',  price: 50,  discountedAddon: 45,  data: '300 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,  data: '500 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true, popular: true },
@@ -236,7 +236,7 @@ function SIMPurchaseWizard() {
       data: (descLines[0] || '').replace('High Speed Data', 'GB').trim(),
       validity: (descLines.find(l => /day/i.test(l)) || '30 Days Validity').trim(),
       calls: (descLines.find(l => /min/i.test(l)) || 'Unlimited Calls').replace(/,/g, '').trim(),
-      badge5g: false, popular: false,
+      badge5g: true, popular: false,
     });
     setSimType('physical');
     setDirectCheckout(true);

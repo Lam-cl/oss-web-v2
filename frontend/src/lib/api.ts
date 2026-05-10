@@ -237,13 +237,12 @@ export interface ApiPlanGroup {
   planList: ApiPlanItem[];
 }
 
-const DATABUNDLE_API = 'https://www.tonewow.net/gwp/api/x3/databundle/list';
+const DATABUNDLE_API = 'https://qa.tonegroup.net/twbackend/api/v4/databundle/list';
 
 export async function getDataPlans(productcode: string, documentID: string): Promise<ApiPlanItem[]> {
   try {
     const url = `${DATABUNDLE_API}?productcode=${encodeURIComponent(productcode)}&documentID=${encodeURIComponent(documentID || '')}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await proxyGet(url);
     // Collect all plans from mainPlan + additionalPlan
     const allPlans: ApiPlanItem[] = [];
     for (const group of [...(data.mainPlan || []), ...(data.additionalPlan || [])]) {

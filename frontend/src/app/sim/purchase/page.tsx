@@ -174,7 +174,7 @@ function SIMPurchaseWizard() {
       badge5g: false,
       popular: name === 'FU60',
     };
-  }).filter(p => p.name.toUpperCase().startsWith('FU'));
+  }).filter(p => p.name.toUpperCase().startsWith('FU') && p.name !== 'FU20+');
 
   const FU_PLANS: DataPlan[] = DYNAMIC_PLANS.length > 0 ? DYNAMIC_PLANS : [
     { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: false },
@@ -207,6 +207,7 @@ function SIMPurchaseWizard() {
   });
   const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
+  const [directCheckout, setDirectCheckout] = useState(false);
   const [esimCompatible, setEsimCompatible] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -219,6 +220,29 @@ function SIMPurchaseWizard() {
     if (/Android 1[3-9]|Android [2-9]\d/.test(ua) && /esim/i.test(ua)) compatible = true;
     setEsimCompatible(compatible);
   }, [simType, esimCompatible]);
+
+  /* ── Direct checkout via ?dataPlanID= ── */
+  useEffect(() => {
+    const planId = searchParams.get('dataPlanID');
+    if (!planId || apiPlans.length === 0) return;
+    const match = apiPlans.find(p => p.codeData1 === planId);
+    if (!match) return;
+    const name = (match.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase();
+    const price = parseFloat(match.codeData3) || 0;
+    const descLines = (match.codeDesc || '').split(/[\r\n]+/).filter(Boolean);
+    setSelectedDataPlan({
+      id: name, name: name.toUpperCase(), price,
+      discountedAddon: Math.max(0, price - 5),
+      data: (descLines[0] || '').replace('High Speed Data', 'GB').trim(),
+      validity: (descLines.find(l => /day/i.test(l)) || '30 Days Validity').trim(),
+      calls: (descLines.find(l => /min/i.test(l)) || 'Unlimited Calls').replace(/,/g, '').trim(),
+      badge5g: false, popular: false,
+    });
+    setSimType('physical');
+    setDirectCheckout(true);
+    setStep(3);
+    router.replace('/sim/purchase');
+  }, [apiPlans, searchParams, router]);
 
   /* ── Checkout ── */
   const [submitting, setSubmitting] = useState(false);
@@ -292,6 +316,7 @@ function SIMPurchaseWizard() {
   /* ── Price calculations ── */
   const planAddon = selectedDataPlan?.price || 0;
   const insurancePrice = insuranceAddon ? INSURANCE_ADDON.price : 0;
+  const effectiveBasePrice = directCheckout ? 10 : BASE_SIM_PRICE;
   const hasPromoter = !!(form.promoterCode && form.promoterCode.trim());
   const isBareOrder = !hasPromoter && !selectedDataPlan && !insuranceAddon && !selectedNumber;
   const shippingFee = hasPromoter ? 10 : isBareOrder ? 5 : 0;
@@ -300,20 +325,19 @@ function SIMPurchaseWizard() {
 
   const total = selectedNumber
     ? numberPrice + shippingFee
-    : BASE_SIM_PRICE + planAddon + insurancePrice + shippingFee;
+    : effectiveBasePrice + planAddon + insurancePrice + shippingFee;
 
-  const currentRunningTotal = selectedNumber ? numberPrice : BASE_SIM_PRICE + planAddon + insurancePrice;
+  const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
 
   /* ── Determine planid for OSSPayment ── */
   const determinePlanId = (): number => {
+    if (directCheckout) return 1;
     if (selectedNumber) {
       const cat = selectedNumber.category?.toUpperCase();
       if (cat === 'VVIP') return 7;
       if (cat === 'VIP') return 4;
       return 5;
     }
-    if (insuranceAddon) return 3;
-    if (selectedDataPlan) return 2;
     return 1;
   };
 
@@ -335,6 +359,7 @@ function SIMPurchaseWizard() {
   };
 
   const goBack = () => {
+    if (directCheckout) return;
     if (searchParams.get('special') === '1') { router.push('/'); return; }
     if (step === 3 && selectedNumber) {
       setSelectedNumber(null);
@@ -381,7 +406,7 @@ function SIMPurchaseWizard() {
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || '',
         referralCode: promoterId ? `${promoterId}${twpReferenceID}` : '',
-        planID: apiPlans.find(p => (p.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase() === selectedDataPlan?.id)?.codeData1 || '',
+        dataPlanID: apiPlans.find(p => (p.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase() === selectedDataPlan?.id)?.codeData1 || '',
         insurance: insuranceAddon ? '1' : '0',
         isEsim: simType === 'esim' ? '1' : '0',
         twpReferenceID,
@@ -405,7 +430,7 @@ function SIMPurchaseWizard() {
   };
 
   /* ── Stepper helpers ── */
-  const isStepCompleted = (i: number) => (selectedNumber && i < 3) || i < step;
+  const isStepCompleted = (i: number) => !directCheckout && ((selectedNumber && i < 3) || i < step);
   const isStepActive = (i: number) => i === step;
 
   /* ══════════════════════════════════════════════════════
@@ -442,7 +467,7 @@ function SIMPurchaseWizard() {
       <>
         <div className="sidebar-order-row">
           <span>Base SIM</span>
-          <span>{formatRM(BASE_SIM_PRICE)}</span>
+          <span>{formatRM(effectiveBasePrice)}</span>
         </div>
         {selectedDataPlan && (
           <div className="sidebar-order-row">
@@ -475,7 +500,7 @@ function SIMPurchaseWizard() {
                 <div className="sidebar-step-row">
                   <div
                     className={`sidebar-step-circle${isStepCompleted(i) ? ' completed' : isStepActive(i) ? ' active' : ''}`}
-                    onClick={() => { if (isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
+                    onClick={() => { if (!directCheckout && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
                   >
                     {isStepCompleted(i) ? '✓' : i + 1}
                   </div>
@@ -638,20 +663,19 @@ function SIMPurchaseWizard() {
                     <p className="sim-type-desc">Delivered to your address</p>
                   </div>
                   <div className="sim-type-right">
-                    <p className="sim-type-price">{formatRM(BASE_SIM_PRICE)}</p>
+                    <p className="sim-type-price">{formatRM(effectiveBasePrice)}</p>
                     {simType === 'physical' && <span className="sim-type-selected-badge">Selected</span>}
                   </div>
                 </div>
 
-                {/* eSIM */}
+                {/* eSIM — Coming Soon */}
                 <div
-                  className={`sim-type-card${simType === 'esim' ? ' sim-type-card--active' : ''}`}
-                  onClick={() => setSimType('esim')}
-                  style={{ cursor: 'pointer' }}
+                  className="sim-type-card sim-type-card--disabled"
+                  style={{ cursor: 'not-allowed', opacity: 0.5 }}
                 >
-                  <div className={`sim-type-radio${simType === 'esim' ? ' sim-type-radio--active' : ''}`} />
-                  <div className={`sim-type-icon${simType === 'esim' ? ' sim-type-icon--active' : ''}`}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={simType === 'esim' ? '#2563eb' : '#94a3b8'} strokeWidth="1.8">
+                  <div className="sim-type-radio" />
+                  <div className="sim-type-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.8">
                       <rect x="7" y="3" width="10" height="16" rx="2" /><circle cx="12" cy="16" r="1" />
                     </svg>
                   </div>
@@ -660,8 +684,7 @@ function SIMPurchaseWizard() {
                     <p className="sim-type-desc">Digital SIM · No physical card</p>
                   </div>
                   <div className="sim-type-right">
-                    <p className="sim-type-price">{formatRM(BASE_SIM_PRICE)}</p>
-                    {simType === 'esim' && <span className="sim-type-selected-badge">Selected</span>}
+                    <span className="sim-type-coming-soon">Coming Soon</span>
                   </div>
                 </div>
               </div>
@@ -810,7 +833,7 @@ function SIMPurchaseWizard() {
                               <span><strong>RM30,000</strong> Takaful included</span>
                             </div>
                           </div>
-                          <div className="fu-plan-total">Total: <strong>{formatRM(BASE_SIM_PRICE + plan.price)}</strong></div>
+                          <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + plan.price)}</strong></div>
                         </div>
                       )}
                     </div>
@@ -882,7 +905,7 @@ function SIMPurchaseWizard() {
                   </div>
                   {expandedInsCard === 'premium' && (
                     <div className="ins-card-body" style={{ border: `1.5px solid ${insuranceAddon ? '#115e59' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-                      <p className="ins-card-total">Total: {formatRM(BASE_SIM_PRICE + planAddon + INSURANCE_ADDON.price)}</p>
+                      <p className="ins-card-total">Total: {formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</p>
                       <div className="ins-card-divider" />
                       <p className="ins-card-label">Coverage:</p>
                       <ul className="ins-card-benefits">
@@ -1035,7 +1058,7 @@ function SIMPurchaseWizard() {
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                             <span>Base SIM</span>
-                            <span style={{ fontWeight: 600 }}>{formatRM(BASE_SIM_PRICE)}</span>
+                            <span style={{ fontWeight: 600 }}>{formatRM(effectiveBasePrice)}</span>
                           </div>
                           {selectedDataPlan && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
@@ -1431,7 +1454,7 @@ function SIMPurchaseWizard() {
 
 export default function SIMPurchasePage() {
   return (
-    <Suspense>
+    <Suspense fallback={<div className="container" style={{ padding: '80px 20px', textAlign: 'center' }}><p style={{ color: '#64748b' }}>Loading...</p></div>}>
       <SIMPurchaseWizard />
     </Suspense>
   );

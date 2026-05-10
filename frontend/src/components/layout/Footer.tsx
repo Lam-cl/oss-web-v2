@@ -3,13 +3,13 @@ export default function Footer() {
     <footer className="site-footer">
       {/* App Downloads */}
       <div className="footer-apps">
-        <a href="https://play.google.com/store/apps/details?id=com.nictonetechnology.tonewow" target="_blank" rel="noopener">
+        <a href="https://play.google.com/store/apps/details?id=com.mywow2.app&hl=en" target="_blank" rel="noopener">
           <img src="https://cdn.prod.website-files.com/697381edd70cb137c12f7e90/697522315fbcb6b84439a3bb_Store-download-button_2.svg" alt="Get it on Google Play" />
         </a>
-        <a href="https://apps.apple.com/my/app/tone-wow/id1611498078" target="_blank" rel="noopener">
+        <a href="https://apps.apple.com/my/app/tone-wow-2-0/id6751451439" target="_blank" rel="noopener">
           <img src="https://cdn.prod.website-files.com/697381edd70cb137c12f7e90/6975223236dc3f8101aee32d_Store-download-button.svg" alt="Download on App Store" />
         </a>
-        <a href="https://appgallery.huawei.com/app/C105491285" target="_blank" rel="noopener">
+        <a href="https://play.google.com/store/apps/details?id=com.mywow2.app&hl=en" target="_blank" rel="noopener">
           <img src="https://cdn.prod.website-files.com/697381edd70cb137c12f7e90/69752231cd94a67b7516fd2d_Store-download-button_1.svg" alt="Explore it on AppGallery" />
         </a>
       </div>

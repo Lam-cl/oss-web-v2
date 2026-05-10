@@ -413,7 +413,7 @@ function SIMPurchaseWizard() {
         alloReferenceID,
       });
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://tonewow-v2.xifuhalim.com/api';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
 
       if (simType === 'esim') {
         const promoData = hasPromoter ? { prefix: form.promoterPrefix, code: form.promoterCode, email: form.email } : { prefix: '', code: '', email: form.email };

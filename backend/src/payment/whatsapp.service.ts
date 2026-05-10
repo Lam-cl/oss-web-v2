@@ -61,7 +61,7 @@ export class WhatsAppService {
             parameters: [
               {
                 type: 'image',
-                image: { link: 'https://xbot.xifuhalim.com/uploads/tonewow/order_confirmation_header.jpeg' },
+                image: { link: this.configService.get('WABA_HEADER_IMAGE', 'https://xbot.xifuhalim.com/uploads/tonewow/order_confirmation_header.jpeg') },
               },
             ],
           },

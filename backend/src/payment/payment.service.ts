@@ -27,11 +27,11 @@ export class PaymentService {
     );
     this.frontendUrl = this.configService.get(
       'FRONTEND_URL',
-      'https://tonewow-v2.xifuhalim.com',
+      'https://shop.tonewow.com',
     );
     this.backendUrl = this.configService.get(
       'BACKEND_URL',
-      'https://tonewow-v2.xifuhalim.com/api',
+      'https://shop.tonewow.com/api',
     );
   }
 

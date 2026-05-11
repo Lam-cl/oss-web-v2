@@ -10,9 +10,10 @@ const PIN = '1234';
 const PUK = '8765 4321';
 
 const FALLBACK_BANNERS: Banner[] = [
-  { id: 1, title: 'Banner 1', desktop_image: '/images/banners/banner1-desktop.jpg', mobile_image: '/images/banners/banner1-mobile.jpg', sort_order: 1 },
-  { id: 2, title: 'Banner 2', desktop_image: '/images/banners/banner2-desktop.jpg', mobile_image: '/images/banners/banner2-mobile.jpg', sort_order: 2 },
-  { id: 3, title: 'Banner 3', desktop_image: '/images/banners/banner3-desktop.jpg', mobile_image: '/images/banners/banner3-mobile.jpg', sort_order: 3 },
+  { id: 1, title: 'Banner 1', desktop_image: '/images/banners/banner1-desktop-v2.jpg', mobile_image: '/images/banners/banner1-mobile-v2.jpg', sort_order: 1 },
+  { id: 2, title: 'Banner 2', desktop_image: '/images/banners/banner2-desktop-v2.jpg', mobile_image: '/images/banners/banner2-mobile-v2.jpg', sort_order: 2 },
+  { id: 3, title: 'Banner 3', desktop_image: '/images/banners/banner3-desktop-v2.jpg', mobile_image: '/images/banners/banner3-mobile-v2.jpg', sort_order: 3 },
+  { id: 4, title: 'Banner 4', desktop_image: '/images/banners/banner4-desktop-v2.jpg', mobile_image: '/images/banners/banner4-mobile-v2.jpg', sort_order: 4 },
 ];
 
 type DeviceTab = 'iphone' | 'samsung' | 'huawei';

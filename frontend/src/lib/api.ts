@@ -242,7 +242,8 @@ const DATABUNDLE_API = 'https://qa.tonegroup.net/twbackend/api/v4/databundle/lis
 export async function getDataPlans(productcode: string, documentID: string): Promise<ApiPlanItem[]> {
   try {
     const url = `${DATABUNDLE_API}?productcode=${encodeURIComponent(productcode)}&documentID=${encodeURIComponent(documentID || '')}`;
-    const data = await proxyGet(url);
+    const res = await fetch(url);
+    const data = await res.json();
     // Collect all plans from mainPlan + additionalPlan
     const allPlans: ApiPlanItem[] = [];
     for (const group of [...(data.mainPlan || []), ...(data.additionalPlan || [])]) {
@@ -250,8 +251,7 @@ export async function getDataPlans(productcode: string, documentID: string): Pro
         allPlans.push(...group.planList);
       }
     }
-    // Filter FU plans only (codeData2 contains plan name like "FU 35")
-    return allPlans.filter(p => (p.codeData2 || '').toUpperCase().replace(/\s/g, '').startsWith('FU'));
+    return allPlans;
   } catch {
     return [];
   }

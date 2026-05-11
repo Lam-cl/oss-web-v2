@@ -14,7 +14,7 @@ const common_1 = require("@nestjs/common");
 const axios_1 = require("@nestjs/axios");
 const config_1 = require("@nestjs/config");
 const rxjs_1 = require("rxjs");
-const ALLOWED_HOSTS = ['tonewow.net', 'bundleapi.tonewow.com'];
+const ALLOWED_HOSTS = ['tonewow.net', 'bundleapi.tonewow.com', 'qa.tonegroup.net'];
 let ProxyService = class ProxyService {
     constructor(httpService, configService) {
         this.httpService = httpService;

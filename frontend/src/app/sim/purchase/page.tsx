@@ -162,19 +162,22 @@ function SIMPurchaseWizard() {
     const id = name.toLowerCase(); // "fu35"
     const price = parseFloat(p.codeData3) || 0;
     const descLines = (p.codeDesc || '').split(/[\r\n]+/).filter(Boolean);
-    const dataLine = descLines[0] || '';
+    const totalGB = descLines
+      .filter(l => /GB/i.test(l) && !/basic/i.test(l))
+      .reduce((sum, l) => { const m = l.match(/([\d,]+)\s*GB/i); return sum + (m ? parseInt(m[1].replace(/,/g, '')) : 0); }, 0);
+    const dataDisplay = `${totalGB.toLocaleString()} GB`;
     const validityLine = descLines.find(l => /day/i.test(l)) || '30 Days Validity';
     const callsLine = descLines.find(l => /min/i.test(l)) || 'Unlimited Calls';
     return {
       id, name, price,
       discountedAddon: Math.max(0, price - 5),
-      data: dataLine.replace('High Speed Data', 'GB').trim(),
+      data: dataDisplay,
       validity: validityLine.trim(),
       calls: callsLine.replace(/,/g, '').trim(),
       badge5g: true,
       popular: name === 'FU60',
     };
-  }).filter(p => p.name.toUpperCase().startsWith('FU') && p.name !== 'FU20+');
+  });
 
   const FU_PLANS: DataPlan[] = DYNAMIC_PLANS.length > 0 ? DYNAMIC_PLANS : [
     { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: true },
@@ -230,10 +233,13 @@ function SIMPurchaseWizard() {
     const name = (match.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase();
     const price = parseFloat(match.codeData3) || 0;
     const descLines = (match.codeDesc || '').split(/[\r\n]+/).filter(Boolean);
+    const totalGB = descLines
+      .filter(l => /GB/i.test(l) && !/basic/i.test(l))
+      .reduce((sum, l) => { const m = l.match(/([\d,]+)\s*GB/i); return sum + (m ? parseInt(m[1].replace(/,/g, '')) : 0); }, 0);
     setSelectedDataPlan({
       id: name, name: name.toUpperCase(), price,
       discountedAddon: Math.max(0, price - 5),
-      data: (descLines[0] || '').replace('High Speed Data', 'GB').trim(),
+      data: `${totalGB.toLocaleString()} GB`,
       validity: (descLines.find(l => /day/i.test(l)) || '30 Days Validity').trim(),
       calls: (descLines.find(l => /min/i.test(l)) || 'Unlimited Calls').replace(/,/g, '').trim(),
       badge5g: true, popular: false,
@@ -752,7 +758,7 @@ function SIMPurchaseWizard() {
                       </select>
                       <input
                         name="promoterCode"
-                        placeholder="e.g. 909707"
+                        placeholder="e.g. 1234567"
                         value={form.promoterCode}
                         onChange={e => {
                           const v = e.target.value;

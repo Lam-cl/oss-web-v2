@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
-const ALLOWED_HOSTS = ['tonewow.net', 'bundleapi.tonewow.com'];
+const ALLOWED_HOSTS = ['tonewow.net', 'bundleapi.tonewow.com', 'qa.tonegroup.net'];
 
 @Injectable()
 export class ProxyService {

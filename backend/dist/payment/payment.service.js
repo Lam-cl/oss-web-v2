@@ -63,8 +63,8 @@ let PaymentService = PaymentService_1 = class PaymentService {
         this.whatsappService = whatsappService;
         this.logger = new common_1.Logger(PaymentService_1.name);
         this.bundleApiUrl = this.configService.get('BUNDLE_API_URL', 'https://bundleapi.tonewow.com/api');
-        this.frontendUrl = this.configService.get('FRONTEND_URL', 'https://tonewow-v2.xifuhalim.com');
-        this.backendUrl = this.configService.get('BACKEND_URL', 'https://tonewow-v2.xifuhalim.com/api');
+        this.frontendUrl = this.configService.get('FRONTEND_URL', 'https://shop.tonewow.com');
+        this.backendUrl = this.configService.get('BACKEND_URL', 'https://shop.tonewow.com/api');
     }
     getFrontendUrl() {
         return this.frontendUrl;

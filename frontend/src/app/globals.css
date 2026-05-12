@@ -822,6 +822,9 @@ h5 { font-size: 1.1rem; }
 
 /* mobile */
 @media (max-width: 768px) {
+  .hero-section {
+    max-height: 220px;
+  }
   .hero-slide {
     height: auto;
     min-height: unset;

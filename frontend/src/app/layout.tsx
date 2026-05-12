@@ -8,6 +8,7 @@ import PageTransition from '@/components/layout/PageTransition';
 export const metadata: Metadata = {
   title: 'tone wow Shop',
   description: "Malaysia's most rewarding prepaid. Shop devices, SIM cards, and more.",
+  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({

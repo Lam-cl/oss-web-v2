@@ -1389,6 +1389,7 @@ function SIMPurchaseWizard() {
           font-size: 10px; font-weight: 800; padding: 4px 10px;
           border-radius: 0 16px; line-height: 1;
         }
+        .fu-plan-card--popular .fu-plan-header { background: #1a2744; }
         .fu-plan-check {
           position: absolute; top: 12px; right: 40px; width: 26px; height: 26px;
           border-radius: 50%; background: #fff; display: flex;

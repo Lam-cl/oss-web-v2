@@ -1,8 +1,8 @@
 /**
  * OSS REST base (`/devices`, `/orders`, `/proxy`, …).
- * - Local dev: default Nest `http://localhost:4000/api`.
- * - Vercel: set `NEXT_PUBLIC_API_URL=/api-proxy` so requests stay same-origin; `next.config.mjs` rewrites to `OSS_API_UPSTREAM`.
- * - Or set an absolute Nest URL (backend must allow this site's origin in CORS).
+ * - Empty NEXT_PUBLIC_API_URL → uses `/api` (Next.js API routes or current domain).
+ * - Relative path (e.g. `/api-proxy`) → prepends current origin.
+ * - Absolute URL → used directly (NestJS backend).
  */
 export function getApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
@@ -20,7 +20,7 @@ export function getApiBaseUrl(): string {
           : 'http://localhost:3000';
     return `${origin}${path}`;
   }
-  return 'http://localhost:4000/api';
+  return '/api';
 }
 
 /** True when API base is Next `/api-proxy` rewrite → tonewow tgpayment (no Nest `/proxy` route). */

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBundleProductById } from '@/lib/api';
-import { MALAYSIAN_STATES, getApiBaseUrl } from '@/lib/constants';
+import { MALAYSIAN_STATES, getNestApiBaseUrl } from '@/lib/constants';
 import Link from 'next/link';
 
 /* ─── Step flow ─── */
@@ -226,7 +226,7 @@ function DeviceCheckoutInner() {
   const twDebounce = useRef<NodeJS.Timeout | null>(null);
   const cityManual = useRef(false);
 
-  const SWIFTPAY_PROXY = `${getApiBaseUrl()}/payment/swiftpay/initiate`;
+  const SWIFTPAY_PROXY = `${getNestApiBaseUrl()}/payment/swiftpay/initiate`;
 
   /* ─── Load device ─── */
   useEffect(() => {

@@ -1,26 +1,47 @@
+const LOCAL_NEST = 'http://localhost:4000/api';
+
+function resolvePublicApiBase(raw: string): string {
+  const base = raw.replace(/\/$/, '');
+  if (base.startsWith('http://') || base.startsWith('https://')) {
+    return base;
+  }
+  const path = base.startsWith('/') ? base : `/${base}`;
+  const origin =
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+  return `${origin}${path}`;
+}
+
 /**
- * OSS REST base (`/devices`, `/orders`, `/proxy`, …).
- * - Local dev: default Nest `http://localhost:4000/api`.
- * - Vercel: set `NEXT_PUBLIC_API_URL=/api-proxy` so requests stay same-origin; `next.config.mjs` rewrites to `OSS_API_UPSTREAM`.
- * - Or set an absolute Nest URL (backend must allow this site's origin in CORS).
+ * Tonewow tgpayment same-origin base (`/verifyPromoter`, `/saveRefAllocation`, …).
+ * Use with `NEXT_PUBLIC_API_URL=/api-proxy` + rewrite to `OSS_API_UPSTREAM`.
  */
 export function getApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) {
-    const base = raw.replace(/\/$/, '');
-    if (base.startsWith('http://') || base.startsWith('https://')) {
-      return base;
-    }
-    const path = base.startsWith('/') ? base : `/${base}`;
-    const origin =
-      typeof window !== 'undefined'
-        ? window.location.origin
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : 'http://localhost:3000';
-    return `${origin}${path}`;
+    return resolvePublicApiBase(raw);
   }
-  return 'http://localhost:4000/api';
+  return LOCAL_NEST;
+}
+
+/**
+ * Nest OSS API (`/numbers`, `/devices`, `/proxy`, `/payment`, …).
+ * When using `/api-proxy` for tgpayment only, set `NEXT_PUBLIC_NEST_API_URL=/oss-nest-proxy` and `OSS_NEST_UPSTREAM` in `next.config` rewrites.
+ * Otherwise defaults to the same base as `NEXT_PUBLIC_API_URL` or local Nest.
+ */
+export function getNestApiBaseUrl(): string {
+  const nest = process.env.NEXT_PUBLIC_NEST_API_URL?.trim();
+  if (nest) {
+    return resolvePublicApiBase(nest);
+  }
+  const main = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (main) {
+    return resolvePublicApiBase(main);
+  }
+  return LOCAL_NEST;
 }
 
 /** True when API base is Next `/api-proxy` rewrite → tonewow tgpayment (no Nest `/proxy` route). */

@@ -16,14 +16,22 @@ function resolvePublicApiBase(raw: string): string {
 }
 
 /**
+<<<<<<< HEAD
  * Tonewow tgpayment same-origin base (`/verifyPromoter`, `/saveRefAllocation`, …).
  * Use with `NEXT_PUBLIC_API_URL=/api-proxy` + rewrite to `OSS_API_UPSTREAM`.
+=======
+ * OSS REST base (`/devices`, `/orders`, `/proxy`, …).
+ * - Empty NEXT_PUBLIC_API_URL → uses `/api` (Next.js API routes or current domain).
+ * - Relative path (e.g. `/api-proxy`) → prepends current origin.
+ * - Absolute URL → used directly (NestJS backend).
+>>>>>>> 79706a8f17beae6c421168e6f265ebe44c3d9b3f
  */
 export function getApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) {
     return resolvePublicApiBase(raw);
   }
+<<<<<<< HEAD
   return LOCAL_NEST;
 }
 
@@ -42,6 +50,9 @@ export function getNestApiBaseUrl(): string {
     return resolvePublicApiBase(main);
   }
   return LOCAL_NEST;
+=======
+  return '/api';
+>>>>>>> 79706a8f17beae6c421168e6f265ebe44c3d9b3f
 }
 
 /** True when API base is Next `/api-proxy` rewrite → tonewow tgpayment (no Nest `/proxy` route). */

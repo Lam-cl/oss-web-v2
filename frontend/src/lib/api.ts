@@ -254,7 +254,7 @@ export interface ApiPlanGroup {
   planList: ApiPlanItem[];
 }
 
-const DATABUNDLE_API = 'https://www.tonewow.net/gw/api/v4/databundle/';
+const DATABUNDLE_API = 'https://qa.tonegroup.net/twbackend/api/v4/databundle/list';
 
 export async function getDataPlans(productcode: string, documentID: string): Promise<ApiPlanItem[]> {
   try {

@@ -80,11 +80,12 @@ export default function CategoryTabs({ settings }: Props) {
           SIM
         </button>
         <button
-          onClick={() => setActiveTab('merchandise')}
-          className={`category-tab ${activeTab === 'merchandise' ? 'active' : ''}`}
+          disabled
+          className="category-tab"
+          style={{ cursor: 'not-allowed', opacity: 0.6 }}
         >
           {MerchIcon}
-          Merchandise
+          Coming Soon
         </button>
       </div>
 

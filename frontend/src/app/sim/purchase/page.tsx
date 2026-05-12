@@ -143,6 +143,7 @@ function SIMPurchaseWizard() {
 
   /* ── Step 0: SIM + Referral ── */
   const [hasReferral, setHasReferral] = useState(false);
+  const [promoterLocked, setPromoterLocked] = useState(false);
 
   /* ── Step 1: Data Plan (optional) ── */
   const [apiPlans, setApiPlans] = useState<ApiPlanItem[]>([]);
@@ -291,6 +292,18 @@ function SIMPurchaseWizard() {
     }
     setPromoterVerifying(false);
   }, []);
+
+  /* Auto-fill promoter from ?promoter= & ?code= params */
+  useEffect(() => {
+    const p = searchParams.get('promoter');
+    const c = searchParams.get('code');
+    if (!p || !c) return;
+    setForm(f => ({ ...f, promoterPrefix: p.toUpperCase(), promoterCode: c }));
+    setHasReferral(true);
+    setPromoterLocked(true);
+    doVerifyPromoter(p.toUpperCase(), c);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   /* ── Load pre-selected special number (VIP flow) — only when ?special=1 ── */
   useEffect(() => {
@@ -737,6 +750,7 @@ function SIMPurchaseWizard() {
                     className={`referral-toggle-btn${hasReferral ? ' active' : ''}`}
                     onClick={() => setHasReferral(true)}
                     type="button"
+                    disabled={promoterLocked}
                   >Yes</button>
                   <button
                     className={`referral-toggle-btn${!hasReferral ? ' active' : ''}`}
@@ -746,6 +760,7 @@ function SIMPurchaseWizard() {
                       setPromoterName(''); setPromoterError(''); setTwpReferenceID(''); setAlloReferenceID('');
                     }}
                     type="button"
+                    disabled={promoterLocked}
                   >No</button>
                 </div>
 
@@ -761,6 +776,7 @@ function SIMPurchaseWizard() {
                           if (form.promoterCode.trim()) doVerifyPromoter(e.target.value, form.promoterCode);
                         }}
                         style={{ ...inputStyle, width: 90, height: 46 }}
+                        disabled={promoterLocked}
                       >
                         <option value="TWE">TWE</option>
                         <option value="TWP">TWP</option>
@@ -777,6 +793,7 @@ function SIMPurchaseWizard() {
                           if (v.trim()) promoterDebounce.current = setTimeout(() => doVerifyPromoter(form.promoterPrefix, v), 600);
                         }}
                         style={{ ...inputStyle, flex: 1, height: 46 }}
+                        disabled={promoterLocked}
                       />
                     </div>
                     {promoterVerifying && <p style={{ fontSize: 12, color: '#2563eb', marginTop: 6 }}>Verifying...</p>}
@@ -909,7 +926,7 @@ function SIMPurchaseWizard() {
                       <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>RM54,000 coverage</p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                      <p className="ins-card-price">{formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</p>
+                      <p className="ins-card-price">{formatRM(INSURANCE_ADDON.price)}</p>
                       <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'premium' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                       </div>

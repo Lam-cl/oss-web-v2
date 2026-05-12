@@ -1,8 +1,8 @@
-import { API_BASE_URL } from './constants';
+import { getApiBaseUrl } from './constants';
 import type { DeviceResponse, Device, Brand, Banner, Plan, NumberResult } from '@/types';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const res = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -206,9 +206,7 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
 export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string }> {
   try {
     const url = `${LEGACY_API}/saveRefAllocation?productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
-    const res = await fetch(url, { method: 'POST' });
-    if (!res.ok) return {};
-    const data = await res.json();
+    const data = await proxyPost(url, {});
     if (data.systemCode === '1' && data.data?.length > 0) {
       return { referenceID: data.data[0].referenceID };
     }
@@ -242,8 +240,7 @@ const DATABUNDLE_API = 'https://www.tonewow.net/gw/api/v4/databundle/';
 export async function getDataPlans(productcode: string, documentID: string): Promise<ApiPlanItem[]> {
   try {
     const url = `${DATABUNDLE_API}?productcode=${encodeURIComponent(productcode)}&documentID=${encodeURIComponent(documentID || '')}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await proxyGet(url);
     // Collect all plans from mainPlan + additionalPlan
     const allPlans: ApiPlanItem[] = [];
     for (const group of [...(data.mainPlan || []), ...(data.additionalPlan || [])]) {

@@ -11,7 +11,7 @@ const stepVariants: Variants = {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBundleProducts, verifyPromoter, getSettings, getDataPlans, saveRefAllocation, type ApiPlanItem } from '@/lib/api';
 import { formatRM } from '@/lib/utils';
-import { MALAYSIAN_STATES } from '@/lib/constants';
+import { MALAYSIAN_STATES, getApiBaseUrl } from '@/lib/constants';
 import type { NumberResult } from '@/types';
 
 /* ═══════════════════════════════════════════════
@@ -441,7 +441,7 @@ function SIMPurchaseWizard() {
         alloReferenceID,
       });
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const apiBase = getApiBaseUrl();
 
       if (simType === 'esim') {
         const promoData = hasPromoter ? { prefix: form.promoterPrefix, code: form.promoterCode, email: form.email } : { prefix: '', code: '', email: form.email };

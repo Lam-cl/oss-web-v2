@@ -26,7 +26,7 @@ const STEPS = [
 
 const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
 const DEFAULT_BASE_SIM_PRICE = 19.50;
-const OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
 
 const PAYMENT_METHODS = [
   { id: '16', label: 'Online Banking (FPX)' },

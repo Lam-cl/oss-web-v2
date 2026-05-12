@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from './constants';
+import { getApiBaseUrl, isTgpaymentSameOriginRewrite } from './constants';
 import type { DeviceResponse, Device, Brand, Banner, Plan, NumberResult } from '@/types';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -191,8 +191,10 @@ const LEGACY_API = 'https://www.tonewow.net/tgpayment';
 
 export async function verifyPromoter(memberID: string): Promise<{ valid: boolean; name?: string; error?: string }> {
   try {
-    const url = `${LEGACY_API}/verifyPromoter?memberID=${encodeURIComponent(memberID)}`;
-    const res = await proxyGet(url);
+    const qs = `memberID=${encodeURIComponent(memberID)}`;
+    const res = isTgpaymentSameOriginRewrite()
+      ? await fetchApi(`/verifyPromoter?${qs}`)
+      : await proxyGet(`${LEGACY_API}/verifyPromoter?${qs}`);
     if (res.systemCode === '0' && res.data && res.data.length > 0) {
       return { valid: true, name: res.data[0].fullName };
     }
@@ -205,8 +207,10 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
 /** TWP flow — generate referenceID after verification */
 export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string }> {
   try {
-    const url = `${LEGACY_API}/saveRefAllocation?productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
-    const data = await proxyPost(url, {});
+    const q = `productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
+    const data = isTgpaymentSameOriginRewrite()
+      ? await fetchApi(`/saveRefAllocation?${q}`, { method: 'POST', body: '{}' })
+      : await proxyPost(`${LEGACY_API}/saveRefAllocation?${q}`, {});
     if (data.systemCode === '1' && data.data?.length > 0) {
       return { referenceID: data.data[0].referenceID };
     }

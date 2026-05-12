@@ -23,6 +23,12 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:4000/api';
 }
 
+/** True when API base is Next `/api-proxy` rewrite → tonewow tgpayment (no Nest `/proxy` route). */
+export function isTgpaymentSameOriginRewrite(): boolean {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, '') || '';
+  return raw === '/api-proxy';
+}
+
 export const MALAYSIAN_STATES = [
   'Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan',
   'Pahang', 'Perak', 'Perlis', 'Pulau Pinang', 'Sabah',

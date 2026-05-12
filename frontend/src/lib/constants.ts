@@ -1,44 +1,35 @@
-const LOCAL_NEST = 'http://localhost:4000/api';
-
+/**
+ * Resolves a public API base. Relative paths (`/api`, `/api-proxy`, …) stay path-only on the
+ * server so Next.js can resolve them against the **incoming request host** (shop.tonewow.com,
+ * oss.tonewow.com, oss.tonewow.net). Never use `VERCEL_URL` here — it is not the visitor’s host.
+ */
 function resolvePublicApiBase(raw: string): string {
   const base = raw.replace(/\/$/, '');
   if (base.startsWith('http://') || base.startsWith('https://')) {
     return base;
   }
   const path = base.startsWith('/') ? base : `/${base}`;
-  const origin =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
-  return `${origin}${path}`;
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${path}`;
+  }
+  return path;
 }
 
 /**
-<<<<<<< HEAD
- * Tonewow tgpayment same-origin base (`/verifyPromoter`, `/saveRefAllocation`, …).
- * Use with `NEXT_PUBLIC_API_URL=/api-proxy` + rewrite to `OSS_API_UPSTREAM`.
-=======
- * OSS REST base (`/devices`, `/orders`, `/proxy`, …).
- * - Empty NEXT_PUBLIC_API_URL → uses `/api` (Next.js API routes or current domain).
- * - Relative path (e.g. `/api-proxy`) → prepends current origin.
- * - Absolute URL → used directly (NestJS backend).
->>>>>>> 79706a8f17beae6c421168e6f265ebe44c3d9b3f
+ * Tonewow tgpayment same-origin base (`/verifyPromoter`, …) when `NEXT_PUBLIC_API_URL=/api-proxy`.
  */
 export function getApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) {
     return resolvePublicApiBase(raw);
   }
-<<<<<<< HEAD
-  return LOCAL_NEST;
+  return '/api';
 }
 
 /**
- * Nest OSS API (`/numbers`, `/devices`, `/proxy`, `/payment`, …).
- * When using `/api-proxy` for tgpayment only, set `NEXT_PUBLIC_NEST_API_URL=/oss-nest-proxy` and `OSS_NEST_UPSTREAM` in `next.config` rewrites.
- * Otherwise defaults to the same base as `NEXT_PUBLIC_API_URL` or local Nest.
+ * Nest OSS API (`/numbers`, `/devices`, `/proxy`, …).
+ * - Default `/api` on the same host: implement proxies under `src/app/api/…` or set `NEST_API_BASE_URL` for server-side forwarding.
+ * - Or `NEXT_PUBLIC_NEST_API_URL` / `NEXT_PUBLIC_API_URL` as absolute Nest URL.
  */
 export function getNestApiBaseUrl(): string {
   const nest = process.env.NEXT_PUBLIC_NEST_API_URL?.trim();
@@ -49,10 +40,7 @@ export function getNestApiBaseUrl(): string {
   if (main) {
     return resolvePublicApiBase(main);
   }
-  return LOCAL_NEST;
-=======
   return '/api';
->>>>>>> 79706a8f17beae6c421168e6f265ebe44c3d9b3f
 }
 
 /** True when API base is Next `/api-proxy` rewrite → tonewow tgpayment (no Nest `/proxy` route). */

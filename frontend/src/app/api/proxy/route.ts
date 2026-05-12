@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const ALLOWED_HOSTS = ['tonewow.net', 'bundleapi.tonewow.com', 'qa.tonegroup.net'];
 
+function refererFor(req: NextRequest): string {
+  const incoming = req.headers.get('referer');
+  if (incoming) return incoming;
+  return `${req.nextUrl.origin}/`;
+}
+
 function validateUrl(url: string): URL {
   if (!url) throw new Error('Missing url parameter');
   let parsed: URL;
@@ -24,7 +30,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url!, {
       headers: {
         Accept: 'application/json',
-        Referer: 'https://shop.tonewow.com/',
+        Referer: refererFor(req),
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
@@ -45,7 +51,7 @@ export async function POST(req: NextRequest) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Referer: 'https://shop.tonewow.com/',
+        Referer: refererFor(req),
       },
       body: JSON.stringify(body),
     });

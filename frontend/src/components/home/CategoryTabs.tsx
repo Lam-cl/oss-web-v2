@@ -65,11 +65,12 @@ export default function CategoryTabs({ settings }: Props) {
     <section className="container" style={{ paddingTop: 32, paddingBottom: 40 }}>
       <div className="category-tabs">
         <button
-          onClick={() => setActiveTab('devices')}
-          className={`category-tab ${activeTab === 'devices' ? 'active' : ''}`}
+          disabled
+          className="category-tab"
+          style={{ cursor: 'not-allowed', opacity: 0.6 }}
         >
           {DeviceIcon}
-          Devices
+          Coming Soon
         </button>
         <button
           onClick={() => setActiveTab('sim')}

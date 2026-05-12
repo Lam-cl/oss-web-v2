@@ -124,13 +124,6 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff',
 };
 
-/* Check icon SVG */
-const CheckSVG = () => (
-  <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="14" height="14">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-  </svg>
-);
-
 /* ═══════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════ */
@@ -211,6 +204,7 @@ function SIMPurchaseWizard() {
   const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
   const [directCheckout, setDirectCheckout] = useState(false);
+  const planAutoSelected = useRef(false);
   const [esimCompatible, setEsimCompatible] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -249,6 +243,21 @@ function SIMPurchaseWizard() {
     setStep(3);
     router.replace('/sim/purchase');
   }, [apiPlans, searchParams, router]);
+
+  /* ── Default select + expand FU60 on step 1 (once only) ── */
+  useEffect(() => {
+    if (step === 1 && !selectedDataPlan && !planAutoSelected.current && FU_PLANS.length > 0) {
+      const fu60 = FU_PLANS.find(p => p.popular);
+      if (fu60) { setSelectedDataPlan(fu60); setExpandedPlanId(fu60.id); planAutoSelected.current = true; }
+    }
+  }, [step, FU_PLANS, selectedDataPlan]);
+
+  /* ── Default expand Basic insurance on step 2 ── */
+  useEffect(() => {
+    if (step === 2 && expandedInsCard === null) {
+      setExpandedInsCard('basic');
+    }
+  }, [step, expandedInsCard]);
 
   /* ── Checkout ── */
   const [submitting, setSubmitting] = useState(false);
@@ -793,7 +802,7 @@ function SIMPurchaseWizard() {
                   const active = selectedDataPlan?.id === plan.id;
                   const expanded = expandedPlanId === plan.id;
                   return (
-                    <div key={plan.id} className={`fu-plan-card${active ? ' fu-plan-card--active' : ''}${plan.popular ? ' fu-plan-card--popular' : ''}`}>
+                    <div key={plan.id} className={`fu-plan-card${active ? ' fu-plan-card--selected' : ''}${plan.popular ? ' fu-plan-card--popular' : ''}`}>
                       {/* Header — collapsed state, always visible */}
                       <div
                         className="fu-plan-header"
@@ -801,19 +810,19 @@ function SIMPurchaseWizard() {
                         style={{ cursor: 'pointer', borderRadius: expanded ? '14px 14px 0 0' : 14 }}
                       >
                         {plan.popular && <span className="fu-plan-popular-badge">Most Popular</span>}
-                        {active && <div className="fu-plan-check"><CheckSVG /></div>}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8 }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                              <h3 className="fu-plan-name">Prepaid {plan.name}</h3>
-                              {plan.badge5g && <span className="fu-plan-5g-inline">5G</span>}
-                            </div>
-                            <p className="fu-plan-data">{plan.data}</p>
+                        <div className="ins-card-radio-wrap" style={{ alignSelf: 'center' }}>
+                          <div className={`sim-type-radio${active ? ' sim-type-radio--active' : ''}`} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                            <h3 className="fu-plan-name">Prepaid {plan.name}</h3>
+                            {plan.badge5g && <span className="fu-plan-5g-inline">5G</span>}
                           </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <p className="fu-plan-price-col">{formatRM(plan.price)}</p>
-                            <p className="fu-plan-validity-col">{plan.validity}</p>
-                          </div>
+                          <p className="fu-plan-data">{plan.data}</p>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <p className="fu-plan-price-col">{formatRM(plan.price)}</p>
+                          <p className="fu-plan-validity-col">{plan.validity}</p>
                         </div>
                         <div className="fu-plan-chevron" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -850,9 +859,8 @@ function SIMPurchaseWizard() {
                 <div
                   className="sim-type-card"
                   style={{
-                    border: !selectedDataPlan ? '2px solid #2563eb' : '1.5px solid #e5e7eb',
+                    border: !selectedDataPlan ? '2px solid #fce003' : '1.5px solid #e5e7eb',
                     cursor: 'pointer',
-                    boxShadow: !selectedDataPlan ? '0 0 0 3px rgba(37,99,235,0.1)' : 'none',
                   }}
                   onClick={() => { setSelectedDataPlan(null); setExpandedPlanId(null); }}
                 >
@@ -893,45 +901,37 @@ function SIMPurchaseWizard() {
                     style={{ cursor: 'pointer', borderRadius: expandedInsCard === 'premium' ? '12px 12px 0 0' : 12 }}
                   >
                     <span className="ins-card-badge">Best Value</span>
-                    {insuranceAddon && <div className="ins-card-check"><CheckSVG /></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <div>
-                        <h3 className="ins-card-name">Premium</h3>
-                        {expandedInsCard !== 'premium' && (
-                          <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>RM54,000 coverage</p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <p className="ins-card-price">{formatRM(INSURANCE_ADDON.price)}</p>
-                        <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'premium' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-                        </div>
+                    <div className="ins-card-radio-wrap">
+                      <div className={`sim-type-radio${insuranceAddon ? ' sim-type-radio--active' : ''}`} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 className="ins-card-name">Premium</h3>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>RM54,000 coverage</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <p className="ins-card-price">{formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</p>
+                      <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'premium' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                       </div>
                     </div>
                   </div>
                   {expandedInsCard === 'premium' && (
-                    <div className="ins-card-body" style={{ border: `1.5px solid ${insuranceAddon ? '#115e59' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-                      <p className="ins-card-total">Total: {formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</p>
-                      <div className="ins-card-divider" />
-                      <p className="ins-card-label">Coverage:</p>
-                      <ul className="ins-card-benefits">
-                        <li className="ins-card-benefit">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    <div className="ins-card-body" style={{ border: `1.5px solid ${insuranceAddon ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
+                      <div className="fu-plan-features">
+                        <div className="fu-plan-feature">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                           <span>PA Takaful <strong>RM50,000</strong> — Zurich</span>
-                        </li>
-                        <li className="ins-card-benefit">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                        </div>
+                        <div className="fu-plan-feature">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                           <span>Life Insurance <strong>RM4,000</strong> — Ammet</span>
-                        </li>
-                      </ul>
-                      <div className="fu-extra-banner" style={{ marginTop: 10, borderRadius: 8 }}>
-                        <span className="fu-extra-icon">&#127873;</span>
-                        <span>FREE EXTRA <strong>120GB</strong> for 1 year</span>
-                        <span className="fu-extra-sub">(10GB/month)</span>
+                        </div>
+                        <div className="fu-plan-feature">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                          <span>FREE EXTRA <strong>120GB</strong> for 1 year <span style={{ fontSize: 11, color: '#64748b' }}>(10GB/month)</span></span>
+                        </div>
                       </div>
-                      <div style={{ marginTop: 10, background: '#dcfce7', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, color: '#166534', textAlign: 'center' }}>
-                        Total RM54,000 Protection
-                      </div>
+                      <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</strong></div>
                     </div>
                   )}
                 </div>
@@ -943,16 +943,16 @@ function SIMPurchaseWizard() {
                     onClick={() => { setInsuranceAddon(false); setExpandedInsCard(expandedInsCard === 'basic' ? null : 'basic'); }}
                     style={{ cursor: 'pointer', borderRadius: expandedInsCard === 'basic' ? '12px 12px 0 0' : 12 }}
                   >
-                    {!insuranceAddon && <div className="ins-card-check"><CheckSVG /></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <div>
-                        <h3 className="ins-card-name">Basic</h3>
-                        {expandedInsCard !== 'basic' && (
-                          <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
-                            {selectedDataPlan ? 'RM30,000 coverage' : 'No coverage'}
-                          </p>
-                        )}
-                      </div>
+                    <div className="ins-card-radio-wrap">
+                      <div className={`sim-type-radio${!insuranceAddon ? ' sim-type-radio--active' : ''}`} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 className="ins-card-name">Basic</h3>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>
+                        {selectedDataPlan ? 'RM30,000 coverage' : 'No coverage'}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                       <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'basic' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                       </div>
@@ -960,20 +960,20 @@ function SIMPurchaseWizard() {
                   </div>
                   {expandedInsCard === 'basic' && (
                     <div className="ins-card-body" style={{ border: `1.5px solid ${!insuranceAddon ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-                      <p className="ins-card-label">Coverage:</p>
-                      <ul className="ins-card-benefits">
+                      <div className="fu-plan-features">
                         {selectedDataPlan ? (
-                          <li className="ins-card-benefit">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                          <div className="fu-plan-feature">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                             <span>PA Takaful <strong>RM30,000</strong> (included with plan)</span>
-                          </li>
+                          </div>
                         ) : (
-                          <li className="ins-card-benefit" style={{ color: '#94a3b8' }}>
+                          <div className="fu-plan-feature" style={{ color: '#94a3b8' }}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="#cbd5e1"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13H7v-2h10v2z"/></svg>
                             <span>No coverage</span>
-                          </li>
+                          </div>
                         )}
-                      </ul>
+                      </div>
+                      <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon)}</strong></div>
                     </div>
                   )}
                 </div>
@@ -1333,8 +1333,11 @@ function SIMPurchaseWizard() {
         /* FU Plan Cards */
         .plans-grid-fu { display: flex; flex-direction: column; gap: 12px; }
         .fu-plan-card {
-          position: relative; background: transparent; border: none;
-          text-align: left;
+          position: relative; background: #fff; border: 2px solid #e2e8f0;
+          border-radius: 16px; text-align: left; transition: border-color 0.2s;
+        }
+        .fu-plan-card.fu-plan-card--selected {
+          border-color: #fce003;
         }
 
         /* Chevron */
@@ -1357,8 +1360,8 @@ function SIMPurchaseWizard() {
         .fu-plan-header {
           position: relative; background: #0074be; color: #fff;
           padding: 16px; border-radius: 16px; text-align: left;
+          display: flex; align-items: center; gap: 12px;
         }
-        .fu-plan-card--popular .fu-plan-header { background: #273a89; }
         .fu-plan-popular-badge {
           position: absolute; top: 0; right: 0; background: #ff0077; color: #fff;
           font-size: 10px; font-weight: 800; padding: 4px 10px;
@@ -1400,15 +1403,20 @@ function SIMPurchaseWizard() {
 
         /* Insurance Cards */
         .ins-card {
-          position: relative; background: transparent; border: none;
-          text-align: left;
+          position: relative; background: #fff; border: 2px solid #e2e8f0;
+          border-radius: 14px; text-align: left; transition: border-color 0.2s;
+        }
+        .ins-card--active {
+          border-color: #fce003;
         }
         .ins-card-header {
           position: relative; color: #fff;
           padding: 16px; border-radius: 12px; text-align: left;
+          display: flex; align-items: center; gap: 12px;
         }
+        .ins-card-radio-wrap { flex-shrink: 0; }
         .ins-card-header--basic { background: #0074be; }
-        .ins-card-header--premium { background: #115e59; }
+        .ins-card-header--premium { background: #0074be; }
         .ins-card-badge {
           position: absolute; top: 0; right: 0; background: #ff0077; color: #fff;
           font-size: 10px; font-weight: 800; padding: 4px 10px;
@@ -1420,11 +1428,9 @@ function SIMPurchaseWizard() {
           display: flex; align-items: center; justify-content: center;
         }
         .ins-card-name { font-size: 14px; font-weight: 500; color: #fff; margin: 0 0 4px; }
-        .ins-card-price { font-size: 24px; font-weight: 700; color: #a3e635; margin: 0; line-height: 1.1; }
-        .ins-card-body { padding: 14px 8px 8px; }
-        .ins-card-total { font-size: 12px; color: #64748b; margin: 0 0 6px; }
+        .ins-card-price { font-size: 24px; font-weight: 700; color: #ffe000; margin: 0; line-height: 1.1; }
+        .ins-card-body { padding: 14px 8px 8px; text-align: left; }
         .ins-card-divider { width: 100%; height: 1px; background: #e5e7eb; margin: 10px 0; }
-        .ins-card-label { font-size: 13px; color: #333; margin: 0 0 6px; }
         .ins-card-benefits { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
         .ins-card-benefit { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #333; }
         .ins-card-benefit svg { flex-shrink: 0; margin-top: 1px; }

@@ -9,11 +9,22 @@ function ThankYouContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
+  const gkashStatus = searchParams.get('status') || '';
+  const gkashDesc = searchParams.get('desc') || '';
   const [status, setStatus] = useState<Status>('loading');
 
   useEffect(() => {
-    if (!refNo) { setStatus('failed'); return; }
+    if (!refNo && !gkashStatus) { setStatus('failed'); return; }
 
+    // If GKash sent status directly, use it
+    if (gkashStatus) {
+      const isSuccess = gkashStatus.startsWith('88');
+      const isFailed = gkashStatus.startsWith('66') || gkashStatus.startsWith('11') || gkashStatus.startsWith('99');
+      setStatus(isSuccess ? 'success' : isFailed ? 'failed' : 'pending');
+      return;
+    }
+
+    // No GKash status — fallback: poll payment API
     let attempts = 0;
     const maxAttempts = 10;
 
@@ -24,7 +35,6 @@ function ThankYouContent() {
         const res = await fetch(url);
         const data = await res.json();
 
-        // status "2" = SUCCESS, status "1" = PENDING/FAILED
         const paymentStatus = data?.data?.[0]?.status;
         if (paymentStatus === '2') { setStatus('success'); return; }
         if (paymentStatus === '1' && attempts < maxAttempts) {
@@ -39,9 +49,8 @@ function ThankYouContent() {
       }
     };
 
-    // Give payment gateway 3 seconds to process, then start polling
     setTimeout(check, 3000);
-  }, [refNo]);
+  }, [refNo, gkashStatus]);
 
   if (status === 'loading') {
     return (
@@ -103,7 +112,7 @@ function ThankYouContent() {
     );
   }
 
-  // failed or pending
+  // failed or pending — show real description if available
   return (
     <div className="container" style={{ paddingTop: 60, paddingBottom: 80 }}>
       <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
@@ -125,11 +134,15 @@ function ThankYouContent() {
         <h2 style={{ fontSize: 26, fontWeight: 800, color: '#1e293b', margin: '0 0 6px' }}>
           {status === 'pending' ? 'Payment Pending' : 'Payment Failed'}
         </h2>
-        <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 28px' }}>
-          {status === 'pending'
-            ? 'Your payment is still being processed. We will notify you once confirmed.'
-            : 'Your payment could not be verified. Please try again or contact support.'}
-        </p>
+        {gkashDesc ? (
+          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 20px' }}>{decodeURIComponent(gkashDesc)}</p>
+        ) : (
+          <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 20px' }}>
+            {status === 'pending'
+              ? 'Your payment is still being processed. We will notify you once confirmed.'
+              : 'Your payment could not be verified. Please try again or contact support.'}
+          </p>
+        )}
         {refNo && (
           <div style={{
             background: '#fff', border: '2px solid #e2e8f0', borderRadius: 14,

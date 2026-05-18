@@ -4,6 +4,7 @@ import './globals.css';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import PageTransition from '@/components/layout/PageTransition';
+import FloatingReferralQR from '@/components/referral/FloatingReferralQR';
 
 export const metadata: Metadata = {
   title: 'tone wow Shop',
@@ -24,6 +25,7 @@ export default function RootLayout({
           <PageTransition>{children}</PageTransition>
         </main>
         <Footer />
+        <FloatingReferralQR />
 
         {/* Freshdesk Widget */}
         <Script

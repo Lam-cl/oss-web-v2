@@ -297,6 +297,12 @@ function SIMPurchaseWizard() {
   useEffect(() => {
     const p = searchParams.get('promoter');
     const c = searchParams.get('code');
+    const referenceID = searchParams.get('referenceID');
+    if (referenceID) {
+      setTwpReferenceID(referenceID);
+      setAlloReferenceID(referenceID);
+      return;
+    }
     if (!p || !c) return;
     setForm(f => ({ ...f, promoterPrefix: p.toUpperCase(), promoterCode: c }));
     setHasReferral(true);
@@ -433,7 +439,7 @@ function SIMPurchaseWizard() {
         memberId: promoterId,
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || '',
-        referralCode: promoterId ? `${promoterId}${twpReferenceID}` : '',
+        referralCode: promoterId ? `${promoterId}${twpReferenceID}` : twpReferenceID,
         dataPlanID: apiPlans.find(p => (p.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase() === selectedDataPlan?.id)?.codeData1 || '',
         insurance: insuranceAddon ? '1' : '0',
         isEsim: simType === 'esim' ? '1' : '0',
@@ -861,8 +867,16 @@ function SIMPurchaseWizard() {
                               <span><strong>{plan.calls}</strong> Calls</span>
                             </div>
                             <div className="fu-plan-feature">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <span>Free 2GB Welcome Data</span>
+                            </div>
+                            <div className="fu-plan-feature">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <span>FREE 20GB Bonus Data</span>
+                            </div>
+                            <div className="fu-plan-feature">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
-                              <span><strong>RM30,000</strong> Takaful included</span>
+                              <span><strong>RM30,000</strong> PA Takaful Included (1 Year)</span>
                             </div>
                           </div>
                           <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + plan.price)}</strong></div>
@@ -872,12 +886,13 @@ function SIMPurchaseWizard() {
                   );
                 })}
 
-                {/* No Data Plan card */}
+                {/* No Add On Data Plan card */}
                 <div
                   className="sim-type-card"
                   style={{
                     border: !selectedDataPlan ? '2px solid #fce003' : '1.5px solid #e5e7eb',
                     cursor: 'pointer',
+                    alignItems: 'flex-start',
                   }}
                   onClick={() => { setSelectedDataPlan(null); setExpandedPlanId(null); }}
                 >
@@ -888,8 +903,17 @@ function SIMPurchaseWizard() {
                     </svg>
                   </div>
                   <div className="sim-type-info">
-                    <p className="sim-type-name">No Data Plan</p>
-                    <p className="sim-type-desc">Continue without a data plan</p>
+                    <p className="sim-type-name">No Add On Data Plan</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
+                      <div className="fu-plan-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                        <span>FREE 2GB Welcome Data (Upon SIM Activation)</span>
+                      </div>
+                      <div className="fu-plan-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                        <span>Get Free 20GB Bonus Data upon subscription of any FU Data Plans within 7 days after SIM activation</span>
+                      </div>
+                    </div>
                   </div>
                   {!selectedDataPlan && (
                     <div className="sim-type-right">
@@ -966,10 +990,11 @@ function SIMPurchaseWizard() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h3 className="ins-card-name">Basic</h3>
                       <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>
-                        {selectedDataPlan ? 'RM30,000 coverage' : 'No coverage'}
+                        {selectedDataPlan ? 'RM30,000 coverage' : 'RM10,000 Coverage'}
                       </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <p className="ins-card-price">FREE</p>
                       <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'basic' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                       </div>
@@ -984,10 +1009,16 @@ function SIMPurchaseWizard() {
                             <span>PA Takaful <strong>RM30,000</strong> (included with plan)</span>
                           </div>
                         ) : (
-                          <div className="fu-plan-feature" style={{ color: '#94a3b8' }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#cbd5e1"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13H7v-2h10v2z"/></svg>
-                            <span>No coverage</span>
-                          </div>
+                          <>
+                            <div className="fu-plan-feature">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                              <span>RM10,000 PA Takaful Coverage is only active with a min reload of RM30/month</span>
+                            </div>
+                            <div className="fu-plan-feature">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                              <span>Get Free RM30,000 PA Takaful upon subscription of any FU Data Plans within 7 days after SIM activation</span>
+                            </div>
+                          </>
                         )}
                       </div>
                       <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon)}</strong></div>

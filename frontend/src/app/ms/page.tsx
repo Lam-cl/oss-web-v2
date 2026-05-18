@@ -9,6 +9,11 @@ function MSRedirect() {
 
   useEffect(() => {
     const promoterID = searchParams.get('promoterID');
+    const referenceID = searchParams.get('referenceID');
+    if (referenceID) {
+      router.replace(`/sim/purchase?referenceID=${encodeURIComponent(referenceID)}`);
+      return;
+    }
     if (!promoterID) {
       router.replace('/');
       return;

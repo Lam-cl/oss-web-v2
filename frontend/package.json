@@ -12,6 +12,7 @@
     "axios": "^1.13.6",
     "framer-motion": "^12.38.0",
     "next": "^14.2.35",
+    "qrcode.react": "^4.2.0",
     "react": "^18",
     "react-dom": "^18",
     "swiper": "^12.1.2",

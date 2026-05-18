@@ -198,7 +198,7 @@ export async function checkExistingMember(
       continue;
     }
   }
-  return { valid: false, error: 'Nombor tidak dijumpai dalam sistem' };
+  return { valid: false, error: 'Number not found in the system' };
 }
 
 // ToneWow Legacy API - verify promoter ID
@@ -213,9 +213,9 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
     if (res.systemCode === '0' && res.data && res.data.length > 0) {
       return { valid: true, name: res.data[0].fullName };
     }
-    return { valid: false, error: 'ID Penaja tidak dijumpai' };
+    return { valid: false, error: 'Promoter ID not found' };
   } catch {
-    return { valid: false, error: 'Gagal mengesahkan. Cuba lagi.' };
+    return { valid: false, error: 'Verification failed. Please try again.' };
   }
 }
 
@@ -232,6 +232,67 @@ export async function saveRefAllocation(memberID: string): Promise<{ referenceID
     return {};
   } catch {
     return {};
+  }
+}
+
+export interface TWPMemberReferralFields {
+  pbrMemberID: string;
+  brMemberID: string;
+  pscMemberID: string;
+  scMemberID: string;
+  memberID: string;
+}
+
+export interface TWPMemberReferralResult {
+  valid: boolean;
+  referenceID?: string;
+  message?: string;
+}
+
+/** TWP QR generator flow — verify hierarchy/promoter IDs and create referenceID. */
+export async function verifyTWPMemberReferral(fields: TWPMemberReferralFields): Promise<TWPMemberReferralResult> {
+  try {
+    const cleaned = {
+      pbrMemberID: fields.pbrMemberID.trim(),
+      brMemberID: fields.brMemberID.trim(),
+      pscMemberID: fields.pscMemberID.trim(),
+      scMemberID: fields.scMemberID.trim(),
+      memberID: fields.memberID.trim(),
+    };
+    const verifyQs = new URLSearchParams({
+      pbrMemberID: cleaned.pbrMemberID,
+      brMemberID: cleaned.brMemberID,
+      pscMemberID: cleaned.pscMemberID,
+      scMemberID: cleaned.scMemberID,
+      memberID: cleaned.memberID,
+    }).toString();
+    const verifyData = isTgpaymentSameOriginRewrite()
+      ? await fetchTgpaymentRewrite<any>(`/verifyPromoter?${verifyQs}`)
+      : await proxyGet(`${LEGACY_API}/verifyPromoter?${verifyQs}`);
+
+    if (verifyData.systemCode !== '0') {
+      return { valid: false, message: verifyData.systemMessage || 'Invalid promoter ID(s). Please check and re-enter.' };
+    }
+
+    const allocationParams = new URLSearchParams({
+      productCode: 'TWP',
+      promoterID: cleaned.memberID,
+    });
+    if (cleaned.pbrMemberID) allocationParams.set('isPBR', cleaned.pbrMemberID);
+    if (cleaned.brMemberID) allocationParams.set('isBR', cleaned.brMemberID);
+    if (cleaned.pscMemberID) allocationParams.set('isPSC', cleaned.pscMemberID);
+    if (cleaned.scMemberID) allocationParams.set('isSC', cleaned.scMemberID);
+
+    const allocationData = isTgpaymentSameOriginRewrite()
+      ? await fetchTgpaymentRewrite<any>(`/saveRefAllocation?${allocationParams.toString()}`, { method: 'POST', body: '{}' })
+      : await proxyPost(`${LEGACY_API}/saveRefAllocation?${allocationParams.toString()}`, {});
+
+    if (allocationData.systemCode === '1' && allocationData.data?.length > 0) {
+      return { valid: true, referenceID: allocationData.data[0].referenceID };
+    }
+    return { valid: false, message: allocationData.systemMessage || 'Failed to generate reference ID. Please try again.' };
+  } catch {
+    return { valid: false, message: 'Verification failed. Please try again.' };
   }
 }
 

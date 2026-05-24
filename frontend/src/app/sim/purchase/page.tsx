@@ -35,11 +35,102 @@ const PAYMENT_METHODS = [
   { id: '3',  label: 'eWallet' },
 ] as const;
 
-const INSURANCE_ADDON = {
-  id: 'addon-54k',
-  price: 25,
-  pa: 50000,
-  life: 4000,
+const ESIM_COMPATIBLE_DEVICES_URL = 'https://help.celcomdigi.com/en/support/solutions/articles/70000681694-esim-compatible-device-list';
+const NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon SIM activation. Subscribe to any FU plan within 7 days to get the 20GB bonus.';
+const BASIC_TAKAFUL_TOOLTIP = 'Granted when you subscribe to any FU Data Plan within 7 days after activation.';
+const SUPERLITE_BASIC_TOOLTIP = 'Minimum reload of RM30/month required.';
+
+type PurchaseMode = 'lite' | 'superlite' | 'superliteplus';
+type InsuranceTier = 'basic' | 'premium' | 'premiumPro' | 'premiumProMax';
+
+type InsuranceOption = {
+  id: InsuranceTier;
+  apiValue: '0' | '1' | '2' | '3';
+  name: string;
+  tagline: string;
+  price: number;
+  badge?: string;
+  benefits: string[];
+};
+
+const LITE_INSURANCE_OPTIONS: InsuranceOption[] = [
+  {
+    id: 'premiumProMax',
+    apiValue: '3',
+    name: 'Ultra',
+    tagline: 'RM54,000 coverage',
+    price: 25,
+    badge: 'Best Value',
+    benefits: ['PA Takaful RM50,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)', 'FREE EXTRA 120GB for 1 year (10GB/month)'],
+  },
+  {
+    id: 'premium',
+    apiValue: '0',
+    name: 'Premium',
+    tagline: 'RM30,000 coverage',
+    price: 0,
+    benefits: ['PA Takaful RM30,000 (1 Year)'],
+  },
+];
+
+const SUPERLITE_INSURANCE_OPTIONS: InsuranceOption[] = [
+  {
+    id: 'premiumProMax',
+    apiValue: '3',
+    name: 'Ultra',
+    tagline: 'RM54,000 coverage',
+    price: 20.90,
+    badge: 'Best Value',
+    benefits: ['PA Takaful RM50,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)'],
+  },
+  {
+    id: 'premiumPro',
+    apiValue: '2',
+    name: 'Premium +',
+    tagline: 'RM34,000 coverage',
+    price: 19.90,
+    benefits: ['PA Takaful RM30,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)'],
+  },
+  {
+    id: 'premium',
+    apiValue: '1',
+    name: 'Premium',
+    tagline: 'RM30,000 coverage',
+    price: 9.90,
+    benefits: ['PA Takaful RM30,000 (1 Year)'],
+  },
+  {
+    id: 'basic',
+    apiValue: '0',
+    name: 'Basic',
+    tagline: 'RM10,000 coverage',
+    price: 0,
+    benefits: ['PA Takaful RM10,000 (1 Year)'],
+  },
+];
+
+const FU_PLAN_IDS: Record<string, { physical: number; esim: number }> = {
+  fu10: { physical: 8, esim: 10 },
+  fu20: { physical: 11, esim: 12 },
+  'fu20+': { physical: 13, esim: 14 },
+  fu20plus: { physical: 13, esim: 14 },
+  fu35: { physical: 15, esim: 16 },
+  fu50: { physical: 17, esim: 18 },
+  fu60: { physical: 19, esim: 20 },
+  fu80: { physical: 21, esim: 22 },
+  fu120: { physical: 23, esim: 24 },
+};
+
+const SUPERLITE_FU_PLAN_IDS: Record<string, number> = {
+  fu10: 25,
+  fu20: 26,
+  'fu20+': 27,
+  fu20plus: 27,
+  fu35: 28,
+  fu50: 29,
+  fu60: 30,
+  fu80: 31,
+  fu120: 32,
 };
 
 /** Generate 20-char refNo: twoss + 5 random digits + YYMMDDHHmmss */
@@ -79,6 +170,23 @@ const POSKOD_MAP: Record<string, [string, string]> = {
 };
 
 const PLAN_DISCOUNT = 5;
+
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <span className="info-tooltip-wrap">
+      <button
+        type="button"
+        className="info-tooltip-button"
+        aria-label={text}
+        title={text}
+        onClick={(event) => event.stopPropagation()}
+      >
+        i
+      </button>
+      <span className="info-tooltip-bubble" role="tooltip">{text}</span>
+    </span>
+  );
+}
 
 const SPECIAL_NUMBER_BENEFITS: Record<string, { plan: string; freeMonths: number; benefits: string[] }> = {
   PREMIUM: {
@@ -132,6 +240,10 @@ function SIMPurchaseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const esimEnabled = isEsimEnabled();
+  const simID = searchParams.get('simID');
+  const purchaseMode: PurchaseMode = simID === 'superlite' || simID === 'superliteplus' ? simID : 'lite';
+  const isSuperliteMode = purchaseMode === 'superlite' || purchaseMode === 'superliteplus';
+  const isSuperlitePlusMode = purchaseMode === 'superliteplus';
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [BASE_SIM_PRICE, setBasePrice] = useState(DEFAULT_BASE_SIM_PRICE);
@@ -184,6 +296,8 @@ function SIMPurchaseWizard() {
     { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,  data: '650 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115, data: '800 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
   ];
+  const insuranceOptions = isSuperliteMode ? SUPERLITE_INSURANCE_OPTIONS : LITE_INSURANCE_OPTIONS;
+  const insuranceById = Object.fromEntries(insuranceOptions.map(option => [option.id, option])) as Partial<Record<InsuranceTier, InsuranceOption>>;
 
   useEffect(() => {
     getDataPlans('TWE', '').then(p => setApiPlans(p.length > 0 ? p : [])).catch(() => {});
@@ -192,11 +306,9 @@ function SIMPurchaseWizard() {
   /* ── Step 1: Plan expand state ── */
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
 
-  /* ── Step 2: Insurance expand state ── */
-  const [expandedInsCard, setExpandedInsCard] = useState<'basic' | 'premium' | null>(null);
-
-  /* ── Step 2: Insurance Add-on (optional) ── */
-  const [insuranceAddon, setInsuranceAddon] = useState(false);
+  /* ── Step 2: Insurance selection ── */
+  const [selectedInsurance, setSelectedInsurance] = useState<InsuranceTier>('basic');
+  const [expandedInsCard, setExpandedInsCard] = useState<InsuranceTier | null>(null);
 
   /* ── Step 3: KYC + Shipping ── */
   const [form, setForm] = useState({
@@ -208,18 +320,7 @@ function SIMPurchaseWizard() {
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
   const [directCheckout, setDirectCheckout] = useState(false);
   const planAutoSelected = useRef(false);
-  const [esimCompatible, setEsimCompatible] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (simType !== 'esim' || esimCompatible !== null) return;
-    const ua = navigator.userAgent;
-    let compatible = false;
-    if (/iPhone(?:1[2-9]|[2-9]\d)|iPhone\b/.test(ua) && /OS (1[6-9]|[2-9]\d)_/.test(ua)) compatible = true;
-    if (/Pixel [3-9]|Pixel [1-9]\d/.test(ua)) compatible = true;
-    if (/SM-S[2-9]\d|SM-G9[7-9]\d|SM-N9[7-9]\d/.test(ua)) compatible = true;
-    if (/Android 1[3-9]|Android [2-9]\d/.test(ua) && /esim/i.test(ua)) compatible = true;
-    setEsimCompatible(compatible);
-  }, [simType, esimCompatible]);
+  const [esimConfirmed, setEsimConfirmed] = useState(false);
 
   /* ── Direct checkout via ?dataPlanID= ── */
   useEffect(() => {
@@ -247,20 +348,43 @@ function SIMPurchaseWizard() {
     router.replace('/sim/purchase');
   }, [apiPlans, searchParams, router]);
 
+  /* ── Superlite / Superlite+ gated modes via ?simID= ── */
+  useEffect(() => {
+    if (!isSuperliteMode) return;
+    setSimType('physical');
+
+    if (isSuperlitePlusMode) {
+      const fu35 = FU_PLANS.find(p => p.id.replace(/\s+/g, '').toLowerCase() === 'fu35');
+      if (fu35 && (selectedDataPlan?.id !== fu35.id || selectedDataPlan?.price !== fu35.price || selectedDataPlan?.data !== fu35.data)) {
+        setSelectedDataPlan(fu35);
+        setExpandedPlanId(fu35.id);
+      }
+      if (step !== 3) setStep(3);
+      return;
+    }
+
+    if (step === 0) setStep(1);
+  }, [isSuperliteMode, isSuperlitePlusMode, FU_PLANS, selectedDataPlan?.id, selectedDataPlan?.price, selectedDataPlan?.data, step]);
+
+  useEffect(() => {
+    if (isSuperliteMode) return;
+    setSelectedInsurance(prev => prev === 'basic' ? 'premium' : prev);
+  }, [isSuperliteMode]);
+
   /* ── Default select + expand FU60 on step 1 (once only) ── */
   useEffect(() => {
-    if (step === 1 && !selectedDataPlan && !planAutoSelected.current && FU_PLANS.length > 0) {
+    if (step === 1 && !selectedDataPlan && !planAutoSelected.current && FU_PLANS.length > 0 && !isSuperlitePlusMode) {
       const fu60 = FU_PLANS.find(p => p.popular);
       if (fu60) { setSelectedDataPlan(fu60); setExpandedPlanId(fu60.id); planAutoSelected.current = true; }
     }
-  }, [step, FU_PLANS, selectedDataPlan]);
+  }, [step, FU_PLANS, selectedDataPlan, isSuperlitePlusMode]);
 
   /* ── Default expand Basic insurance on step 2 ── */
   useEffect(() => {
     if (step === 2 && expandedInsCard === null) {
-      setExpandedInsCard('basic');
+      setExpandedInsCard(isSuperliteMode ? 'basic' : 'premium');
     }
-  }, [step, expandedInsCard]);
+  }, [step, expandedInsCard, isSuperliteMode]);
 
   /* ── Checkout ── */
   const [submitting, setSubmitting] = useState(false);
@@ -351,10 +475,11 @@ function SIMPurchaseWizard() {
 
   /* ── Price calculations ── */
   const planAddon = selectedDataPlan?.price || 0;
-  const insurancePrice = insuranceAddon ? INSURANCE_ADDON.price : 0;
-  const effectiveBasePrice = directCheckout ? 10 : BASE_SIM_PRICE;
+  const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceOptions[0];
+  const insurancePrice = selectedInsuranceOption.price;
+  const effectiveBasePrice = directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
   const hasPromoter = !!(form.promoterCode && form.promoterCode.trim());
-  const isBareOrder = !hasPromoter && !selectedDataPlan && !insuranceAddon && !selectedNumber;
+  const isBareOrder = !hasPromoter && !selectedDataPlan && insurancePrice === 0 && !selectedNumber;
   const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : isBareOrder ? 5 : 0;
 
   const numberPrice = selectedNumber?.price || 0;
@@ -364,23 +489,33 @@ function SIMPurchaseWizard() {
     : effectiveBasePrice + planAddon + insurancePrice + shippingFee;
 
   const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
+  const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(effectiveBasePrice);
   const simOrderLabel = simType === 'esim' ? 'eSIM' : 'SIM';
 
   /* ── Determine planid for OSSPayment ── */
   const determinePlanId = (): number => {
-    if (directCheckout) return 1;
     if (selectedNumber) {
       const cat = selectedNumber.category?.toUpperCase();
       if (cat === 'VVIP') return 7;
       if (cat === 'VIP') return 4;
+      if (cat === 'NORMAL') return 6;
       return 5;
     }
+    if (selectedDataPlan) {
+      const key = selectedDataPlan.id.replace(/\s+/g, '').toLowerCase();
+      if (isSuperlitePlusMode) return 33;
+      if (purchaseMode === 'superlite') return SUPERLITE_FU_PLAN_IDS[key] || 28;
+      const ids = FU_PLAN_IDS[key];
+      if (ids) return simType === 'esim' ? ids.esim : ids.physical;
+    }
+    if (purchaseMode === 'superlite') return 28;
+    if (simType === 'esim') return 9;
     return 1;
   };
 
   /* ── Navigation ── */
   const canGoNext = (): boolean => {
-    if (step === 0) return !(hasReferral && !promoterName);
+    if (step === 0) return !(hasReferral && !promoterName) && (simType !== 'esim' || esimConfirmed);
     if (step === 1) return true;
     if (step === 2) return true;
     if (step === 3) return !!(form.fullName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
@@ -388,18 +523,28 @@ function SIMPurchaseWizard() {
   };
 
   const goNext = () => {
+    if (step === 0 && simType === 'esim' && !esimConfirmed) {
+      setError('Please confirm that your device supports e-SIM before proceeding.');
+      return;
+    }
+    if (step === 0 && hasReferral && !promoterName) {
+      setError('Please enter a valid Referral ID before proceeding.');
+      return;
+    }
     if (!canGoNext() || step >= 3) return;
+    setError('');
     setDirection(1);
     setStep(step + 1);
   };
 
   const goBack = () => {
-    if (directCheckout) return;
+    if (directCheckout || isSuperlitePlusMode) return;
     if (searchParams.get('special') === '1') { router.push('/'); return; }
     if (step === 3 && selectedNumber) {
       setSelectedNumber(null);
       localStorage.removeItem('tw_selected_number');
     }
+    if (isSuperliteMode && step === 1) return;
     if (step === 0) { router.back(); return; }
     setDirection(-1);
     setStep(step - 1);
@@ -441,8 +586,8 @@ function SIMPurchaseWizard() {
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || '',
         referralCode: promoterId ? `${promoterId}${twpReferenceID}` : twpReferenceID,
-        dataPlanID: apiPlans.find(p => (p.codeData2 || '').trim().replace(/\s+/g, '').toLowerCase() === selectedDataPlan?.id)?.codeData1 || '',
-        insurance: insuranceAddon ? '1' : '0',
+        dataPlanID: '0',
+        insurance: selectedInsuranceOption.apiValue,
         isEsim: simType === 'esim' ? '1' : '0',
         twpReferenceID,
         alloReferenceID,
@@ -454,15 +599,14 @@ function SIMPurchaseWizard() {
         const promoData = {
           prefix: hasPromoter ? form.promoterPrefix : '',
           code: hasPromoter ? form.promoterCode : '',
+          name: hasPromoter ? promoterName : '',
           email: form.email,
           twpReferenceID,
           alloReferenceID,
         };
         localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
+        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, email: form.email }));
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
-        setShowEsimSuccess(true);
-        setSubmitting(false);
-        return;
       }
 
       fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
@@ -508,7 +652,7 @@ function SIMPurchaseWizard() {
       <>
         <div className="sidebar-order-row">
           <span>{simOrderLabel}</span>
-          <span>{formatRM(effectiveBasePrice)}</span>
+          <span style={isSuperlitePlusMode ? { color: '#16a34a', fontWeight: 700 } : undefined}>{baseSimDisplay}</span>
         </div>
         {selectedDataPlan && (
           <div className="sidebar-order-row">
@@ -516,10 +660,10 @@ function SIMPurchaseWizard() {
             <span>{formatRM(planAddon)}</span>
           </div>
         )}
-        {insuranceAddon && (
+        {insurancePrice > 0 && (
           <div className="sidebar-order-row">
-            <span>Insurance Add-on</span>
-            <span>{formatRM(INSURANCE_ADDON.price)}</span>
+            <span>{selectedInsuranceOption.name}</span>
+            <span>{formatRM(insurancePrice)}</span>
           </div>
         )}
       </>
@@ -541,7 +685,7 @@ function SIMPurchaseWizard() {
                 <div className="sidebar-step-row">
                   <div
                     className={`sidebar-step-circle${isStepCompleted(i) ? ' completed' : isStepActive(i) ? ' active' : ''}`}
-                    onClick={() => { if (!directCheckout && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
+                    onClick={() => { if (!directCheckout && !(isSuperliteMode && i === 0) && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
                   >
                     {isStepCompleted(i) ? '✓' : i + 1}
                   </div>
@@ -580,7 +724,7 @@ function SIMPurchaseWizard() {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div
                   className={`mobile-step-circle${isStepCompleted(i) ? ' completed' : isStepActive(i) ? ' active' : ''}`}
-                  onClick={() => { if (isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
+                  onClick={() => { if (!directCheckout && !(isSuperliteMode && i === 0) && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
                 >
                   {isStepCompleted(i) ? '✓' : i + 1}
                 </div>
@@ -704,7 +848,7 @@ function SIMPurchaseWizard() {
                     <p className="sim-type-desc">Delivered to your address</p>
                   </div>
                   <div className="sim-type-right">
-                    <p className="sim-type-price">{formatRM(effectiveBasePrice)}</p>
+                    <p className="sim-type-price">{baseSimDisplay}</p>
                     {simType === 'physical' && <span className="sim-type-selected-badge">Selected</span>}
                   </div>
                 </div>
@@ -730,7 +874,7 @@ function SIMPurchaseWizard() {
                   <div className="sim-type-right">
                     {esimEnabled ? (
                       <>
-                        <p className="sim-type-price">{formatRM(effectiveBasePrice)}</p>
+                        <p className="sim-type-price">{baseSimDisplay}</p>
                         {simType === 'esim' && <span className="sim-type-selected-badge">Selected</span>}
                       </>
                     ) : (
@@ -743,24 +887,45 @@ function SIMPurchaseWizard() {
               {/* eSIM Compatibility Check */}
               {esimEnabled && simType === 'esim' && (
                 <div className="esim-compat-banner" style={{ marginTop: 16 }}>
-                  {esimCompatible === null ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div className="esim-compat-spinner" />
-                      <span style={{ fontSize: 13, color: '#64748b' }}>Checking device compatibility...</span>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', margin: '0 0 8px' }}>
+                        Check if your phone supports e-SIM
+                      </h3>
+                      <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.55, margin: 0 }}>
+                        Dial <strong>*#06#</strong> on your device and look for an <strong>EID number</strong>.
+                        <br />
+                        If your phone displays an EID, it supports e-SIM.
+                      </p>
                     </div>
-                  ) : esimCompatible ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a' }}>Your device supports eSIM</span>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ea580c"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                      <span style={{ fontSize: 13, color: '#92400e' }}>Cannot verify compatibility — you can still proceed</span>
-                    </div>
-                  )}
+                    <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.55, margin: 0 }}>
+                      <a
+                        href={ESIM_COMPATIBLE_DEVICES_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'underline' }}
+                      >
+                        Click here
+                      </a>{' '}
+                      to check compatible devices list.
+                    </p>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#334155', lineHeight: 1.45, cursor: 'pointer' }}>
+                      <input
+                        id="esim-confirm"
+                        type="checkbox"
+                        checked={esimConfirmed}
+                        onChange={e => {
+                          setEsimConfirmed(e.target.checked);
+                          if (e.target.checked) setError('');
+                        }}
+                        style={{ marginTop: 2, accentColor: '#2563eb' }}
+                      />
+                      <span>I confirm that my device supports e-SIM and I would like to proceed.</span>
+                    </label>
+                  </div>
                 </div>
               )}
+              {error && <p style={{ color: '#ef4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
 
               {/* Referral ID Section */}
               <div style={{ ...cardStyle, marginTop: 24 }}>
@@ -835,7 +1000,9 @@ function SIMPurchaseWizard() {
           {step === 1 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Pick Your Data Plan</h2>
-              <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
+              {!isSuperliteMode && (
+                <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
+              )}
 
               <div className="plans-grid-fu">
                 {FU_PLANS.map(plan => {
@@ -846,7 +1013,7 @@ function SIMPurchaseWizard() {
                       {/* Header — collapsed state, always visible */}
                       <div
                         className="fu-plan-header"
-                        onClick={() => { setSelectedDataPlan(active ? null : plan); setExpandedPlanId(expanded ? null : plan.id); }}
+                        onClick={() => { setSelectedDataPlan(isSuperliteMode ? plan : active ? null : plan); setExpandedPlanId(expanded ? null : plan.id); }}
                         style={{ cursor: 'pointer', borderRadius: expanded ? '14px 14px 0 0' : 14 }}
                       >
                         {plan.popular && <span className="fu-plan-popular-badge">Most Popular</span>}
@@ -891,10 +1058,12 @@ function SIMPurchaseWizard() {
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span>FREE 20GB Bonus Data</span>
                             </div>
-                            <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
-                              <span><strong>RM30,000</strong> PA Takaful Included (1 Year)</span>
-                            </div>
+                            {!isSuperliteMode && (
+                              <div className="fu-plan-feature">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
+                                <span><strong>RM30,000</strong> PA Takaful Included (1 Year)</span>
+                              </div>
+                            )}
                           </div>
                           <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + plan.price)}</strong></div>
                         </div>
@@ -903,41 +1072,35 @@ function SIMPurchaseWizard() {
                   );
                 })}
 
-                {/* No Add On Data Plan card */}
-                <div
-                  className="sim-type-card"
-                  style={{
-                    border: !selectedDataPlan ? '2px solid #fce003' : '1.5px solid #e5e7eb',
-                    cursor: 'pointer',
-                    alignItems: 'flex-start',
-                  }}
-                  onClick={() => { setSelectedDataPlan(null); setExpandedPlanId(null); }}
-                >
-                  <div className={`sim-type-radio${!selectedDataPlan ? ' sim-type-radio--active' : ''}`} />
-                  <div className={`sim-type-icon${!selectedDataPlan ? ' sim-type-icon--active' : ''}`}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={!selectedDataPlan ? '#2563eb' : '#94a3b8'} strokeWidth="1.8">
-                      <path d="M18.364 5.636a9 9 0 11-12.728 0" strokeLinecap="round"/><path d="M12 2v7" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div className="sim-type-info">
-                    <p className="sim-type-name">No Add On Data Plan</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
-                      <div className="fu-plan-feature">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-                        <span>FREE 2GB Welcome Data (Upon SIM Activation)</span>
-                      </div>
-                      <div className="fu-plan-feature">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-                        <span>Get Free 20GB Bonus Data upon subscription of any FU Data Plans within 7 days after SIM activation</span>
+                {!isSuperlitePlusMode && (
+                  <div
+                    className="sim-type-card"
+                    style={{
+                      border: !selectedDataPlan ? '2px solid #fce003' : '1.5px solid #e5e7eb',
+                      cursor: 'pointer',
+                      alignItems: 'flex-start',
+                    }}
+                    onClick={() => { setSelectedDataPlan(null); setExpandedPlanId(null); }}
+                  >
+                    <div className={`sim-type-radio${!selectedDataPlan ? ' sim-type-radio--active' : ''}`} />
+                    <div className={`sim-type-icon${!selectedDataPlan ? ' sim-type-icon--active' : ''}`}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={!selectedDataPlan ? '#2563eb' : '#94a3b8'} strokeWidth="1.8">
+                        <path d="M18.364 5.636a9 9 0 11-12.728 0" strokeLinecap="round"/><path d="M12 2v7" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <div className="sim-type-info">
+                      <div className="inline-title-with-info">
+                        <p className="sim-type-name">No Add On</p>
+                        <InfoTooltip text={NO_ADD_ON_TOOLTIP} />
                       </div>
                     </div>
+                    {!selectedDataPlan && (
+                      <div className="sim-type-right">
+                        <span className="sim-type-selected-badge">Selected</span>
+                      </div>
+                    )}
                   </div>
-                  {!selectedDataPlan && (
-                    <div className="sim-type-right">
-                      <span className="sim-type-selected-badge">Selected</span>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -951,97 +1114,57 @@ function SIMPurchaseWizard() {
               </p>
 
               <div className="purchase-grid-insurance">
-                {/* Premium — Add-on 54K */}
-                <div className={`ins-card ins-card--premium${insuranceAddon ? ' ins-card--active' : ''}`}>
-                  <div
-                    className="ins-card-header ins-card-header--premium"
-                    onClick={() => { setInsuranceAddon(true); setExpandedInsCard(expandedInsCard === 'premium' ? null : 'premium'); }}
-                    style={{ cursor: 'pointer', borderRadius: expandedInsCard === 'premium' ? '12px 12px 0 0' : 12 }}
-                  >
-                    <span className="ins-card-badge">Best Value</span>
-                    <div className="ins-card-radio-wrap">
-                      <div className={`sim-type-radio${insuranceAddon ? ' sim-type-radio--active' : ''}`} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 className="ins-card-name">Premium</h3>
-                      <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>RM54,000 coverage</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                      <p className="ins-card-price">{formatRM(INSURANCE_ADDON.price)}</p>
-                      <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'premium' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-                      </div>
-                    </div>
-                  </div>
-                  {expandedInsCard === 'premium' && (
-                    <div className="ins-card-body" style={{ border: `1.5px solid ${insuranceAddon ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-                      <div className="fu-plan-features">
-                        <div className="fu-plan-feature">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                          <span>PA Takaful <strong>RM50,000</strong> (1 Year)</span>
+                {insuranceOptions.map(option => {
+                  const active = selectedInsurance === option.id;
+                  const expanded = expandedInsCard === option.id;
+                  const selectInsuranceOption = () => {
+                    setSelectedInsurance(option.id);
+                    setExpandedInsCard(option.id);
+                  };
+                  return (
+                    <div
+                      key={option.id}
+                      className={`ins-card${active ? ' ins-card--active' : ''}`}
+                      onClick={selectInsuranceOption}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div
+                        className={`ins-card-header ${option.id === 'basic' ? 'ins-card-header--basic' : 'ins-card-header--premium'}`}
+                        style={{ borderRadius: expanded ? '12px 12px 0 0' : 12 }}
+                      >
+                        {option.badge && <span className="ins-card-badge">{option.badge}</span>}
+                        <div className="ins-card-radio-wrap">
+                          <div className={`sim-type-radio${active ? ' sim-type-radio--active' : ''}`} />
                         </div>
-                        <div className="fu-plan-feature">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                          <span>Life Insurance <strong>RM4,000</strong> (1 Year)</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h3 className="ins-card-name">{option.name}</h3>
+                          <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>{option.tagline}</p>
                         </div>
-                        <div className="fu-plan-feature">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                          <span>FREE EXTRA <strong>120GB</strong> for 1 year <span style={{ fontSize: 11, color: '#64748b' }}>(10GB/month)</span></span>
-                        </div>
-                      </div>
-                      <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon + INSURANCE_ADDON.price)}</strong></div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Basic — No Add-on */}
-                <div className={`ins-card${!insuranceAddon ? ' ins-card--active' : ''}`}>
-                  <div
-                    className="ins-card-header ins-card-header--basic"
-                    onClick={() => { setInsuranceAddon(false); setExpandedInsCard(expandedInsCard === 'basic' ? null : 'basic'); }}
-                    style={{ cursor: 'pointer', borderRadius: expandedInsCard === 'basic' ? '12px 12px 0 0' : 12 }}
-                  >
-                    <div className="ins-card-radio-wrap">
-                      <div className={`sim-type-radio${!insuranceAddon ? ' sim-type-radio--active' : ''}`} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 className="ins-card-name">Basic</h3>
-                      <p style={{ fontSize: 15, fontWeight: 700, color: '#ffe000', marginTop: 2 }}>
-                        {selectedDataPlan ? 'RM30,000 coverage' : 'RM10,000 Coverage'}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                      <p className="ins-card-price">FREE</p>
-                      <div className="ins-card-chevron" style={{ transform: expandedInsCard === 'basic' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-                      </div>
-                    </div>
-                  </div>
-                  {expandedInsCard === 'basic' && (
-                    <div className="ins-card-body" style={{ border: `1.5px solid ${!insuranceAddon ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-                      <div className="fu-plan-features">
-                        {selectedDataPlan ? (
-                          <div className="fu-plan-feature">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                            <span>PA Takaful <strong>RM30,000</strong> (1 Year) (included with plan)</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                          <p className="ins-card-price">{option.price > 0 ? formatRM(option.price) : 'FREE'}</p>
+                          <div className="ins-card-chevron" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
                           </div>
-                        ) : (
-                          <>
-                            <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                              <span>RM10,000 PA Takaful Coverage (1 Year) is only active with a minimum reload of RM30/month</span>
-                            </div>
-                            <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                              <span>Get Free RM30,000 PA Takaful (1 Year) upon subscription of any FU Data Plans within 7 days after SIM activation</span>
-                            </div>
-                          </>
-                        )}
+                        </div>
                       </div>
-                      <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon)}</strong></div>
+                      {expanded && (
+                        <div className="ins-card-body" style={{ border: `1.5px solid ${active ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
+                          <div className="fu-plan-features">
+                            {option.benefits.map(benefit => (
+                              <div key={benefit} className="fu-plan-feature">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                                <span>{benefit}</span>
+                                {!isSuperliteMode && option.id === 'premium' && option.price === 0 && <InfoTooltip text={BASIC_TAKAFUL_TOOLTIP} />}
+                                {isSuperliteMode && option.id === 'basic' && <InfoTooltip text={SUPERLITE_BASIC_TOOLTIP} />}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="fu-plan-total">Total: <strong>{formatRM(effectiveBasePrice + planAddon + option.price)}</strong></div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1127,7 +1250,7 @@ function SIMPurchaseWizard() {
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                             <span>{simOrderLabel}</span>
-                            <span style={{ fontWeight: 600 }}>{formatRM(effectiveBasePrice)}</span>
+                            <span style={{ fontWeight: 600, color: isSuperlitePlusMode ? '#16a34a' : undefined }}>{baseSimDisplay}</span>
                           </div>
                           {selectedDataPlan && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
@@ -1135,10 +1258,10 @@ function SIMPurchaseWizard() {
                               <span style={{ fontWeight: 600 }}>{formatRM(planAddon)}</span>
                             </div>
                           )}
-                          {insuranceAddon && (
+                          {insurancePrice > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                              <span>Insurance Add-on</span>
-                              <span style={{ fontWeight: 600 }}>{formatRM(INSURANCE_ADDON.price)}</span>
+                              <span>{selectedInsuranceOption.name}</span>
+                              <span style={{ fontWeight: 600 }}>{formatRM(insurancePrice)}</span>
                             </div>
                           )}
                         </>
@@ -1372,6 +1495,38 @@ function SIMPurchaseWizard() {
         .sim-type-info { flex: 1; min-width: 0; }
         .sim-type-name { font-size: 15px; font-weight: 700; color: #1e293b; margin: 0 0 2px; }
         .sim-type-desc { font-size: 12px; color: #64748b; margin: 0; }
+        .inline-title-with-info {
+          display: flex; align-items: center; gap: 6px; min-width: 0;
+        }
+        .info-tooltip-wrap {
+          position: relative; display: inline-flex; align-items: center; flex-shrink: 0;
+        }
+        .info-tooltip-button {
+          width: 18px; height: 18px; border-radius: 50%;
+          border: 1px solid #bfdbfe; background: #eff6ff; color: #2563eb;
+          display: inline-flex; align-items: center; justify-content: center;
+          font-size: 11px; font-weight: 800; line-height: 1; cursor: help;
+          padding: 0;
+        }
+        .info-tooltip-bubble {
+          position: absolute; left: 50%; bottom: calc(100% + 8px);
+          transform: translateX(-50%) translateY(4px);
+          width: max-content; max-width: 220px; padding: 8px 10px;
+          border-radius: 8px; background: #0f172a; color: #fff;
+          font-size: 11px; line-height: 1.35; font-weight: 500;
+          opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+          box-shadow: 0 10px 30px rgba(15,23,42,0.18); z-index: 20;
+          white-space: normal;
+        }
+        .info-tooltip-bubble::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%); border-width: 5px; border-style: solid;
+          border-color: #0f172a transparent transparent transparent;
+        }
+        .info-tooltip-wrap:hover .info-tooltip-bubble,
+        .info-tooltip-wrap:focus-within .info-tooltip-bubble {
+          opacity: 1; transform: translateX(-50%) translateY(0);
+        }
         .sim-type-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
         .sim-type-price { font-size: 16px; font-weight: 800; color: #2563eb; margin: 0; }
         .sim-type-selected-badge {

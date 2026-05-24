@@ -8,14 +8,18 @@ interface Props {
 }
 
 export default function USPBar({ items }: Props) {
+  const tickerItems = [...items, ...items];
+
   return (
-    <div className="usp-bar">
-      {items.map((item, i) => (
-        <div key={i} className="usp-item">
-          {item.icon}
-          <span>{item.text}</span>
-        </div>
-      ))}
+    <div className="usp-bar" aria-label="ToneWow benefits">
+      <div className="usp-track">
+        {tickerItems.map((item, i) => (
+          <div key={`${item.text}-${i}`} className="usp-item">
+            {item.icon}
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@
   "dependencies": {
     "axios": "^1.13.6",
     "framer-motion": "^12.38.0",
+    "jsbarcode": "^3.12.3",
     "next": "^14.2.35",
     "qrcode.react": "^4.2.0",
     "react": "^18",
@@ -19,6 +20,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@types/jsbarcode": "^3.11.4",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

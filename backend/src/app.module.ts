@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentModule } from './payment/payment.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { SettingsModule } from './settings/settings.module';
+import { ConfirmationController } from './confirmation.controller';
 
 @Module({
   imports: [
@@ -39,5 +40,6 @@ import { SettingsModule } from './settings/settings.module';
     ProxyModule,
     SettingsModule,
   ],
+  controllers: [ConfirmationController],
 })
 export class AppModule {}

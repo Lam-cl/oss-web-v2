@@ -150,7 +150,7 @@ export default function FloatingReferralQR() {
     document.body.removeChild(link);
   };
 
-  if (pathname === '/sim/purchase') return null;
+  if (pathname === '/sim/purchase' || pathname?.startsWith('/register')) return null;
 
   return (
     <>

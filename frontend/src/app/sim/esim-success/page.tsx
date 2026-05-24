@@ -18,6 +18,20 @@ const FALLBACK_BANNERS: Banner[] = [
 
 type DeviceTab = 'iphone' | 'samsung' | 'huawei';
 
+type EsimPromoterSession = {
+  prefix?: string;
+  code?: string;
+  email?: string;
+  twpReferenceID?: string;
+  alloReferenceID?: string;
+};
+
+type ReferralDisplay = {
+  label: string;
+  copyValue: string;
+  canCopy: boolean;
+};
+
 const DEVICE_STEPS: Record<DeviceTab, { title: string; steps: string[] }> = {
   iphone: {
     title: 'iPhone',
@@ -53,8 +67,9 @@ export default function EsimSuccessPage() {
   const [copied, setCopied] = useState(false);
   const [copiedPin, setCopiedPin] = useState(false);
   const [copiedPuk, setCopiedPuk] = useState(false);
+  const [copiedReferral, setCopiedReferral] = useState(false);
   const [animDone, setAnimDone] = useState(false);
-  const [promoter, setPromoter] = useState<{ prefix: string; code: string; email: string } | null>(null);
+  const [promoter, setPromoter] = useState<EsimPromoterSession | null>(null);
   const [banners, setBanners] = useState<Banner[]>(FALLBACK_BANNERS);
 
   useEffect(() => {
@@ -93,6 +108,39 @@ export default function EsimSuccessPage() {
     } catch { /* clipboard not supported */ }
   };
 
+  const getReferralDisplay = (): ReferralDisplay => {
+    const prefix = promoter?.prefix?.trim().toUpperCase() || '';
+    const code = promoter?.code?.trim() || '';
+    const twpReferenceID = promoter?.twpReferenceID?.trim() || '';
+    const alloReferenceID = promoter?.alloReferenceID?.trim() || '';
+
+    if (prefix && code) {
+      const referralId = `${prefix}-${code}`;
+      return { label: referralId, copyValue: referralId, canCopy: true };
+    }
+
+    if (twpReferenceID) {
+      return { label: `TWP Reference ID: ${twpReferenceID}`, copyValue: twpReferenceID, canCopy: true };
+    }
+
+    if (alloReferenceID) {
+      return { label: `Reference ID: ${alloReferenceID}`, copyValue: alloReferenceID, canCopy: true };
+    }
+
+    return { label: 'Tone Wow HQ', copyValue: '', canCopy: false };
+  };
+
+  const referralDisplay = getReferralDisplay();
+
+  const copyReferral = async () => {
+    if (!referralDisplay.canCopy) return;
+    try {
+      await navigator.clipboard.writeText(referralDisplay.copyValue);
+      setCopiedReferral(true);
+      setTimeout(() => setCopiedReferral(false), 2000);
+    } catch { /* clipboard not supported */ }
+  };
+
   const downloadQR = () => {
     const canvas = document.createElement('canvas');
     canvas.width = 200;
@@ -128,9 +176,11 @@ export default function EsimSuccessPage() {
     });
   };
 
-  const registerUrl = promoter?.code
-    ? `https://www.tonewow.com/register/?${promoter.prefix.toLowerCase()}=${promoter.code}`
-    : 'https://www.tonewow.com/register/?twe=8937777';
+  const registerPrefix = promoter?.prefix?.trim().toLowerCase() || '';
+  const registerCode = promoter?.code?.trim() || '';
+  const registerUrl = registerPrefix && registerCode
+    ? `/register/?${registerPrefix}=${encodeURIComponent(registerCode)}`
+    : '/register/?twe=8937777';
 
   return (
     <div className="has-hero">
@@ -208,7 +258,12 @@ export default function EsimSuccessPage() {
           {/* Referral info */}
           <div className="esim-referral-info">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>Referred by: <strong>{promoter?.code ? `${promoter.prefix.toUpperCase()}-${promoter.code}` : 'Tone Wow HQ'}</strong></span>
+            <span>Referred by: <strong>{referralDisplay.label}</strong></span>
+            {referralDisplay.canCopy && (
+              <button onClick={copyReferral} className="esim-copy-btn" title="Copy referral ID">
+                {copiedReferral ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg> : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>}
+              </button>
+            )}
           </div>
 
           {promoter?.email && (

@@ -19,6 +19,7 @@ const orders_module_1 = require("./orders/orders.module");
 const payment_module_1 = require("./payment/payment.module");
 const proxy_module_1 = require("./proxy/proxy.module");
 const settings_module_1 = require("./settings/settings.module");
+const confirmation_controller_1 = require("./confirmation.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -50,6 +51,7 @@ exports.AppModule = AppModule = __decorate([
             proxy_module_1.ProxyModule,
             settings_module_1.SettingsModule,
         ],
+        controllers: [confirmation_controller_1.ConfirmationController],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

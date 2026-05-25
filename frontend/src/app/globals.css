@@ -22,6 +22,7 @@
   --tw-green-light: #34d399;
   --tw-cyan: #06b6d4;
   --tw-red: #ef4444;
+  --asset-version: "20260525-1201";
 
   /* Gradients */
   --gradient-lite: linear-gradient(135deg, #a3e635, #34d399);
@@ -2204,10 +2205,10 @@ h5 { font-size: 1.1rem; }
   box-shadow: 0 16px 32px rgba(0, 116, 190, 0.22);
 }
 .esim-details-panel {
-  background: #c9efc2;
-  border: 1px solid #a8dfa2;
-  border-radius: 26px;
-  padding: 26px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -2252,48 +2253,119 @@ h5 { font-size: 1.1rem; }
   font-weight: 850;
   text-transform: uppercase;
 }
-.esim-sim-back-card {
-  aspect-ratio: 1291 / 1614;
-  background: #fff;
+.esim-details-card {
+  background: linear-gradient(180deg, #0f8f4d 0%, #08733d 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 18px;
-  container-type: inline-size;
-  color: #1f2937;
-  margin: 0 auto;
-  max-width: 430px;
-  position: relative;
-  width: min(100%, 430px);
-  overflow: hidden;
-  filter: drop-shadow(0 16px 30px rgba(15, 23, 42, 0.12));
+  box-shadow: 0 14px 28px rgba(8, 115, 61, 0.18);
+  color: #fff;
+  display: grid;
+  gap: 14px;
+  margin: 2px auto 0;
+  max-width: 382px;
+  padding: 18px;
+  width: min(100%, 382px);
 }
-.esim-sim-template {
-  display: block;
-  height: 100%;
-  object-fit: contain;
-  width: 100%;
-}
-.esim-sim-overlay {
-  inset: 0;
-  position: absolute;
-  z-index: 1;
-}
-.esim-sim-barcode {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
+.esim-details-card-header {
   align-items: center;
-  gap: 2px;
+  display: flex;
+  gap: 10px;
+  padding-bottom: 2px;
 }
-.esim-sim-overlay-barcode {
-  left: 25.5%;
-  position: absolute;
-  top: 8.5%;
-  width: 58%;
+.esim-details-card-check {
+  align-items: center;
+  background: #fff;
+  border-radius: 50%;
+  color: #0f8f4d;
+  display: flex;
+  flex: 0 0 auto;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
 }
-.esim-sim-barcode > svg {
-  display: block;
-  height: clamp(48px, 16.5cqw, 72px);
+.esim-details-card-header h4 {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.15;
+  margin: 0;
+}
+.esim-details-card-header p {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 2px 0 0;
+}
+.esim-details-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.esim-details-field label {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+}
+.esim-details-pill,
+.esim-details-barcode-box {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 12px;
+  box-shadow: none;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 0;
+  padding: 9px 12px;
+  position: relative;
+}
+.esim-details-serial-pill strong {
+  font-size: 14px;
+}
+.esim-details-pill strong {
+  color: #020617;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: center;
   width: 100%;
+}
+.esim-details-pill .esim-detail-copy {
+  margin: 0;
+  position: absolute;
+  right: 12px;
+}
+.esim-details-barcode-box {
+  background: #fff;
+  border-radius: 14px;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  min-height: 88px;
+  padding: 10px 12px 9px;
+}
+.esim-details-barcode-box > svg {
+  display: block;
+  height: 46px;
+  margin: 0 auto;
+  max-width: 100%;
+  width: min(100%, 290px);
+}
+.esim-details-barcode-text {
+  color: #020617;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 .esim-sim-barcode-empty {
   color: #64748b;
@@ -2303,48 +2375,10 @@ h5 { font-size: 1.1rem; }
   font-size: 12px;
   font-weight: 750;
 }
-.esim-sim-serial-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  color: #111827;
-  font-size: clamp(7px, 2.2cqw, 10px);
-  font-weight: 750;
-  line-height: 1.2;
-  text-align: center;
-  overflow-wrap: anywhere;
-  letter-spacing: 0.08em;
-}
-.esim-sim-codes {
-  bottom: 8.4%;
-  left: 71%;
-  width: 24%;
-  position: absolute;
-}
-.esim-sim-code-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: #1f2937;
-  margin-bottom: clamp(5px, 1.8cqw, 9px);
-}
-.esim-sim-code-block span {
-  font-size: clamp(8px, 2.2cqw, 11px);
-  font-weight: 700;
-  line-height: 1.05;
-}
-.esim-sim-code-value {
-  align-items: center;
-  display: flex;
-  gap: clamp(3px, 1cqw, 5px);
-  min-width: 0;
-}
-.esim-sim-code-value strong {
-  font-size: clamp(9px, 2.7cqw, 13px);
-  font-weight: 850;
-  overflow-wrap: anywhere;
-  white-space: nowrap;
+.esim-details-code-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 .esim-qr-expand-card {
   background: rgba(255, 255, 255, 0.74);
@@ -2493,24 +2527,27 @@ h5 { font-size: 1.1rem; }
   margin: 0;
   text-align: left;
 }
-.esim-iccid-copy {
+.esim-iccid-copy,
+.esim-detail-copy {
   background: transparent;
   border: 0;
   color: #475569;
-  height: 1em;
+  height: 1.1em;
   margin-left: 0.35em;
   padding: 0;
-  width: 1em;
+  width: 1.1em;
 }
-.esim-iccid-copy:hover {
+.esim-iccid-copy:hover,
+.esim-detail-copy:hover {
   background: transparent;
   border-color: transparent;
   color: #0057b8;
 }
-.esim-iccid-copy svg {
+.esim-iccid-copy svg,
+.esim-detail-copy svg {
   display: block;
-  height: 1em;
-  width: 1em;
+  height: 1.1em;
+  width: 1.1em;
 }
 .esim-guide-header {
   display: flex;
@@ -2598,26 +2635,6 @@ h5 { font-size: 1.1rem; }
   display: block;
   height: 1em;
   width: 1em;
-}
-.esim-sim-code-value .esim-copy-btn {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  color: #64748b;
-  height: 0.9em;
-  padding: 0;
-  width: 0.9em;
-}
-.esim-sim-code-value .esim-copy-btn:hover {
-  background: transparent;
-  border-color: transparent;
-  color: #0057b8;
-}
-.esim-sim-code-value .esim-copy-btn svg {
-  display: block;
-  height: 0.9em;
-  width: 0.9em;
 }
 
 /* ─── Referral info ─── */
@@ -2796,42 +2813,68 @@ h5 { font-size: 1.1rem; }
   }
   .esim-details-panel {
     border-radius: 20px;
-    padding: 18px 12px;
+    padding: 16px 12px;
   }
   .esim-details-header {
     align-items: flex-start;
   }
-  .esim-sim-back-card {
+  .esim-details-card {
+    border-radius: 16px;
+    gap: 12px;
     max-width: 340px;
+    padding: 16px;
     width: min(100%, 340px);
   }
-  .esim-sim-barcode {
-    gap: 1px;
+  .esim-details-card-check {
+    height: 30px;
+    width: 30px;
   }
-  .esim-sim-barcode > svg {
-    height: clamp(48px, 16.5cqw, 72px);
+  .esim-details-card-header {
+    gap: 9px;
   }
-  .esim-sim-serial-row {
-    font-size: clamp(7px, 2.2cqw, 10px);
-    gap: 4px;
-    letter-spacing: 0.05em;
+  .esim-details-card-header h4 {
+    font-size: 17px;
+  }
+  .esim-details-card-header p {
+    font-size: 10.5px;
+  }
+  .esim-details-field label {
+    font-size: 10px;
+  }
+  .esim-details-pill,
+  .esim-details-barcode-box {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+  .esim-details-serial-pill strong {
+    font-size: 13px;
+  }
+  .esim-details-pill strong {
+    font-size: 16px;
+  }
+  .esim-details-barcode-box {
+    border-radius: 13px;
+    min-height: 82px;
+  }
+  .esim-details-barcode-text {
+    font-size: 11px;
+  }
+  .esim-details-code-grid {
+    gap: 8px;
   }
   .esim-qr-expand-toggle {
     padding: 13px 14px;
   }
-  .esim-sim-codes {
-    bottom: 8.4%;
-    left: 71%;
-    width: 24%;
-  }
   .esim-iccid-copy,
+  .esim-detail-copy,
   .esim-copy-btn {
     height: clamp(16px, 4.8cqw, 22px);
     width: clamp(16px, 4.8cqw, 22px);
   }
-  .esim-iccid-copy {
-    height: 1em;
-    width: 1em;
+  .esim-iccid-copy,
+  .esim-detail-copy {
+    height: 1.1em;
+    width: 1.1em;
   }
   .esim-register-cta {
     width: 100%;

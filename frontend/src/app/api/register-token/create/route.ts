@@ -10,6 +10,7 @@ type RegisterTokenRequest = {
   twe?: string;
   twp?: string;
   referralName?: string;
+  createShortUrl?: boolean;
 };
 
 function clean(value: unknown) {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
   const twe = clean(body.twe);
   const twp = clean(body.twp);
   const referralName = clean(body.referralName);
+  const createShortUrl = body.createShortUrl !== false;
 
   if (!serial && !twe && !twp) {
     return NextResponse.json({ error: 'serial, twe, or twp is required' }, { status: 400 });
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
   const hasExplicitReferral = Boolean(twp || twe);
   const referralPrefix = twp ? 'TWP' : 'TWE';
   const referralCode = twp || twe || '8937777';
-  const shortId = transport.token
+  const shortId = createShortUrl && transport.token
     ? await createTokenRecord('register', {
         clipboardText: transport.clipboardText,
         referralName: referralName || (hasExplicitReferral ? '' : 'Tone Wow HQ'),

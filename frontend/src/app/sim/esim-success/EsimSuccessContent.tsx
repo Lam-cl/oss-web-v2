@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
 import { QRCodeCanvas } from 'qrcode.react';
+import { detectDeviceType, openToneWowAppWithRegistration, type DeviceType } from '@/app/register/appLauncher';
 
 type EsimDetails = {
   refNo: string;
@@ -47,7 +48,8 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerMessage, setRegisterMessage] = useState('');
   const [successTokenId, setSuccessTokenId] = useState('');
-  const [deviceType, setDeviceType] = useState<'ios' | 'android' | 'other'>('other');
+  const [registrationClipboardText, setRegistrationClipboardText] = useState('');
+  const [deviceType, setDeviceType] = useState<DeviceType>('other');
   const [promoter, setPromoter] = useState<EsimPromoterSession | null>(null);
   const [details, setDetails] = useState<EsimDetails>({
     refNo: '',
@@ -62,16 +64,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
   const { simSerial, esimQR, pin1, puk1 } = details;
 
   useEffect(() => {
-    const ua = navigator.userAgent || '';
-    const platform = navigator.platform || '';
-    const isIpadOS = platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-    if (/iPhone|iPad|iPod/i.test(ua) || isIpadOS) {
-      setDeviceType('ios');
-    } else if (/Android/i.test(ua)) {
-      setDeviceType('android');
-    } else {
-      setDeviceType('other');
-    }
+    setDeviceType(detectDeviceType());
 
     const readStoredPromoter = () => {
       try {
@@ -106,11 +99,12 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
       if (successToken) {
         setSuccessTokenId(successToken);
         try {
-          const res = await fetch(`/api/esim-success-token/resolve?token=${encodeURIComponent(successToken)}`);
+          const res = await fetch(`/esim-success-token/resolve?token=${encodeURIComponent(successToken)}`);
           const data = await res.json().catch(() => null);
           if (!res.ok || !data?.details) throw new Error(data?.error || 'Unable to load saved eSIM details.');
           setDetails(data.details as EsimDetails);
           if (data.promoter) setPromoter(data.promoter as EsimPromoterSession);
+          if (data.registration?.clipboardText) setRegistrationClipboardText(data.registration.clipboardText);
           try {
             sessionStorage.setItem('tw_esim_details', JSON.stringify(data.details));
           } catch { /* ignore */ }
@@ -139,7 +133,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
         } catch { /* ignore */ }
 
         try {
-          const res = await fetch('/api/esim-success-token/create', {
+          const res = await fetch('/esim-success-token/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ details: nextDetails, promoter: storedPromoter }),
@@ -320,19 +314,20 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
     setRegisterMessage('');
 
     try {
-      if (successTokenId && !successTokenId.includes('.')) {
-        window.location.href = `/register/${encodeURIComponent(successTokenId)}`;
+      if (registrationClipboardText) {
+        await openToneWowAppWithRegistration(registrationClipboardText, deviceType);
+        setRegisterLoading(false);
         return;
       }
 
-      const body: { serial?: string; twe?: string; twp?: string; referralName?: string } = {};
+      const body: { serial?: string; twe?: string; twp?: string; referralName?: string; createShortUrl: boolean } = { createShortUrl: false };
       if (simSerial) body.serial = simSerial;
       if (promoter?.name) body.referralName = promoter.name;
       if (registerPrefix === 'twp' && registerCode) body.twp = registerCode;
       else if (registerPrefix === 'twe' && registerCode) body.twe = registerCode;
       else body.twe = '8937777';
 
-      const res = await fetch('/api/register-token/create', {
+      const res = await fetch('/register-token/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -343,7 +338,9 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
         throw new Error(data?.error || 'Unable to prepare registration token. Please try again.');
       }
 
-      window.location.href = data.registerUrl || '/register';
+      setRegistrationClipboardText(data.clipboardText);
+      await openToneWowAppWithRegistration(data.clipboardText, deviceType);
+      setRegisterLoading(false);
     } catch (err: any) {
       setRegisterMessage(err?.message || 'Unable to prepare registration token. Please try again.');
       setRegisterLoading(false);
@@ -402,39 +399,50 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
                 </span>
               </div>
 
-              <div className="esim-sim-back-card">
-                <img
-                  src="/images/tonewow-sim-clean-transparent.png"
-                  alt="Tone Wow SIM card back"
-                  className="esim-sim-template"
-                />
-                <div className="esim-sim-overlay">
-                  <div className="esim-sim-barcode esim-sim-overlay-barcode">
+              <div className="esim-details-card">
+                <div className="esim-details-card-header">
+                  <span className="esim-details-card-check" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                  </span>
+                  <div>
+                    <h4>eSIM Details</h4>
+                    <p>Keep these details for registration</p>
+                  </div>
+                </div>
+
+                <div className="esim-details-field">
+                  <label>ICCID / SIM Serial</label>
+                  <div className="esim-details-pill esim-details-serial-pill">
+                    <strong>{groupedSerial}</strong>
+                    {simSerial && <button onClick={copyEID} className="esim-copy-btn esim-detail-copy" title="Copy ICCID / SIM Serial">{renderCopyIcon(copied)}</button>}
+                  </div>
+                </div>
+
+                <div className="esim-details-field">
+                  <label>Barcode</label>
+                  <div className="esim-details-barcode-box">
                     {simSerial ? (
                       <svg ref={barcodeRef} aria-label="Scannable ICCID barcode" />
                     ) : (
                       <div className="esim-sim-barcode-empty">Barcode not available</div>
                     )}
-                    <div className="esim-sim-serial-row">
-                      <span>{groupedSerial}</span>
-                      {simSerial && <button onClick={copyEID} className="esim-copy-btn esim-iccid-copy" title="Copy ICCID">{renderCopyIcon(copied)}</button>}
+                    <div className="esim-details-barcode-text">{groupedSerial}</div>
+                  </div>
+                </div>
+
+                <div className="esim-details-code-grid">
+                  <div className="esim-details-field">
+                    <label>PIN</label>
+                    <div className="esim-details-pill">
+                      <strong>{pin1 || '0000'}</strong>
+                      {pin1 && <button onClick={copyPIN} className="esim-copy-btn esim-detail-copy" title="Copy PIN">{renderCopyIcon(copiedPin)}</button>}
                     </div>
                   </div>
-
-                  <div className="esim-sim-codes">
-                    <div className="esim-sim-code-block">
-                      <span>PIN</span>
-                      <div className="esim-sim-code-value">
-                        <strong>{pin1 || '0000'}</strong>
-                        {pin1 && <button onClick={copyPIN} className="esim-copy-btn" title="Copy PIN">{renderCopyIcon(copiedPin)}</button>}
-                      </div>
-                    </div>
-                    <div className="esim-sim-code-block">
-                      <span>PUK</span>
-                      <div className="esim-sim-code-value">
-                        <strong>{puk1 || '00000000'}</strong>
-                        {puk1 && <button onClick={copyPUK} className="esim-copy-btn" title="Copy PUK">{renderCopyIcon(copiedPuk)}</button>}
-                      </div>
+                  <div className="esim-details-field">
+                    <label>PUK</label>
+                    <div className="esim-details-pill">
+                      <strong>{puk1 || '00000000'}</strong>
+                      {puk1 && <button onClick={copyPUK} className="esim-copy-btn esim-detail-copy" title="Copy PUK">{renderCopyIcon(copiedPuk)}</button>}
                     </div>
                   </div>
                 </div>

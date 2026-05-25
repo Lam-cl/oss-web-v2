@@ -508,7 +508,7 @@ function SIMPurchaseWizard() {
       const ids = FU_PLAN_IDS[key];
       if (ids) return simType === 'esim' ? ids.esim : ids.physical;
     }
-    if (purchaseMode === 'superlite') return 28;
+    if (purchaseMode === 'superlite') return 34;
     if (simType === 'esim') return 9;
     return 1;
   };

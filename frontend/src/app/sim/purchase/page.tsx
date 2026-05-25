@@ -12,7 +12,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getBundleProducts, verifyPromoter, getSettings, getDataPlans, saveRefAllocation, type ApiPlanItem } from '@/lib/api';
 import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES, getNestApiBaseUrl } from '@/lib/constants';
-import { isEsimEnabled } from '@/lib/features';
 import type { NumberResult } from '@/types';
 
 /* ═══════════════════════════════════════════════
@@ -22,7 +21,7 @@ const STEPS = [
   'Choose SIM',
   'Choose Plan',
   'Insurance',
-  'Complete Order',
+  'Details & Checkout',
 ];
 
 const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
@@ -131,7 +130,6 @@ const inputStyle: React.CSSProperties = {
 function SIMPurchaseWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const esimEnabled = isEsimEnabled();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [BASE_SIM_PRICE, setBasePrice] = useState(DEFAULT_BASE_SIM_PRICE);
@@ -355,7 +353,7 @@ function SIMPurchaseWizard() {
   const effectiveBasePrice = directCheckout ? 10 : BASE_SIM_PRICE;
   const hasPromoter = !!(form.promoterCode && form.promoterCode.trim());
   const isBareOrder = !hasPromoter && !selectedDataPlan && !insuranceAddon && !selectedNumber;
-  const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : isBareOrder ? 5 : 0;
+  const shippingFee = hasPromoter ? 10 : isBareOrder ? 5 : 0;
 
   const numberPrice = selectedNumber?.price || 0;
 
@@ -364,7 +362,6 @@ function SIMPurchaseWizard() {
     : effectiveBasePrice + planAddon + insurancePrice + shippingFee;
 
   const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
-  const simOrderLabel = simType === 'esim' ? 'eSIM' : 'SIM';
 
   /* ── Determine planid for OSSPayment ── */
   const determinePlanId = (): number => {
@@ -383,7 +380,9 @@ function SIMPurchaseWizard() {
     if (step === 0) return !(hasReferral && !promoterName);
     if (step === 1) return true;
     if (step === 2) return true;
-    if (step === 3) return !!(form.fullName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
+    if (step === 3) return simType === 'esim'
+      ? !!(form.fullName && form.email && form.phone && form.nric)
+      : !!(form.fullName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
     return true;
   };
 
@@ -451,13 +450,7 @@ function SIMPurchaseWizard() {
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim') {
-        const promoData = {
-          prefix: hasPromoter ? form.promoterPrefix : '',
-          code: hasPromoter ? form.promoterCode : '',
-          email: form.email,
-          twpReferenceID,
-          alloReferenceID,
-        };
+        const promoData = hasPromoter ? { prefix: form.promoterPrefix, code: form.promoterCode, email: form.email } : { prefix: '', code: '', email: form.email };
         localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
         setShowEsimSuccess(true);
@@ -492,11 +485,11 @@ function SIMPurchaseWizard() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="#2563eb"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.4px' }}>What's Included</span>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#1d4ed8', marginBottom: 4 }}>Included for {nb.freeMonths} months:</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#1d4ed8', marginBottom: 4 }}>FREE for {nb.freeMonths} months:</div>
               {[nb.plan, ...nb.benefits].map((b, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#1e40af', marginTop: 3 }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="#2563eb"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-                  <span>{b}</span>
+                  <span><strong style={{ color: '#1d4ed8' }}>FREE</strong> {b}</span>
                 </div>
               ))}
             </div>
@@ -507,7 +500,7 @@ function SIMPurchaseWizard() {
     return (
       <>
         <div className="sidebar-order-row">
-          <span>{simOrderLabel}</span>
+          <span>Base SIM</span>
           <span>{formatRM(effectiveBasePrice)}</span>
         </div>
         {selectedDataPlan && (
@@ -709,17 +702,14 @@ function SIMPurchaseWizard() {
                   </div>
                 </div>
 
-                {/* eSIM */}
+                {/* eSIM — Coming Soon */}
                 <div
-                  className={`sim-type-card${esimEnabled && simType === 'esim' ? ' sim-type-card--active' : ''}${!esimEnabled ? ' sim-type-card--disabled' : ''}`}
-                  onClick={() => {
-                    if (esimEnabled) setSimType('esim');
-                  }}
-                  style={{ cursor: esimEnabled ? 'pointer' : 'not-allowed', opacity: esimEnabled ? 1 : 0.5 }}
+                  className="sim-type-card sim-type-card--disabled"
+                  style={{ cursor: 'not-allowed', opacity: 0.5 }}
                 >
-                  <div className={`sim-type-radio${esimEnabled && simType === 'esim' ? ' sim-type-radio--active' : ''}`} />
-                  <div className={`sim-type-icon${esimEnabled && simType === 'esim' ? ' sim-type-icon--active' : ''}`}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={esimEnabled && simType === 'esim' ? '#2563eb' : '#94a3b8'} strokeWidth="1.8">
+                  <div className="sim-type-radio" />
+                  <div className="sim-type-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.8">
                       <rect x="7" y="3" width="10" height="16" rx="2" /><circle cx="12" cy="16" r="1" />
                     </svg>
                   </div>
@@ -728,20 +718,13 @@ function SIMPurchaseWizard() {
                     <p className="sim-type-desc">Digital SIM · No physical card</p>
                   </div>
                   <div className="sim-type-right">
-                    {esimEnabled ? (
-                      <>
-                        <p className="sim-type-price">{formatRM(effectiveBasePrice)}</p>
-                        {simType === 'esim' && <span className="sim-type-selected-badge">Selected</span>}
-                      </>
-                    ) : (
-                      <span className="sim-type-coming-soon">Coming Soon</span>
-                    )}
+                    <span className="sim-type-coming-soon">Coming Soon</span>
                   </div>
                 </div>
               </div>
 
               {/* eSIM Compatibility Check */}
-              {esimEnabled && simType === 'esim' && (
+              {simType === 'esim' && (
                 <div className="esim-compat-banner" style={{ marginTop: 16 }}>
                   {esimCompatible === null ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -834,8 +817,8 @@ function SIMPurchaseWizard() {
           {/* ════════════ STEP 1: Choose Plan ════════════ */}
           {step === 1 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Pick Your Data Plan</h2>
-              <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
+              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Choose Data Plan</h2>
+              <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>All plans include RM30,000 Takaful protection. Skip if not needed.</p>
 
               <div className="plans-grid-fu">
                 {FU_PLANS.map(plan => {
@@ -945,9 +928,9 @@ function SIMPurchaseWizard() {
           {/* ════════════ STEP 2: Insurance Add-on ════════════ */}
           {step === 2 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Enhanced Protection</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Insurance Coverage</h2>
               <p style={{ color: '#64748b', marginBottom: selectedDataPlan ? 8 : 24, fontSize: 14 }}>
-                Get greater peace of mind with RM54,000 coverage.
+                Upgrade your protection with RM54,000 coverage.
               </p>
 
               <div className="purchase-grid-insurance">
@@ -978,11 +961,11 @@ function SIMPurchaseWizard() {
                       <div className="fu-plan-features">
                         <div className="fu-plan-feature">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                          <span>PA Takaful <strong>RM50,000</strong> (1 Year)</span>
+                          <span>PA Takaful <strong>RM50,000</strong> — Zurich</span>
                         </div>
                         <div className="fu-plan-feature">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                          <span>Life Insurance <strong>RM4,000</strong> (1 Year)</span>
+                          <span>Life Insurance <strong>RM4,000</strong> — Ammet</span>
                         </div>
                         <div className="fu-plan-feature">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
@@ -1023,17 +1006,17 @@ function SIMPurchaseWizard() {
                         {selectedDataPlan ? (
                           <div className="fu-plan-feature">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                            <span>PA Takaful <strong>RM30,000</strong> (1 Year) (included with plan)</span>
+                            <span>PA Takaful <strong>RM30,000</strong> (included with plan)</span>
                           </div>
                         ) : (
                           <>
                             <div className="fu-plan-feature">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                              <span>RM10,000 PA Takaful Coverage (1 Year) is only active with a minimum reload of RM30/month</span>
+                              <span>RM10,000 PA Takaful Coverage is only active with a min reload of RM30/month</span>
                             </div>
                             <div className="fu-plan-feature">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                              <span>Get Free RM30,000 PA Takaful (1 Year) upon subscription of any FU Data Plans within 7 days after SIM activation</span>
+                              <span>Get Free RM30,000 PA Takaful upon subscription of any FU Data Plans within 7 days after SIM activation</span>
                             </div>
                           </>
                         )}
@@ -1046,11 +1029,11 @@ function SIMPurchaseWizard() {
             </div>
           )}
 
-          {/* ════════════ STEP 3: Complete Your Order ════════════ */}
+          {/* ════════════ STEP 3: Details & Checkout ════════════ */}
           {step === 3 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Complete Your Order</h2>
-              <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Fill in your details and checkout securely.</p>
+              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Details & Checkout</h2>
+              <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Fill in your details and complete payment.</p>
 
               <div className="purchase-grid-details-checkout">
                 {/* ── LEFT: Customer + Shipping ── */}
@@ -1072,31 +1055,33 @@ function SIMPurchaseWizard() {
                     </div>
                   </div>
 
-                  {/* Address — required for both Physical SIM and eSIM */}
-                  <div style={cardStyle}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Shipping Address</h3>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={labelStyle}>Address *</label>
-                      <input name="address1" value={form.address1} onChange={handleChange} style={inputStyle} />
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={labelStyle}>Address 2</label>
-                      <input name="address2" value={form.address2} onChange={handleChange} style={inputStyle} />
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={labelStyle}>Postcode *</label>
-                      <input name="postcode" value={form.postcode} onChange={handleChange} placeholder="50000" inputMode="numeric" style={inputStyle} />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div><label style={labelStyle}>City *</label><input name="city" value={form.city} onChange={handleChange} style={inputStyle} /></div>
-                      <div>
-                        <label style={labelStyle}>State</label>
-                        <select name="state" value={form.state} onChange={handleChange} style={{ ...inputStyle, height: 46 }}>
-                          {MALAYSIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                  {/* Shipping — only for Physical SIM */}
+                  {simType === 'physical' && (
+                    <div style={cardStyle}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Shipping Address</h3>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={labelStyle}>Address *</label>
+                        <input name="address1" value={form.address1} onChange={handleChange} style={inputStyle} />
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={labelStyle}>Address 2</label>
+                        <input name="address2" value={form.address2} onChange={handleChange} style={inputStyle} />
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={labelStyle}>Postcode *</label>
+                        <input name="postcode" value={form.postcode} onChange={handleChange} placeholder="50000" inputMode="numeric" style={inputStyle} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div><label style={labelStyle}>City *</label><input name="city" value={form.city} onChange={handleChange} style={inputStyle} /></div>
+                        <div>
+                          <label style={labelStyle}>State</label>
+                          <select name="state" value={form.state} onChange={handleChange} style={{ ...inputStyle, height: 46 }}>
+                            {MALAYSIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                   {simType === 'esim' && (
                     <div style={cardStyle}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0' }}>
@@ -1126,7 +1111,7 @@ function SIMPurchaseWizard() {
                       ) : (
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                            <span>{simOrderLabel}</span>
+                            <span>Base SIM</span>
                             <span style={{ fontWeight: 600 }}>{formatRM(effectiveBasePrice)}</span>
                           </div>
                           {selectedDataPlan && (
@@ -1143,14 +1128,12 @@ function SIMPurchaseWizard() {
                           )}
                         </>
                       )}
-                      {simType !== 'esim' && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                          <span>Shipping</span>
-                          <span style={{ fontWeight: 600, color: shippingFee > 0 ? '#1e293b' : '#16a34a' }}>
-                            {shippingFee > 0 ? formatRM(shippingFee) : 'Free'}
-                          </span>
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                        <span>Shipping</span>
+                        <span style={{ fontWeight: 600, color: shippingFee > 0 ? '#1e293b' : '#16a34a' }}>
+                          {shippingFee > 0 ? formatRM(shippingFee) : 'Free'}
+                        </span>
+                      </div>
                     </div>
                     <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '14px 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 800, color: '#2563eb' }}>

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import DeviceSection from './DeviceSection';
 import SIMSection from './SIMSection';
 import type { AppSettings } from '@/lib/api';
-import { isDevicesEnabled, isMerchandiseEnabled } from '@/lib/features';
 
 type TabKey = 'devices' | 'sim' | 'merchandise';
 
@@ -60,21 +59,18 @@ function ComingSoonHero({ kind }: { kind: 'devices' | 'merchandise' }) {
 
 export default function CategoryTabs({ settings }: Props) {
   const { showDevices, showMerchandise } = settings;
-  const devicesEnabled = isDevicesEnabled() && showDevices;
-  const merchandiseEnabled = isMerchandiseEnabled() && showMerchandise;
   const [activeTab, setActiveTab] = useState<TabKey>('sim');
 
   return (
     <section className="container" style={{ paddingTop: 32, paddingBottom: 40 }}>
       <div className="category-tabs">
         <button
-          disabled={!devicesEnabled}
-          onClick={() => devicesEnabled && setActiveTab('devices')}
-          className={`category-tab ${activeTab === 'devices' ? 'active' : ''}`}
-          style={!devicesEnabled ? { cursor: 'not-allowed', opacity: 0.6 } : undefined}
+          disabled
+          className="category-tab"
+          style={{ cursor: 'not-allowed', opacity: 0.6 }}
         >
           {DeviceIcon}
-          {devicesEnabled ? 'Devices' : 'Coming Soon'}
+          Coming Soon
         </button>
         <button
           onClick={() => setActiveTab('sim')}
@@ -84,20 +80,19 @@ export default function CategoryTabs({ settings }: Props) {
           SIM
         </button>
         <button
-          disabled={!merchandiseEnabled}
-          onClick={() => merchandiseEnabled && setActiveTab('merchandise')}
-          className={`category-tab ${activeTab === 'merchandise' ? 'active' : ''}`}
-          style={!merchandiseEnabled ? { cursor: 'not-allowed', opacity: 0.6 } : undefined}
+          disabled
+          className="category-tab"
+          style={{ cursor: 'not-allowed', opacity: 0.6 }}
         >
           {MerchIcon}
-          {merchandiseEnabled ? 'Merchandise' : 'Coming Soon'}
+          Coming Soon
         </button>
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'devices' && (devicesEnabled ? <DeviceSection /> : <ComingSoonHero kind="devices" />)}
+      {activeTab === 'devices' && (showDevices ? <DeviceSection /> : <ComingSoonHero kind="devices" />)}
       {activeTab === 'sim' && <SIMSection />}
-      {activeTab === 'merchandise' && (merchandiseEnabled ? (
+      {activeTab === 'merchandise' && (showMerchandise ? (
         <div style={{ padding: '48px 0', textAlign: 'center' }}>
           <h2>Merchandise</h2>
           <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: '1.1rem' }}>

@@ -13,11 +13,8 @@ export function middleware(req: NextRequest) {
     return res;
   };
 
-  // Protect direct/specialized purchase links.
-  if (
-    pathname === '/sim/purchase' &&
-    (searchParams.has('dataPlanID') || ['superlite', 'superliteplus'].includes(searchParams.get('simID') || ''))
-  ) {
+  // Only protect /sim/purchase with dataPlanID param
+  if (pathname === '/sim/purchase' && searchParams.has('dataPlanID')) {
     const token = process.env.DIRECT_CHECKOUT_TOKEN;
     if (!token) {
       return NextResponse.next({ request: { headers: requestHeaders } });
@@ -32,7 +29,6 @@ export function middleware(req: NextRequest) {
     if (!valid) {
       const url = req.nextUrl.clone();
       url.searchParams.delete('dataPlanID');
-      url.searchParams.delete('simID');
       url.searchParams.delete('token');
       return withOrigin(NextResponse.redirect(url));
     }

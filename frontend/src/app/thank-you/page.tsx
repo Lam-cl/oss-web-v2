@@ -52,24 +52,6 @@ function ThankYouContent() {
     setTimeout(check, 3000);
   }, [refNo, gkashStatus]);
 
-  useEffect(() => {
-    if (status === 'failed') {
-      localStorage.removeItem('tw_esim_order');
-      return;
-    }
-    if (status !== 'success') return;
-    try {
-      const raw = localStorage.getItem('tw_esim_order');
-      if (!raw) return;
-      const order = JSON.parse(raw) as { refNo?: string };
-      if (!order.refNo || order.refNo === refNo) {
-        router.replace(`/sim/esim-success${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
-      }
-    } catch {
-      localStorage.removeItem('tw_esim_order');
-    }
-  }, [status, refNo, router]);
-
   if (status === 'loading') {
     return (
       <div className="container" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>

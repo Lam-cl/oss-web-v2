@@ -1688,6 +1688,36 @@ h5 { font-size: 1.1rem; }
   color: var(--text-muted);
   margin-top: 4px;
 }
+.sim-priv-cards {
+  max-width: 760px;
+  margin-bottom: 28px;
+}
+.sim-priv-card {
+  min-width: 0;
+}
+.sim-priv-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  margin: 0 0 10px;
+}
+.sim-priv-card .priv-card-name {
+  color: #ffe000;
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+.sim-priv-card .priv-card-benefit {
+  align-items: flex-start;
+  line-height: 1.35;
+}
+.sim-priv-card .priv-card-benefit svg {
+  margin-top: 1px;
+}
+.sim-priv-card .priv-price-period {
+  max-width: 90px;
+}
 
 .priv-skip {
   margin-top: 8px;
@@ -1777,7 +1807,8 @@ h5 { font-size: 1.1rem; }
   display: flex;
   justify-content: center;
   gap: 16px;
-  max-width: 780px;
+  align-items: stretch;
+  max-width: 980px;
   margin: 0 auto 24px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
@@ -1797,6 +1828,22 @@ h5 { font-size: 1.1rem; }
     min-width: unset;
     flex: none;
     width: 100%;
+  }
+  .sim-cat-tier {
+    grid-template-columns: 68px 70px 1fr;
+    padding: 9px 10px;
+  }
+  .sim-cat-tier span {
+    font-size: 11px;
+  }
+  .sim-cat-tier strong {
+    font-size: 14px;
+  }
+  .sim-cat-highlight strong {
+    font-size: 20px;
+  }
+  .sim-cat-benefits li {
+    font-size: 12px;
   }
 }
 
@@ -2881,87 +2928,58 @@ h5 { font-size: 1.1rem; }
   }
 }
 
-/* ─── SIM Category Cards — flat header-only design ─── */
+/* ─── SIM Category Cards — device-card inspired design ─── */
 .sim-cat-card {
   position: relative;
   min-width: 220px;
   flex: 1;
   flex-shrink: 0;
-  border-radius: 16px;
-  padding: 20px 18px 18px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
   cursor: pointer;
-  scroll-snap-align: center;
-  overflow: visible;
-  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   margin-top: 18px;
+  overflow: visible;
+  padding: 20px;
+  scroll-snap-align: center;
+  text-align: left;
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
 }
 .sim-cat-card:hover {
+  box-shadow: var(--shadow-lg) !important;
   transform: translateY(-2px);
 }
-.sim-cat-card, .sim-cat-card:hover, .sim-cat-card:active { box-shadow: none !important; }
+.sim-cat-card, .sim-cat-card:active { box-shadow: none !important; }
 
 .sim-cat-card--normal {
-  background: linear-gradient(135deg, #0074be 0%, #005a9e 100%);
-  border: 2px solid transparent;
+  border-top: 4px solid #0074be;
 }
 .sim-cat-card--normal.sim-cat-card--active {
-  border-color: #fce003;
+  border-color: #0074be;
 }
 
 .sim-cat-card--special {
-  background: linear-gradient(135deg, #0a0a14 0%, #131328 60%, #0f0f20 100%);
-  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-top: 4px solid #d4af37;
 }
 .sim-cat-card--special.sim-cat-card--active {
   border-color: #d4af37;
 }
 
-/* Shimmer sweep wrapper clips overflow without affecting crown */
-.sim-cat-shimmer-wrap {
-  position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 1;
-}
-.sim-cat-shimmer {
-  position: absolute;
-  top: 0;
-  left: -120%;
-  width: 60%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 215, 0, 0.12) 50%, transparent 100%);
-  animation: shimmerSlide 4s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 1;
-}
-@keyframes shimmerSlide {
-  0%   { left: -120%; opacity: 0; }
-  20%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { left: 140%; opacity: 0; }
-}
-
-/* Floating crown — sits above the card top-right corner */
-.sim-cat-crown {
-  position: absolute;
-  top: -18px;
-  right: 10px;
-  font-size: 32px;
-  line-height: 1;
-  animation: crownFloat 3.5s ease-in-out infinite;
-  filter: none;
-  z-index: 10;
-  pointer-events: none;
-  user-select: none;
-}
-@keyframes crownFloat {
-  0%, 100% { transform: translateY(0) rotate(-4deg) scale(1); }
-  50%       { transform: translateY(-7px) rotate(4deg) scale(1.05); }
-}
-
 /* Labels */
+.sim-cat-card-header,
+.sim-cat-label-pill,
+.sim-cat-highlight,
+.sim-cat-divider,
+.sim-cat-choice-label,
+.sim-cat-tier-list,
+.sim-cat-benefits {
+  position: relative;
+  z-index: 2;
+}
 .sim-cat-label {
   font-size: 13px;
   font-weight: 500;
@@ -2973,48 +2991,133 @@ h5 { font-size: 1.1rem; }
 .sim-cat-label--gold {
   color: rgba(212, 175, 55, 0.85);
 }
+.sim-cat-label-pill {
+  align-self: flex-start;
+  background: rgba(0, 116, 190, 0.1);
+  border-radius: 4px;
+  color: #005a9e;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 5px 9px;
+  text-transform: uppercase;
+}
+.sim-cat-label-pill--gold {
+  background: rgba(212, 175, 55, 0.14);
+  color: #8a6500;
+}
 
 /* Titles */
 .sim-cat-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #ffe000;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 800;
   margin: 0;
   line-height: 1.15;
   position: relative;
   z-index: 2;
 }
-.sim-cat-title--gold {
-  background: linear-gradient(90deg, #f5d020 0%, #f0a500 30%, #d4af37 60%, #f5e86a 80%, #f0a500 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: goldFlow 3s linear infinite;
+.sim-cat-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 6px 0 0;
 }
-@keyframes goldFlow {
-  0%   { background-position: 0% center; }
-  100% { background-position: 200% center; }
+.sim-cat-subtitle--gold {
+  color: var(--text-secondary);
 }
-
-/* Selected badge */
-.sim-cat-badge {
-  position: absolute;
-  top: 0;
-  left: 0;
-  background: #ff0077;
-  color: white;
-  font-size: 11px;
+.sim-cat-highlight {
+  color: var(--text-primary);
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+.sim-cat-highlight strong {
+  color: var(--tw-blue);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.sim-cat-divider {
+  background: var(--border);
+  height: 1px;
+  margin: 0;
+}
+.sim-cat-divider--gold {
+  background: var(--border);
+}
+.sim-cat-choice-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin: 0 0 -4px;
+  text-transform: uppercase;
+}
+.sim-cat-tier-list {
+  display: grid;
+  gap: 8px;
+}
+.sim-cat-tier {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 78px 78px 1fr;
+  padding: 9px 11px;
+}
+.sim-cat-tier span {
+  font-size: 12px;
   font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 16px 0 12px 0;
-  line-height: 1;
-  white-space: nowrap;
-  z-index: 3;
+  line-height: 1.2;
 }
-.sim-cat-badge--gold {
-  background: linear-gradient(90deg, #d4af37, #f5d020);
-  color: #0a0a14;
+.sim-cat-tier strong {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 850;
+}
+.sim-cat-tier span:last-child {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.sim-cat-tier-name {
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+.sim-cat-benefits {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sim-cat-benefits li {
+  align-items: flex-start;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 8px;
+  line-height: 1.35;
+}
+.sim-cat-benefits svg {
+  color: var(--tw-blue);
+  flex: 0 0 auto;
+  height: 17px;
+  margin-top: 1px;
+  width: 17px;
+}
+.sim-cat-benefits--gold svg {
+  color: #b58500;
+}
+.sim-cat-title--gold {
+  color: var(--text-primary);
 }
 
 /* Stagger for new cat cards */

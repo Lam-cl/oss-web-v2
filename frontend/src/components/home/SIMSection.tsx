@@ -26,6 +26,32 @@ const CARD_FEATURES = [
   'Shared Hotspot',
 ];
 
+const NORMAL_NUMBER_BENEFITS = [
+  'Customizable SIM plan',
+  'Select your random number upon registration',
+  'Free welcome data upon activation',
+  'Cashback with every top up',
+  'Free 20GB bonus data with data plan subscription',
+  'CelcomDigi network coverage nationwide',
+];
+
+const SPECIAL_NUMBER_TIERS = [
+  { label: 'Premium', price: 'RM988', plan: 'FU35', details: '150GB x 18 months' },
+  { label: 'VIP', price: 'RM2298', plan: 'FU50', details: '300GB x 36 months' },
+  { label: 'VVIP', price: 'RM3088', plan: 'FU60', details: '500GB x 36 months' },
+];
+
+const SPECIAL_NUMBER_BENEFITS = [
+  'Free insurance up to RM54,000',
+  'Auto monthly reload',
+  'CelcomDigi network coverage nationwide',
+];
+
+const SPECIAL_NUMBER_INCLUDES = [
+  ...SPECIAL_NUMBER_TIERS.map((tier) => `${tier.label}: ${tier.price} · ${tier.plan} · ${tier.details}`),
+  ...SPECIAL_NUMBER_BENEFITS,
+];
+
 const simUSPItems = [
   {
     icon: (
@@ -156,26 +182,63 @@ export default function SIMSection() {
     <div className="sim-section" ref={sectionRef}>
       <USPBar items={simUSPItems} />
 
-      {/* SIM Sub-category cards */}
-      <div className="sim-plans" style={{ marginBottom: 28 }}>
-        {/* Normal SIM card */}
-        <div
-          className="sim-cat-card sim-cat-card--normal"
+      <div className="priv-cards sim-priv-cards">
+        <button
+          className="priv-card sim-priv-card"
           onClick={() => router.push('/sim/purchase')}
+          type="button"
         >
-          <h3 className="sim-cat-title">Normal Number</h3>
-        </div>
+          <div className="priv-card-header">
+            <h4 className="priv-card-name">Normal Number</h4>
+          </div>
+          <div className="priv-card-body">
+            <div className="priv-card-divider" />
+            <p className="sim-priv-subtitle">Perfect for everyday use</p>
+            <p className="priv-benefits-label">Includes:</p>
+            <ul className="priv-card-benefits">
+              {NORMAL_NUMBER_BENEFITS.map((benefit) => (
+                <li key={benefit} className="priv-card-benefit">
+                  <CheckIcon />
+                  <span>{benefit}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="priv-card-cta">
+              <span className="priv-btn priv-btn--default">Select</span>
+            </div>
+          </div>
+        </button>
 
-        {/* Special Number card */}
-        <div
-          className={`sim-cat-card sim-cat-card--special${simCategory === 'special' ? ' sim-cat-card--active' : ''}`}
+        <button
+          className={`priv-card priv-card--best sim-priv-card${simCategory === 'special' ? ' priv-card--active' : ''}`}
           onClick={() => setSimCategory('special')}
+          type="button"
         >
-          {simCategory === 'special' && <span className="sim-cat-badge sim-cat-badge--gold">Selected</span>}
-          <div className="sim-cat-crown" aria-hidden="true">👑</div>
-          <h3 className="sim-cat-title sim-cat-title--gold">Special Number</h3>
-          <div className="sim-cat-shimmer-wrap" aria-hidden="true"><div className="sim-cat-shimmer" /></div>
-        </div>
+          <div className="priv-card-header">
+            <span className="priv-best-badge">Memorable Number</span>
+            <h4 className="priv-card-name">Special Number</h4>
+          </div>
+          <div className="priv-card-body">
+            <div className="priv-card-divider" />
+            <p className="sim-priv-subtitle">Choose a memorable number and stand out</p>
+            <p className="priv-benefits-label">Includes:</p>
+            <ul className="priv-card-benefits">
+              {SPECIAL_NUMBER_INCLUDES.map((benefit) => (
+                <li key={benefit} className="priv-card-benefit">
+                  <CheckIcon />
+                  <span>{benefit}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="priv-card-cta">
+              {simCategory === 'special' ? (
+                <span className="priv-btn priv-btn--selected">Selected ✓</span>
+              ) : (
+                <span className="priv-btn priv-btn--default">Select</span>
+              )}
+            </div>
+          </div>
+        </button>
       </div>
 
 

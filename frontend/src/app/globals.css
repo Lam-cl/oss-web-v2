@@ -862,6 +862,10 @@ h5 { font-size: 1.1rem; }
   margin: 0 auto;
 }
 
+.header-inner--logo-only {
+  justify-content: center;
+}
+
 .header-logo img {
   height: 32px;
   width: auto;

@@ -2,7 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-export function middleware(req: NextRequest) {
+async function readPostedToken(req: NextRequest): Promise<string> {
+  try {
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      return typeof body?.token === 'string' ? body.token : '';
+    }
+
+    const form = await req.formData();
+    const value = form.get('token');
+    return typeof value === 'string' ? value : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
 
   const requestHeaders = new Headers(req.headers);
@@ -21,6 +37,26 @@ export function middleware(req: NextRequest) {
     const token = process.env.DIRECT_CHECKOUT_TOKEN;
     if (!token) {
       return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+
+    if (req.method === 'POST') {
+      const postedToken = await readPostedToken(req);
+      const simID = searchParams.get('simID') || '';
+      const validSimID = ['superlite', 'superliteplus'].includes(simID);
+
+      const url = req.nextUrl.clone();
+      url.searchParams.delete('dataPlanID');
+      url.searchParams.delete('token');
+
+      if (validSimID && postedToken === token) {
+        url.searchParams.set('simID', simID);
+        const res = NextResponse.redirect(url, 303);
+        res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 300 });
+        return withOrigin(res);
+      }
+
+      url.searchParams.delete('simID');
+      return withOrigin(NextResponse.redirect(url, 303));
     }
 
     // Check Authorization header, ?token= query param, or auth cookie

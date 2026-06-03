@@ -490,7 +490,13 @@ function SIMPurchaseWizard() {
 
   const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
   const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(effectiveBasePrice);
-  const simOrderLabel = simType === 'esim' ? 'eSIM' : 'SIM';
+  const simOrderLabel = simType === 'esim'
+    ? 'eSIM'
+    : purchaseMode === 'superliteplus'
+      ? 'SIM (SuperLITE+)'
+      : purchaseMode === 'superlite'
+        ? 'SIM (SuperLITE)'
+        : 'SIM';
 
   /* ── Determine planid for OSSPayment ── */
   const determinePlanId = (): number => {
@@ -617,6 +623,7 @@ function SIMPurchaseWizard() {
   /* ── Stepper helpers ── */
   const isStepCompleted = (i: number) => !directCheckout && ((selectedNumber && i < 3) || i < step);
   const isStepActive = (i: number) => i === step;
+  const showOrderDetailsShipping = step === 3 && simType !== 'esim';
 
   /* ══════════════════════════════════════════════════════
      SIDEBAR ORDER SUMMARY CONTENT
@@ -666,6 +673,14 @@ function SIMPurchaseWizard() {
             <span>{formatRM(insurancePrice)}</span>
           </div>
         )}
+        {showOrderDetailsShipping && (
+          <div className="sidebar-order-row" style={{ marginTop: 6 }}>
+            <span>Shipping</span>
+            <span style={{ color: shippingFee > 0 ? '#1e293b' : '#16a34a' }}>
+              {shippingFee > 0 ? formatRM(shippingFee) : 'Free'}
+            </span>
+          </div>
+        )}
       </>
     );
   };
@@ -701,14 +716,6 @@ function SIMPurchaseWizard() {
           <div className="sidebar-order">
             <h4 className="sidebar-order-title">Order Details</h4>
             <SidebarOrderContent />
-            {step === 3 && shippingFee > 0 && (
-              <div className="sidebar-order-row" style={{ marginTop: 6 }}>
-                <span>Shipping</span>
-                <span style={{ color: '#1e293b' }}>
-                  {formatRM(shippingFee)}
-                </span>
-              </div>
-            )}
             <div className="sidebar-order-divider" />
             <div className="sidebar-order-row sidebar-order-total">
               <span>Total</span>
@@ -1359,7 +1366,7 @@ function SIMPurchaseWizard() {
         <div className="mobile-order-bar" onClick={() => setMobileOrderOpen(!mobileOrderOpen)}>
           <div className="mobile-order-total">
             <span style={{ fontSize: 12, color: '#64748b' }}>Total</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>{formatRM(currentRunningTotal)}</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>{formatRM(step === 3 ? total : currentRunningTotal)}</span>
           </div>
           <button className="mobile-order-toggle">
             {mobileOrderOpen ? 'Hide' : 'View Details'}
@@ -1374,7 +1381,7 @@ function SIMPurchaseWizard() {
             <div className="sidebar-order-divider" />
             <div className="sidebar-order-row sidebar-order-total">
               <span>Total</span>
-              <span>{formatRM(currentRunningTotal)}</span>
+              <span>{formatRM(step === 3 ? total : currentRunningTotal)}</span>
             </div>
           </div>
         )}

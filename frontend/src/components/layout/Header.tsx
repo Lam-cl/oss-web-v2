@@ -1,12 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useCartStore } from '@/store/cartStore';
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hideHeader, setHideHeader] = useState(false);
   const count = useCartStore((s) => s.getCount());
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const simID = params.get('simID');
+    setHideHeader(pathname === '/sim/purchase' && (simID === 'superlite' || simID === 'superliteplus'));
+    setMobileOpen(false);
+  }, [pathname]);
+
+  if (hideHeader) {
+    return null;
+  }
 
   return (
     <header className="site-header">

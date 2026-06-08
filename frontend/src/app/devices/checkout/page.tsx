@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBundleProductById } from '@/lib/api';
-import { MALAYSIAN_STATES, getNestApiBaseUrl } from '@/lib/constants';
+import { MALAYSIAN_STATES } from '@/lib/constants';
 import Link from 'next/link';
 
 /* ─── Step flow ─── */
@@ -202,6 +202,10 @@ function DeviceCheckoutInner() {
   const [error, setError] = useState('');
   const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
   const [memberId, setMemberId] = useState('');
+  const [paymentData, setPaymentData] = useState<{
+    paymentUrl: string;
+    paymentParams: Record<string, string>;
+  } | null>(null);
 
   /* ─── Delivery option ─── */
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup'>('delivery');
@@ -226,7 +230,7 @@ function DeviceCheckoutInner() {
   const twDebounce = useRef<NodeJS.Timeout | null>(null);
   const cityManual = useRef(false);
 
-  const SWIFTPAY_PROXY = `${getNestApiBaseUrl()}/payment/swiftpay/initiate`;
+  const GKASH_PROXY = '/gkash/initiate';
 
   /* ─── Load device ─── */
   useEffect(() => {
@@ -401,16 +405,41 @@ function DeviceCheckoutInner() {
         shippingCost: 0,
         description: `Order for ${device.name}`,
       };
+      const orderId = `DEV-${Date.now()}`;
+      const paymentPayload = {
+        orderId,
+        amount: monthlyPrice,
+        customerName: form.fullName,
+        customerEmail: form.email,
+        description: `tone wow Device Order ${orderId} - ${device.name}`,
+      };
 
-      const res = await fetch(SWIFTPAY_PROXY, {
+      localStorage.setItem('tw_pending_device_order', JSON.stringify({
+        orderId,
+        ...checkoutData,
+      }));
+
+      const res = await fetch(GKASH_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(checkoutData),
+        body: JSON.stringify(paymentPayload),
       });
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
 
-      if (!result.success || !result.paymentUrl) {
-        throw new Error(result.message || 'Gagal memulakan pembayaran SwiftPay');
+      if (!res.ok || !result.success || !result.paymentUrl) {
+        throw new Error(result.message || result.error || 'Gagal memulakan pembayaran GKash');
+      }
+
+      const paymentParams = result.paymentParams && typeof result.paymentParams === 'object'
+        ? Object.fromEntries(Object.entries(result.paymentParams).map(([key, value]) => [key, String(value)]))
+        : null;
+
+      if (paymentParams && Object.keys(paymentParams).length > 0) {
+        setPaymentData({
+          paymentUrl: result.paymentUrl,
+          paymentParams,
+        });
+        return;
       }
 
       window.location.href = result.paymentUrl;
@@ -426,6 +455,30 @@ function DeviceCheckoutInner() {
       <div className="container" style={{ padding: '80px 20px', textAlign: 'center' }}>
         <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
         <p style={{ color: '#64748b' }}>Loading checkout...</p>
+      </div>
+    );
+  }
+
+  if (paymentData) {
+    return (
+      <div className="container" style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, border: '3px solid #e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 24px' }} />
+        <h3>Redirecting to GKash payment...</h3>
+        <p style={{ color: '#64748b', marginBottom: 24 }}>
+          Please wait. You will be redirected to the payment page.
+        </p>
+        <form
+          id="gkash-form"
+          method="POST"
+          action={paymentData.paymentUrl}
+          ref={(form) => {
+            if (form) setTimeout(() => form.submit(), 1000);
+          }}
+        >
+          {Object.entries(paymentData.paymentParams).map(([key, value]) => (
+            <input key={key} type="hidden" name={key} value={value} />
+          ))}
+        </form>
       </div>
     );
   }

@@ -10,7 +10,6 @@ import USPBar from './USPBar';
 import PrivilegeSection from './PrivilegeSection';
 
 const DEVICES_PER_PAGE = 6;
-const PRIVILEGE_KEY = 'tw_privilege_addon';
 
 // Set true to show only Bundle API devices and hide brand tabs + local DB devices
 const BUNDLE_ONLY_MODE = true;
@@ -66,11 +65,6 @@ export default function DeviceSection() {
   const [totalLocal, setTotalLocal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedPrivilege, setSelectedPrivilege] = useState<string | null>(null);
-
-  // Restore privilege selection from localStorage
-  useEffect(() => {
-    setSelectedPrivilege(localStorage.getItem(PRIVILEGE_KEY) || null);
-  }, []);
 
   // Fetch brands and bundle products on mount
   useEffect(() => {
@@ -199,34 +193,48 @@ export default function DeviceSection() {
       <PrivilegeSection selected={selectedPrivilege} onSelect={handlePrivilegeChange} />
       {!BUNDLE_ONLY_MODE && <BrandTabs brands={brands} activeBrand={activeBrand} onBrandChange={handleBrandChange} />}
 
-      {/* Device Grid */}
-      <div className="device-list">
-        {loading && !BUNDLE_ONLY_MODE && activeBrand !== 'itel' ? (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0' }}>
-            <div style={{
-              width: 40, height: 40,
-              border: '3px solid var(--border)', borderTopColor: 'var(--tw-blue)',
-              borderRadius: '50%', animation: 'spin 0.8s linear infinite',
-              margin: '0 auto 16px',
-            }} />
-            <p style={{ color: 'var(--text-muted)' }}>Loading devices...</p>
+      {!selectedPrivilege ? (
+        <div className="device-empty-selection">
+          <div className="device-empty-selection-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
           </div>
-        ) : displayDevices.length === 0 ? (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0' }}>
-            <p style={{ color: 'var(--text-muted)' }}>No devices found.</p>
+          <h4>Select a PhoneStar package first</h4>
+          <p>Choose PhoneStar25 or PhoneStar50 above to view eligible phones.</p>
+        </div>
+      ) : (
+        <>
+          {/* Device Grid */}
+          <div className="device-list">
+            {loading && !BUNDLE_ONLY_MODE && activeBrand !== 'itel' ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0' }}>
+                <div style={{
+                  width: 40, height: 40,
+                  border: '3px solid var(--border)', borderTopColor: 'var(--tw-blue)',
+                  borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+                  margin: '0 auto 16px',
+                }} />
+                <p style={{ color: 'var(--text-muted)' }}>Loading devices...</p>
+              </div>
+            ) : displayDevices.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 0' }}>
+                <p style={{ color: 'var(--text-muted)' }}>No devices found.</p>
+              </div>
+            ) : (
+              displayDevices.map((device) => (
+                <DeviceCard key={`${device.is_api_device ? 'api' : 'db'}-${device.id}`} device={device} />
+              ))
+            )}
           </div>
-        ) : (
-          displayDevices.map((device) => (
-            <DeviceCard key={`${device.is_api_device ? 'api' : 'db'}-${device.id}`} device={device} />
-          ))
-        )}
-      </div>
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={effectiveTotalPages}
-        onPageChange={setCurrentPage}
-      />
+          <Pagination
+            currentPage={currentPage}
+            totalPages={effectiveTotalPages}
+            onPageChange={setCurrentPage}
+          />
+        </>
+      )}
     </div>
   );
 }

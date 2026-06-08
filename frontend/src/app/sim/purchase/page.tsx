@@ -35,7 +35,7 @@ const PAYMENT_METHODS = [
   { id: '3',  label: 'eWallet' },
 ] as const;
 
-const ESIM_COMPATIBLE_DEVICES_URL = 'https://help.celcomdigi.com/en/support/solutions/articles/70000681694-esim-compatible-device-list';
+const ESIM_COMPATIBLE_DEVICES_URL = 'https://www.tonewow.com/esim-devices';
 const NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon SIM activation. Subscribe to any FU plan within 7 days to get the 20GB bonus.';
 const BASIC_TAKAFUL_TOOLTIP = 'Granted when you subscribe to any FU Data Plan within 7 days after activation.';
 const SUPERLITE_BASIC_TOOLTIP = 'Minimum reload of RM30/month required.';
@@ -65,7 +65,7 @@ const LITE_INSURANCE_OPTIONS: InsuranceOption[] = [
   },
   {
     id: 'premium',
-    apiValue: '0',
+    apiValue: '1',
     name: 'Premium',
     tagline: 'RM30,000 coverage',
     price: 0,

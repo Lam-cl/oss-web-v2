@@ -1534,11 +1534,12 @@ h5 { font-size: 1.1rem; }
   transform: translateY(-2px);
 }
 .priv-card--best {
-  border: 3px solid #fce003;
+  border: 1px solid #c9cad5;
 }
 .priv-card--active {
-  border-color: var(--tw-blue);
-  box-shadow: 0 0 0 1px var(--tw-blue), 0 8px 24px rgba(26, 86, 219, 0.12);
+  border: 2px solid var(--tw-blue);
+  box-shadow: 0 0 0 4px rgba(26, 86, 219, 0.14), 0 12px 30px rgba(26, 86, 219, 0.18);
+  transform: translateY(-2px);
 }
 .priv-card--best.priv-card--active {
   border-color: var(--tw-blue);
@@ -1682,15 +1683,57 @@ h5 { font-size: 1.1rem; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 .priv-btn--selected {
-  background: #eff6ff;
-  color: var(--tw-blue);
+  background: var(--tw-blue);
+  color: var(--white);
   font-weight: 700;
+  box-shadow: 0 6px 14px rgba(26, 86, 219, 0.24);
 }
 
 .priv-requirement {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.device-empty-selection {
+  max-width: 520px;
+  margin: 26px auto 0;
+  padding: 30px 24px;
+  text-align: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 18px;
+}
+
+.device-empty-selection-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: #eaf2ff;
+  color: var(--tw-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.device-empty-selection-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.device-empty-selection h4 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.device-empty-selection p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 .sim-priv-cards {
   max-width: 760px;

@@ -1,0 +1,60 @@
+name: Deploy non-v2 live
+
+on:
+  push:
+    branches:
+      - non-v2-live
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to non-v2 server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -eu
+
+            DEPLOY_DIR="/www/wwwroot/tonewow.xifuhalim.com"
+            REPO_URL="git@github.com:${{ github.repository }}.git"
+            BRANCH="non-v2-live"
+            ENV_BACKUP="/tmp/tonewow-non-v2-env.$$"
+
+            cd "$DEPLOY_DIR"
+
+            if [ -f .env.production ]; then
+              cp .env.production "$ENV_BACKUP"
+            fi
+
+            if [ -d .git ] && [ ! -f .git/config ]; then
+              rmdir .git
+            fi
+
+            if [ ! -d .git ]; then
+              git init
+              git remote add origin "$REPO_URL"
+            else
+              git remote set-url origin "$REPO_URL"
+            fi
+
+            git fetch origin "$BRANCH"
+
+            rm -rf src public .github
+            rm -f README.md ecosystem.config.cjs next.config.mjs package.json package-lock.json postcss.config.mjs tailwind.config.ts tsconfig.json .gitignore
+
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            if [ -f "$ENV_BACKUP" ]; then
+              cp "$ENV_BACKUP" .env.production
+              rm -f "$ENV_BACKUP"
+            fi
+
+            npm ci
+            npm run build
+            pm2 restart tonewow

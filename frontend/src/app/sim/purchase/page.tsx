@@ -488,6 +488,11 @@ function SIMPurchaseWizard() {
     ? numberPrice + shippingFee
     : effectiveBasePrice + planAddon + insurancePrice + shippingFee;
 
+  const selectedNumberCategory = selectedNumber?.category?.toUpperCase() || '';
+  const insuranceApiValue = ['PREMIUM', 'VIP', 'VVIP'].includes(selectedNumberCategory)
+    ? '3'
+    : selectedInsuranceOption.apiValue;
+
   const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
   const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(effectiveBasePrice);
   const simOrderLabel = simType === 'esim'
@@ -593,7 +598,7 @@ function SIMPurchaseWizard() {
         selectedMsisdn: selectedNumber?.phoneNo || '',
         referralCode: promoterId ? `${promoterId}${twpReferenceID}` : twpReferenceID,
         dataPlanID: '0',
-        insurance: selectedInsuranceOption.apiValue,
+        insurance: insuranceApiValue,
         isEsim: simType === 'esim' ? '1' : '0',
         twpReferenceID,
         alloReferenceID,

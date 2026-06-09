@@ -9,52 +9,76 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate deploy secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -eu
+          test -n "$SSH_HOST" || { echo "::error::Missing SSH_HOST"; exit 1; }
+          test -n "$SSH_USER" || { echo "::error::Missing SSH_USER"; exit 1; }
+          test -n "$SSH_PRIVATE_KEY" || { echo "::error::Missing SSH_PRIVATE_KEY"; exit 1; }
+          echo "Deploy secrets are present"
+
       - name: Deploy to non-v2 server
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script_stop: true
-          script: |
-            set -eu
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          SSH_PORT="${SSH_PORT:-22}"
 
-            DEPLOY_DIR="/www/wwwroot/tonewow.xifuhalim.com"
-            REPO_URL="git@github.com:${{ github.repository }}.git"
-            BRANCH="non-v2-live"
-            ENV_BACKUP="/tmp/tonewow-non-v2-env.$$"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/tonewow_non_v2_key
+          chmod 600 ~/.ssh/tonewow_non_v2_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
 
-            cd "$DEPLOY_DIR"
+          ssh -p "$SSH_PORT" -i ~/.ssh/tonewow_non_v2_key "$SSH_USER@$SSH_HOST" \
+            REPOSITORY="$REPOSITORY" \
+            bash -se <<'DEPLOY'
+          set -eu
 
-            if [ -f .env.production ]; then
-              cp .env.production "$ENV_BACKUP"
-            fi
+          DEPLOY_DIR="/www/wwwroot/tonewow.xifuhalim.com"
+          REPO_URL="git@github.com:${REPOSITORY}.git"
+          BRANCH="non-v2-live"
+          ENV_BACKUP="/tmp/tonewow-non-v2-env.$$"
 
-            if [ -d .git ] && [ ! -f .git/config ]; then
-              rmdir .git
-            fi
+          cd "$DEPLOY_DIR"
 
-            if [ ! -d .git ]; then
-              git init
-              git remote add origin "$REPO_URL"
-            else
-              git remote set-url origin "$REPO_URL"
-            fi
+          if [ -f .env.production ]; then
+            cp .env.production "$ENV_BACKUP"
+          fi
 
-            git fetch origin "$BRANCH"
+          if [ -d .git ] && [ ! -f .git/config ]; then
+            rmdir .git
+          fi
 
-            rm -rf src public .github
-            rm -f README.md ecosystem.config.cjs next.config.mjs package.json package-lock.json postcss.config.mjs tailwind.config.ts tsconfig.json .gitignore
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin "$REPO_URL"
+          else
+            git remote set-url origin "$REPO_URL"
+          fi
 
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-            git reset --hard "origin/$BRANCH"
+          git fetch origin "$BRANCH"
 
-            if [ -f "$ENV_BACKUP" ]; then
-              cp "$ENV_BACKUP" .env.production
-              rm -f "$ENV_BACKUP"
-            fi
+          rm -rf src public .github
+          rm -f README.md ecosystem.config.cjs next.config.mjs package.json package-lock.json postcss.config.mjs tailwind.config.ts tsconfig.json .gitignore
 
-            npm ci
-            npm run build
-            pm2 restart tonewow
+          git checkout -B "$BRANCH" "origin/$BRANCH"
+          git reset --hard "origin/$BRANCH"
+
+          if [ -f "$ENV_BACKUP" ]; then
+            cp "$ENV_BACKUP" .env.production
+            rm -f "$ENV_BACKUP"
+          fi
+
+          npm ci
+          npm run build
+          pm2 restart tonewow
+          DEPLOY

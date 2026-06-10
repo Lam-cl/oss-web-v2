@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const LEGACY_API = 'https://www.tonewow.net/tgpayment';
 
 const PLAN_MAP: Record<number, { category: string; price: number; label: string }> = {
-  1: { category: 'PREMIUM', price: 988, label: 'PREMIUM' },
+  1: { category: 'PREMIUM', price: 988, label: 'PREMIUM'},
   2: { category: 'VIP', price: 2298, label: 'VIP' },
   3: { category: 'VVIP', price: 3088, label: 'VVIP' },
 };

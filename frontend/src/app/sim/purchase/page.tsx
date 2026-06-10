@@ -28,6 +28,8 @@ const STEPS = [
 const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
 const DEFAULT_BASE_SIM_PRICE = 19.50;
 const OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
+const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
+const ESIM_ORDER_COOKIE = 'tw_esim_refno';
 
 const PAYMENT_METHODS = [
   { id: '16', label: 'Online Banking (FPX)' },
@@ -146,6 +148,13 @@ const generateRefNo = (): string => {
     String(now.getSeconds()).padStart(2, '0'),
   ].join('');
   return ('twoss' + rand + dt).slice(0, 20);
+};
+
+const rememberEsimOrder = (refNo: string, paymentRefNo: string, email: string) => {
+  const payload = JSON.stringify({ refNo, paymentRefNo, email });
+  localStorage.setItem(ESIM_ORDER_STORAGE_KEY, payload);
+  sessionStorage.setItem(ESIM_ORDER_STORAGE_KEY, payload);
+  document.cookie = `${ESIM_ORDER_COOKIE}=${encodeURIComponent(paymentRefNo)}; Max-Age=86400; Path=/; SameSite=Lax`;
 };
 
 /* Malaysian postcode prefix (2 digits) → [state, city] */
@@ -607,6 +616,12 @@ function SIMPurchaseWizard() {
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim') {
+        const paymentRefNo = `${paymentMethod}${refNo}`;
+        const confirmationUrl = `${window.location.origin}/confirmation?esim=1&refno=${encodeURIComponent(paymentRefNo)}`;
+        params.set('returnurl', confirmationUrl);
+        params.set('callbackurl', confirmationUrl);
+        params.set('failureurl', confirmationUrl);
+
         const promoData = {
           prefix: hasPromoter ? form.promoterPrefix : '',
           code: hasPromoter ? form.promoterCode : '',
@@ -616,7 +631,7 @@ function SIMPurchaseWizard() {
           alloReferenceID,
         };
         localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
-        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, email: form.email }));
+        rememberEsimOrder(refNo, paymentRefNo, form.email);
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
       }
 

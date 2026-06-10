@@ -4,6 +4,51 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
+const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
+const ESIM_ORDER_COOKIE = 'tw_esim_refno';
+
+function clearEsimOrderMarker() {
+  localStorage.removeItem(ESIM_ORDER_STORAGE_KEY);
+  sessionStorage.removeItem(ESIM_ORDER_STORAGE_KEY);
+  document.cookie = `${ESIM_ORDER_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`;
+}
+
+function normalizePaymentRefNo(value: string) {
+  return value.replace(/^(16|2|3)(twoss)/i, '$2');
+}
+
+function hasMatchingStoredEsimOrder(refNo: string) {
+  const normalizedRefNo = normalizePaymentRefNo(refNo);
+  const isMatch = (raw: string | null) => {
+    if (!raw) return false;
+    try {
+      const order = JSON.parse(raw) as { refNo?: string; paymentRefNo?: string };
+      const storedRefNo = order.refNo || '';
+      const storedPaymentRefNo = order.paymentRefNo || '';
+      return !storedRefNo
+        || storedRefNo === refNo
+        || storedPaymentRefNo === refNo
+        || normalizePaymentRefNo(storedRefNo) === normalizedRefNo
+        || normalizePaymentRefNo(storedPaymentRefNo) === normalizedRefNo;
+    } catch {
+      return false;
+    }
+  };
+
+  if (isMatch(localStorage.getItem(ESIM_ORDER_STORAGE_KEY))) return true;
+  if (isMatch(sessionStorage.getItem(ESIM_ORDER_STORAGE_KEY))) return true;
+
+  const cookieRefNo = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${ESIM_ORDER_COOKIE}=`))
+    ?.split('=')
+    .slice(1)
+    .join('=');
+
+  if (!cookieRefNo) return false;
+  const decodedCookieRefNo = decodeURIComponent(cookieRefNo);
+  return decodedCookieRefNo === refNo || normalizePaymentRefNo(decodedCookieRefNo) === normalizedRefNo;
+}
 
 function ThankYouContent() {
   const searchParams = useSearchParams();
@@ -11,6 +56,7 @@ function ThankYouContent() {
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
+  const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
   const [status, setStatus] = useState<Status>('loading');
 
   useEffect(() => {
@@ -54,21 +100,18 @@ function ThankYouContent() {
 
   useEffect(() => {
     if (status === 'failed') {
-      localStorage.removeItem('tw_esim_order');
+      clearEsimOrderMarker();
       return;
     }
     if (status !== 'success') return;
     try {
-      const raw = localStorage.getItem('tw_esim_order');
-      if (!raw) return;
-      const order = JSON.parse(raw) as { refNo?: string };
-      if (!order.refNo || order.refNo === refNo) {
+      if (isEsimReturn || hasMatchingStoredEsimOrder(refNo)) {
         router.replace(`/sim/esim-success${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
       }
     } catch {
-      localStorage.removeItem('tw_esim_order');
+      clearEsimOrderMarker();
     }
-  }, [status, refNo, router]);
+  }, [status, refNo, isEsimReturn, router]);
 
   if (status === 'loading') {
     return (

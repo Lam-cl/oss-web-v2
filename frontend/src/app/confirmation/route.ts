@@ -18,13 +18,12 @@ async function handleConfirmation(req: NextRequest, method: string) {
   let description = searchParams.get('desc') || searchParams.get('description') || '';
   let isEsim = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
 
-  // Read POST body from GKash return
   if (method === 'POST') {
     try {
       const body = await req.formData();
       refno = refno || body.get('refno')?.toString() || body.get('cartid')?.toString() || '';
-      status = body.get('status')?.toString() || '';
-      description = body.get('description')?.toString() || '';
+      status = status || body.get('status')?.toString() || '';
+      description = description || body.get('description')?.toString() || '';
       const bodyEsim = body.get('esim')?.toString() || body.get('isEsim')?.toString() || '';
       isEsim = isEsim || bodyEsim === '1' || bodyEsim.toLowerCase() === 'true';
     } catch { /* body parse failed, use query params only */ }
@@ -39,7 +38,6 @@ async function handleConfirmation(req: NextRequest, method: string) {
   if (status) url.searchParams.set('status', status);
   if (description) url.searchParams.set('desc', description);
 
-  // 303 forces browser to GET (POST→GET redirect)
   return NextResponse.redirect(url, method === 'POST' ? 303 : 307);
 }
 

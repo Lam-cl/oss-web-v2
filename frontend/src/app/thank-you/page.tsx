@@ -4,6 +4,15 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
+type EsimDetails = {
+  refNo: string;
+  simSerial: string;
+  esimQR: string;
+  pin1: string;
+  puk1: string;
+  pin2: string;
+  puk2: string;
+};
 const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
 const ESIM_ORDER_COOKIE = 'tw_esim_refno';
 
@@ -50,6 +59,39 @@ function hasMatchingStoredEsimOrder(refNo: string) {
   return decodedCookieRefNo === refNo || normalizePaymentRefNo(decodedCookieRefNo) === normalizedRefNo;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>) {
+  const params = new URLSearchParams();
+  if (details?.refNo || refNo) params.set('refno', details?.refNo || refNo);
+  if (details?.simSerial) params.set('simserial', details.simSerial);
+  if (details?.esimQR) params.set('esimQR', details.esimQR);
+  if (details?.pin1) params.set('pin1', details.pin1);
+  if (details?.puk1) params.set('puk1', details.puk1);
+  if (details?.pin2) params.set('pin2', details.pin2);
+  if (details?.puk2) params.set('puk2', details.puk2);
+  const query = params.toString();
+  return `/sim/esim-success${query ? `?${query}` : ''}`;
+}
+
+async function fetchEsimDetails(refNo: string): Promise<EsimDetails | null> {
+  for (const endpoint of ['/api/esim-info', '/esim-info']) {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refNo }),
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.ready && data?.details) return data.details as EsimDetails;
+    if (res.status !== 404) return null;
+  }
+
+  return null;
+}
+
 function ThankYouContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -58,6 +100,7 @@ function ThankYouContent() {
   const gkashDesc = searchParams.get('desc') || '';
   const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
   const [status, setStatus] = useState<Status>('loading');
+  const [esimPreparing, setEsimPreparing] = useState(false);
 
   useEffect(() => {
     if (!refNo && !gkashStatus) { setStatus('failed'); return; }
@@ -104,16 +147,42 @@ function ThankYouContent() {
       return;
     }
     if (status !== 'success') return;
-    try {
-      if (isEsimReturn || hasMatchingStoredEsimOrder(refNo)) {
-        router.replace(`/sim/esim-success${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
+    let cancelled = false;
+
+    const redirectToEsimSuccess = async () => {
+      if (!(isEsimReturn || hasMatchingStoredEsimOrder(refNo))) return;
+
+      setEsimPreparing(true);
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const details = await fetchEsimDetails(refNo);
+          if (cancelled) return;
+          if (details) {
+            try {
+              sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
+            } catch { /* ignore */ }
+            router.replace(buildEsimSuccessUrl(refNo, details));
+            return;
+          }
+        } catch { /* retry below */ }
+
+        if (attempt < 9) await sleep(3000);
+        if (cancelled) return;
       }
+
+      router.replace(buildEsimSuccessUrl(refNo));
+    };
+
+    try {
+      redirectToEsimSuccess();
     } catch {
       clearEsimOrderMarker();
     }
+
+    return () => { cancelled = true; };
   }, [status, refNo, isEsimReturn, router]);
 
-  if (status === 'loading') {
+  if (status === 'loading' || esimPreparing) {
     return (
       <div className="container" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>
         <div style={{ maxWidth: 480, margin: '0 auto' }}>
@@ -122,8 +191,14 @@ function ThankYouContent() {
             borderTopColor: '#0074be', animation: 'spin 0.8s linear infinite',
             margin: '0 auto 24px',
           }} />
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>Verifying Payment</h2>
-          <p style={{ fontSize: 14, color: '#64748b', marginTop: 8 }}>Please wait while we confirm your payment...</p>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>
+            {esimPreparing ? 'Preparing eSIM Details' : 'Verifying Payment'}
+          </h2>
+          <p style={{ fontSize: 14, color: '#64748b', marginTop: 8 }}>
+            {esimPreparing
+              ? 'Please wait while we prepare your eSIM QR, PIN, and PUK...'
+              : 'Please wait while we confirm your payment...'}
+          </p>
           {refNo && <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 16, fontFamily: 'monospace' }}>Ref: {refNo}</p>}
         </div>
       </div>

@@ -196,7 +196,7 @@ export default function SIMSection() {
             <p className="sim-priv-subtitle">Perfect for everyday use</p>
             <p className="priv-benefits-label">Includes:</p>
             <ul className="priv-card-benefits">
-              {NORMAL_NUMBER_BENEFITS.map((benefit) => (
+              {NORMAL_NUMBER_BENEFITS.slice(0, 2).map((benefit) => (
                 <li key={benefit} className="priv-card-benefit">
                   <CheckIcon />
                   <span>{benefit}</span>
@@ -223,7 +223,7 @@ export default function SIMSection() {
             <p className="sim-priv-subtitle">Choose a memorable number and stand out</p>
             <p className="priv-benefits-label">Includes:</p>
             <ul className="priv-card-benefits">
-              {SPECIAL_NUMBER_INCLUDES.map((benefit) => (
+              {SPECIAL_NUMBER_INCLUDES.slice(0, 3).map((benefit) => (
                 <li key={benefit} className="priv-card-benefit">
                   <CheckIcon />
                   <span>{benefit}</span>

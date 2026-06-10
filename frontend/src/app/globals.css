@@ -1738,9 +1738,11 @@ h5 { font-size: 1.1rem; }
 .sim-priv-cards {
   max-width: 760px;
   margin-bottom: 28px;
+  align-items: stretch;
 }
 .sim-priv-card {
   min-width: 0;
+  height: 100%;
 }
 .sim-priv-subtitle {
   color: var(--text-secondary);
@@ -5324,7 +5326,7 @@ body.bg-page {
 .usp-track {
   display: flex;
   width: max-content;
-  animation: uspTicker 34s linear infinite;
+  animation: uspTicker 48s linear infinite;
 }
 
 .usp-item {
@@ -5332,7 +5334,7 @@ body.bg-page {
   align-items: center !important;
   gap: 8px !important;
   flex: 0 0 auto !important;
-  padding: 12px 26px !important;
+  padding: 12px 42px !important;
   color: #fff !important;
   white-space: nowrap !important;
 }
@@ -5365,11 +5367,11 @@ body.bg-page {
   }
 
   .usp-track {
-    animation-duration: 28s;
+    animation-duration: 40s;
   }
 
   .usp-item {
-    padding: 11px 20px !important;
+    padding: 11px 30px !important;
   }
 
   .usp-item span {

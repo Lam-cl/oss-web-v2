@@ -415,12 +415,17 @@ function SIMPurchaseWizard() {
     const memberID = `${prefix}-${code.trim()}`;
     const result = await verifyPromoter(memberID);
     if (result.valid) {
-      if (result.name) setPromoterName(result.name);
-      else if (prefix === 'TWP') setPromoterName(memberID); // TWP might not return name
-      // TWP: generate referenceID
       if (prefix === 'TWP') {
         const ref = await saveRefAllocation(memberID);
-        if (ref.referenceID) { setTwpReferenceID(ref.referenceID); setAlloReferenceID(ref.referenceID); }
+        if (ref.referenceID) {
+          setTwpReferenceID(ref.referenceID);
+          setAlloReferenceID(ref.referenceID);
+          setPromoterName(result.name || memberID);
+        } else {
+          setPromoterError(ref.error || 'Unable to generate TWP reference ID. Please try again.');
+        }
+      } else {
+        if (result.name) setPromoterName(result.name);
       }
     } else {
       setPromoterError(result.error || 'Not found');

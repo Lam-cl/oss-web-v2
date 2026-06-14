@@ -220,18 +220,26 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
 }
 
 /** TWP flow — generate referenceID after verification */
-export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string }> {
+export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string; error?: string }> {
   try {
-    const q = `productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
+    const params = new URLSearchParams({
+      productCode: 'TWP',
+      promoterID: memberID,
+      isPBR: '',
+      isBR: '',
+      isPSC: '',
+      isSC: '',
+    });
+    const q = params.toString();
     const data = isTgpaymentSameOriginRewrite()
       ? await fetchTgpaymentRewrite(`/saveRefAllocation?${q}`, { method: 'POST', body: '{}' })
       : await proxyPost(`${LEGACY_API}/saveRefAllocation?${q}`, {});
-    if (data.systemCode === '1' && data.data?.length > 0) {
+    if (data.systemCode === '1' && data.data?.length > 0 && data.data[0].referenceID) {
       return { referenceID: data.data[0].referenceID };
     }
-    return {};
+    return { error: data.systemMessage || 'Unable to generate TWP reference ID.' };
   } catch {
-    return {};
+    return { error: 'Unable to generate TWP reference ID. Please try again.' };
   }
 }
 

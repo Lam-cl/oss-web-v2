@@ -285,17 +285,17 @@ export async function verifyTWPMemberReferral(fields: TWPMemberReferralFields): 
     const allocationParams = new URLSearchParams({
       productCode: 'TWP',
       promoterID: cleaned.memberID,
+      isPBR: cleaned.pbrMemberID,
+      isBR: cleaned.brMemberID,
+      isPSC: cleaned.pscMemberID,
+      isSC: cleaned.scMemberID,
     });
-    if (cleaned.pbrMemberID) allocationParams.set('isPBR', cleaned.pbrMemberID);
-    if (cleaned.brMemberID) allocationParams.set('isBR', cleaned.brMemberID);
-    if (cleaned.pscMemberID) allocationParams.set('isPSC', cleaned.pscMemberID);
-    if (cleaned.scMemberID) allocationParams.set('isSC', cleaned.scMemberID);
 
     const allocationData = isTgpaymentSameOriginRewrite()
       ? await fetchTgpaymentRewrite<any>(`/saveRefAllocation?${allocationParams.toString()}`, { method: 'POST', body: '{}' })
       : await proxyPost(`${LEGACY_API}/saveRefAllocation?${allocationParams.toString()}`, {});
 
-    if (allocationData.systemCode === '1' && allocationData.data?.length > 0) {
+    if (allocationData.systemCode === '1' && allocationData.data?.length > 0 && allocationData.data[0].referenceID) {
       return { valid: true, referenceID: allocationData.data[0].referenceID };
     }
     return { valid: false, message: allocationData.systemMessage || 'Failed to generate reference ID. Please try again.' };

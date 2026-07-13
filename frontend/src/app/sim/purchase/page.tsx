@@ -92,6 +92,26 @@ const SUPERLITE_INSURANCE_OPTIONS: InsuranceOption[] = [
     apiValue: '3',
     name: 'Ultra',
     tagline: 'RM54,000 coverage',
+    price: 25,
+    badge: 'Best Value',
+    benefits: ['PA Takaful RM50,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)'],
+  },
+  {
+    id: 'basic',
+    apiValue: '0',
+    name: 'Basic',
+    tagline: 'RM10,000 coverage',
+    price: 0,
+    benefits: ['PA Takaful RM10,000 (1 Year)'],
+  },
+];
+
+const ADX_SUPERLITE_INSURANCE_OPTIONS: InsuranceOption[] = [
+  {
+    id: 'premiumProMax',
+    apiValue: '3',
+    name: 'Ultra',
+    tagline: 'RM54,000 coverage',
     price: 20.90,
     badge: 'Best Value',
     benefits: ['PA Takaful RM50,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)'],
@@ -448,7 +468,11 @@ function SIMPurchaseWizard() {
     { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,  data: '650 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115, data: '800 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
   ];
-  const insuranceOptions = isSuperliteMode ? SUPERLITE_INSURANCE_OPTIONS : LITE_INSURANCE_OPTIONS;
+  const insuranceOptions = isAdxDirectFlow
+    ? ADX_SUPERLITE_INSURANCE_OPTIONS
+    : isSuperliteMode
+      ? SUPERLITE_INSURANCE_OPTIONS
+      : LITE_INSURANCE_OPTIONS;
   const insuranceById = Object.fromEntries(insuranceOptions.map(option => [option.id, option])) as Partial<Record<InsuranceTier, InsuranceOption>>;
 
   useEffect(() => {
@@ -715,7 +739,7 @@ function SIMPurchaseWizard() {
 
   /* ── Price calculations ── */
   const planAddon = selectedDataPlan?.price || 0;
-  const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceOptions[0];
+  const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceById.basic || insuranceOptions[0];
   const insurancePrice = selectedInsuranceOption.price;
   const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
   const hasPromoter = !isSuperliteDirectFlow && !!(form.promoterCode && form.promoterCode.trim());

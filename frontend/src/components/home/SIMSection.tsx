@@ -117,18 +117,32 @@ export default function SIMSection() {
   const [allResults, setAllResults] = useState<NumberResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [searchSource, setSearchSource] = useState<'auto' | 'manual'>('auto');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedNumber, setSelectedNumber] = useState<NumberResult | null>(null);
 
-  const displayResults = allResults.slice(0, 10);
+  const displayResults = searchSource === 'auto' ? allResults.slice(0, 10) : allResults;
   const totalPages = Math.ceil(displayResults.length / ITEMS_PER_PAGE);
   const paginatedResults = displayResults.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+  const paginationPages: (number | string)[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) paginationPages.push(i);
+  } else {
+    paginationPages.push(1);
+    if (currentPage > 3) paginationPages.push('...');
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) paginationPages.push(i);
+    if (currentPage < totalPages - 2) paginationPages.push('...');
+    paginationPages.push(totalPages);
+  }
 
-  const doSearch = async (query: string) => {
+  const doSearch = async (query: string, source: 'auto' | 'manual') => {
     setLoading(true); setSearched(true); setCurrentPage(1); setSelectedNumber(null);
+    setSearchSource(source);
     try {
       const res = await searchNumbers(query);
       setAllResults(res.data || []);
@@ -141,14 +155,14 @@ export default function SIMSection() {
 
   const handleSearch = async () => {
     if (!digits) return;
-    doSearch(digits);
+    doSearch(digits, 'manual');
   };
 
   // Auto-load random numbers when Special Number tab is opened
   useEffect(() => {
     if (simCategory === 'special' && !searched) {
       const randomDigit = String(Math.floor(1 + Math.random() * 9));
-      doSearch(randomDigit);
+      doSearch(randomDigit, 'auto');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simCategory]);
@@ -196,7 +210,7 @@ export default function SIMSection() {
             <p className="sim-priv-subtitle">Perfect for everyday use</p>
             <p className="priv-benefits-label">Includes:</p>
             <ul className="priv-card-benefits">
-              {NORMAL_NUMBER_BENEFITS.map((benefit) => (
+              {NORMAL_NUMBER_BENEFITS.slice(0, 2).map((benefit) => (
                 <li key={benefit} className="priv-card-benefit">
                   <CheckIcon />
                   <span>{benefit}</span>
@@ -223,7 +237,7 @@ export default function SIMSection() {
             <p className="sim-priv-subtitle">Choose a memorable number and stand out</p>
             <p className="priv-benefits-label">Includes:</p>
             <ul className="priv-card-benefits">
-              {SPECIAL_NUMBER_INCLUDES.map((benefit) => (
+              {SPECIAL_NUMBER_INCLUDES.slice(0, 3).map((benefit) => (
                 <li key={benefit} className="priv-card-benefit">
                   <CheckIcon />
                   <span>{benefit}</span>
@@ -313,9 +327,13 @@ export default function SIMSection() {
 
               {totalPages > 1 && (
                 <div className="number-pagination">
-                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map(p => (
-                    <button key={p} className={`page-btn ${currentPage === p ? 'active' : ''}`} onClick={() => setCurrentPage(p)}>{p}</button>
-                  ))}
+                  {paginationPages.map((p, idx) =>
+                    typeof p === 'string' ? (
+                      <span key={`dots-${idx}`} className="page-dots">...</span>
+                    ) : (
+                      <button key={p} className={`page-btn ${currentPage === p ? 'active' : ''}`} onClick={() => setCurrentPage(p)}>{p}</button>
+                    )
+                  )}
                 </div>
               )}
             </>

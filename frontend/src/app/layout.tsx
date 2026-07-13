@@ -9,7 +9,10 @@ import FloatingReferralQR from '@/components/referral/FloatingReferralQR';
 export const metadata: Metadata = {
   title: 'tone wow Shop',
   description: "Malaysia's most rewarding prepaid. Shop devices, SIM cards, and more.",
-  icons: { icon: '/favicon.ico' },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 const GTM_ID = 'GTM-KKWBVFJS';

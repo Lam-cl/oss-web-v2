@@ -308,6 +308,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
   const serialDigits = simSerial.replace(/\D/g, '');
   const groupedSerial = serialDigits ? serialDigits.replace(/(.{4})/g, '$1 ').trim() : 'SIM serial not available';
+  const isDetailsPending = !simSerial && !esimQR;
 
   const openRegisterToken = async () => {
     setRegisterLoading(true);
@@ -391,7 +392,9 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
               <div className="esim-email-note">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#075985" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
                 <span>
-                  {promoter?.email ? (
+                  {isDetailsPending ? (
+                    <>Your eSIM details are still being prepared. Please refresh this page shortly or check your email for a copy.</>
+                  ) : promoter?.email ? (
                     <>We have also sent a copy of your eSIM details to <strong>{promoter.email}</strong>. Please check your inbox.</>
                   ) : (
                     <>Please check your email for a copy of your eSIM details. Keep it safe for future reference.</>
@@ -434,14 +437,14 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
                   <div className="esim-details-field">
                     <label>PIN</label>
                     <div className="esim-details-pill">
-                      <strong>{pin1 || '0000'}</strong>
+                      <strong>{pin1 || (isDetailsPending ? 'Pending' : '0000')}</strong>
                       {pin1 && <button onClick={copyPIN} className="esim-copy-btn esim-detail-copy" title="Copy PIN">{renderCopyIcon(copiedPin)}</button>}
                     </div>
                   </div>
                   <div className="esim-details-field">
                     <label>PUK</label>
                     <div className="esim-details-pill">
-                      <strong>{puk1 || '00000000'}</strong>
+                      <strong>{puk1 || (isDetailsPending ? 'Pending' : '00000000')}</strong>
                       {puk1 && <button onClick={copyPUK} className="esim-copy-btn esim-detail-copy" title="Copy PUK">{renderCopyIcon(copiedPuk)}</button>}
                     </div>
                   </div>

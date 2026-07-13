@@ -1556,7 +1556,7 @@ h5 { font-size: 1.1rem; }
 /* Card header — colored section */
 .priv-card-header {
   position: relative;
-  background: #0074be;
+  background: #334EFF;
   color: white;
   padding: 16px;
   border-radius: 16px;
@@ -1673,7 +1673,7 @@ h5 { font-size: 1.1rem; }
   transition: background 0.2s, box-shadow 0.2s;
 }
 .priv-btn--default {
-  background: #0074be;
+  background: #334EFF;
   color: var(--white);
 }
 .priv-card--best .priv-btn--default {

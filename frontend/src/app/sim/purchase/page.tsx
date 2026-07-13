@@ -1052,22 +1052,22 @@ function SIMPurchaseWizard() {
 
                       {/* Body — only when expanded */}
                       {expanded && (
-                        <div className="fu-plan-body" style={{ border: `1.5px solid ${active ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 14px 14px' }}>
+                        <div className="fu-plan-body" style={{ border: `1.5px solid ${active ? '#334EFF' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 14px 14px' }}>
                           <div className="fu-plan-features">
                             <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#334EFF"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span>Data 5G/4G <strong>{plan.data}</strong></span>
                             </div>
                             <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#334EFF"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span><strong>{plan.calls}</strong> Calls</span>
                             </div>
                             <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#334EFF"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span>Free 2GB Welcome Data</span>
                             </div>
                             <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#334EFF"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span>FREE 20GB Bonus Data</span>
                             </div>
                             {!isSuperliteMode && (
@@ -1160,11 +1160,11 @@ function SIMPurchaseWizard() {
                         </div>
                       </div>
                       {expanded && (
-                        <div className="ins-card-body" style={{ border: `1.5px solid ${active ? '#0074be' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
+                        <div className="ins-card-body" style={{ border: `1.5px solid ${active ? '#334EFF' : '#e2e8f0'}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
                           <div className="fu-plan-features">
                             {option.benefits.map(benefit => (
                               <div key={benefit} className="fu-plan-feature">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#334EFF"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                                 <span>{benefit}</span>
                                 {!isSuperliteMode && option.id === 'premium' && option.price === 0 && <InfoTooltip text={BASIC_TAKAFUL_TOOLTIP} />}
                                 {isSuperliteMode && option.id === 'basic' && <InfoTooltip text={SUPERLITE_BASIC_TOOLTIP} />}
@@ -1590,7 +1590,7 @@ function SIMPurchaseWizard() {
         .fu-plan-validity-col { font-size: 11px; color: rgba(255,255,255,0.7); margin: 3px 0 0; }
 
         .fu-plan-header {
-          position: relative; background: #0074be; color: #fff;
+          position: relative; background: #334EFF; color: #fff;
           padding: 16px; border-radius: 16px; text-align: left;
           display: flex; align-items: center; gap: 12px;
         }
@@ -1610,7 +1610,7 @@ function SIMPurchaseWizard() {
           border-radius: 50%; background: #fff; display: flex;
           align-items: center; justify-content: center;
         }
-        .fu-plan-check svg { stroke: #0074be; }
+        .fu-plan-check svg { stroke: #334EFF; }
         .fu-plan-name { font-size: 14px; font-weight: 500; color: #fff; margin: 0 0 2px; }
         .fu-plan-data { font-size: 28px; font-weight: 700; color: #ffe000; margin: 0; line-height: 1.1; }
         .fu-plan-body { padding: 14px 8px 8px; text-align: left; }
@@ -1648,8 +1648,8 @@ function SIMPurchaseWizard() {
           display: flex; align-items: center; gap: 12px;
         }
         .ins-card-radio-wrap { flex-shrink: 0; }
-        .ins-card-header--basic { background: #0074be; }
-        .ins-card-header--premium { background: #0074be; }
+        .ins-card-header--basic { background: #334EFF; }
+        .ins-card-header--premium { background: #334EFF; }
         .ins-card-badge {
           position: absolute; top: 0; right: 0; background: #ff0077; color: #fff;
           font-size: 10px; font-weight: 800; padding: 4px 10px;

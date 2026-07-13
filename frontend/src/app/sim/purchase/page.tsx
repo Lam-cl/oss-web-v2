@@ -139,16 +139,16 @@ const SUPERLITE_FU_PLAN_IDS: Record<string, { physical: number; esim?: number }>
   fu20: { physical: 26, esim: 37 },
   'fu20+': { physical: 27 },
   fu20plus: { physical: 27 },
-  fu35: { physical: 28, esim: 39 },
-  fu50: { physical: 29, esim: 40 },
-  fu60: { physical: 30, esim: 41 },
-  fu80: { physical: 31, esim: 42 },
-  fu120: { physical: 32, esim: 43 },
+  fu35: { physical: 28, esim: 38 },
+  fu50: { physical: 29, esim: 39 },
+  fu60: { physical: 30, esim: 40 },
+  fu80: { physical: 31, esim: 41 },
+  fu120: { physical: 32, esim: 42 },
 };
 
 const READY_BUNDLES: Record<ReadyBundleMode, { label: string; price: number; planId: { physical: number; esim: number } }> = {
-  pro: { label: 'Pro', price: 49.50, planId: { physical: 2, esim: 44 } },
-  biz: { label: 'Biz', price: 128, planId: { physical: 3, esim: 45 } },
+  pro: { label: 'Pro', price: 49.50, planId: { physical: 2, esim: 43 } },
+  biz: { label: 'Biz', price: 128, planId: { physical: 3, esim: 44 } },
 };
 
 const PACKAGE_OPTIONS: Record<PackageChoice, {

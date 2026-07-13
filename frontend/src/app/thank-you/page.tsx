@@ -101,6 +101,26 @@ function ThankYouContent() {
   const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
+  const retryPurchase = () => {
+    const retryMode = localStorage.getItem('tw_purchase_retry_mode');
+    if (retryMode === 'superliteplus' || retryMode === 'superlite') {
+      router.push('/sim/purchase');
+      return;
+    }
+
+    const retryUrl = localStorage.getItem('tw_purchase_retry_url') || '/sim/purchase';
+    if (retryUrl.includes('simID=superliteplus')) {
+      localStorage.setItem('tw_purchase_retry_mode', 'superliteplus');
+      router.push('/sim/purchase');
+      return;
+    }
+    if (retryUrl.includes('simID=superlite')) {
+      localStorage.setItem('tw_purchase_retry_mode', 'superlite');
+      router.push('/sim/purchase');
+      return;
+    }
+    router.push(retryUrl);
+  };
 
   useEffect(() => {
     if (!refNo && !gkashStatus) { setStatus('failed'); return; }
@@ -292,7 +312,7 @@ function ThankYouContent() {
             </p>
           </div>
         )}
-        <button onClick={() => router.push('/sim/purchase')} style={{
+        <button onClick={retryPurchase} style={{
           background: 'linear-gradient(135deg, #0074be, #273a89)',
           color: '#fff', border: 'none', borderRadius: 12,
           padding: '14px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer',

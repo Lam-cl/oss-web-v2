@@ -51,7 +51,7 @@ export async function middleware(req: NextRequest) {
       if (validSimID && postedToken === token) {
         url.searchParams.set('simID', simID);
         const res = NextResponse.redirect(url, 303);
-        res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 300 });
+        res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 1800 });
         return withOrigin(res);
       }
 
@@ -78,7 +78,7 @@ export async function middleware(req: NextRequest) {
       const url = req.nextUrl.clone();
       url.searchParams.delete('token');
       const res = NextResponse.redirect(url);
-      res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 300 });
+      res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 1800 });
       return withOrigin(res);
     }
   }

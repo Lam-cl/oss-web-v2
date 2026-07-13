@@ -38,7 +38,7 @@ interface Props {
 const PLANS = [
   {
     key: 'bijak',
-    name: 'PhoneStar25',
+    name: 'MobileStar25',
     price: 'RM25',
     period: '/month',
     icon: ShieldIcon,
@@ -50,7 +50,7 @@ const PLANS = [
   },
   {
     key: 'jaga',
-    name: 'PhoneStar50',
+    name: 'MobileStar50',
     price: 'RM50',
     period: '/month',
     icon: ShieldPlusIcon,

@@ -19,7 +19,7 @@ const deviceUSPItems = [
     icon: (
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
     ),
-    text: 'Bundle with PhoneStar',
+    text: 'Bundle with MobileStar',
   },
   {
     icon: (
@@ -200,8 +200,8 @@ export default function DeviceSection() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
           </div>
-          <h4>Select a PhoneStar package first</h4>
-          <p>Choose PhoneStar25 or PhoneStar50 above to view eligible phones.</p>
+          <h4>Select a MobileStar package first</h4>
+          <p>Choose MobileStar25 or MobileStar50 above to view eligible phones.</p>
         </div>
       ) : (
         <>

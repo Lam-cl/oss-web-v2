@@ -127,6 +127,146 @@
   background: rgba(26, 86, 219, 0.035);
 }
 
+.referral-capture-backdrop {
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.referral-capture-card {
+  position: relative;
+  width: min(420px, 100%);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  box-shadow: 0 30px 76px rgba(15, 23, 42, 0.15), 0 12px 28px rgba(15, 23, 42, 0.08);
+  padding: 26px 24px 24px;
+}
+
+.referral-capture-card--error {
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.referral-capture-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #1a56db;
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(26, 86, 219, 0.22);
+}
+
+.referral-capture-card--error .referral-capture-icon {
+  background: #ef4444;
+  box-shadow: 0 14px 30px rgba(239, 68, 68, 0.2);
+}
+
+.referral-capture-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 11px;
+}
+
+.referral-capture-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 52px;
+}
+
+.referral-capture-loader span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #1a56db;
+  animation: referralLoader 0.95s ease-in-out infinite;
+}
+
+.referral-capture-loader span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.referral-capture-loader span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes referralLoader {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-7px);
+  }
+}
+
+.referral-capture-eyebrow {
+  margin: 0;
+  color: #1a56db;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.referral-capture-card--error .referral-capture-eyebrow {
+  color: #dc2626;
+}
+
+.referral-capture-content h2 {
+  margin: 0;
+  color: var(--tw-navy);
+  font-size: 24px;
+  line-height: 1.12;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.referral-capture-copy {
+  max-width: 330px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.referral-capture-ref {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin: 2px 0;
+  padding: 14px 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.referral-capture-ref strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+.referral-capture-ref span {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.referral-capture-action {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 46px;
+}
+
 .referral-modal-head {
   display: flex;
   align-items: flex-start;
@@ -1556,7 +1696,7 @@ h5 { font-size: 1.1rem; }
 /* Card header — colored section */
 .priv-card-header {
   position: relative;
-  background: #334EFF;
+  background: #0074be;
   color: white;
   padding: 16px;
   border-radius: 16px;
@@ -1673,7 +1813,7 @@ h5 { font-size: 1.1rem; }
   transition: background 0.2s, box-shadow 0.2s;
 }
 .priv-btn--default {
-  background: #334EFF;
+  background: #0074be;
   color: var(--white);
 }
 .priv-card--best .priv-btn--default {
@@ -1756,6 +1896,25 @@ h5 { font-size: 1.1rem; }
   font-size: 22px;
   font-weight: 850;
   line-height: 1.15;
+}
+.sim-priv-card .priv-card-header,
+.sim-priv-card .priv-btn--default {
+  background: #334eff;
+}
+.sim-priv-card .priv-card-benefit svg {
+  color: #334eff;
+}
+.sim-priv-card.priv-card--best .priv-card-header,
+.sim-priv-card.priv-card--best .priv-btn--default,
+.sim-priv-card.priv-card--best .priv-btn--selected {
+  background: #111827;
+}
+.sim-priv-card.priv-card--best .priv-card-benefit svg {
+  color: #111827;
+}
+.sim-priv-card.priv-card--best.priv-card--active {
+  border-color: #111827;
+  box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12), 0 12px 30px rgba(17, 24, 39, 0.16);
 }
 .sim-priv-card .priv-card-benefit {
   align-items: flex-start;
@@ -4932,9 +5091,596 @@ body.bg-page {
   color: var(--tw-blue);
 }
 
+.sim-choice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(248, 250, 252, 0.78);
+  backdrop-filter: blur(18px) saturate(1.15);
+}
+
+body.sim-choice-modal-open header,
+body.sim-choice-modal-open main,
+body.sim-choice-modal-open footer,
+body.sim-choice-modal-open .referral-floating-widget {
+  filter: blur(12px);
+  pointer-events: none;
+  transition: filter 0.18s ease;
+}
+
+.sim-choice-dialog {
+  width: min(680px, 94vw);
+  max-height: 86dvh;
+  overflow-y: auto;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 56px rgba(15, 23, 42, 0.14), 0 8px 20px rgba(15, 23, 42, 0.06);
+  padding: 18px;
+}
+
+.sim-choice-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  background: transparent;
+  color: var(--tw-navy);
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.sim-choice-kicker {
+  margin: 0 0 4px;
+  color: #0074be;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sim-choice-head h3 {
+  margin: 0;
+  color: var(--tw-navy);
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.sim-choice-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sim-choice-close:hover {
+  background: #eef6ff;
+  color: #0074be;
+}
+
+.sim-choice-back {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: #0074be;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  margin: -4px 0 14px;
+  padding: 0;
+}
+
+.sim-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0;
+}
+
+.sim-choice-card {
+  position: relative;
+  min-height: 226px;
+  border: 1px solid #c9cad5;
+  border-radius: 16px;
+  background: var(--white);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 7px;
+  text-align: left;
+  font-family: var(--font);
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+.sim-choice-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.sim-choice-card:focus-visible {
+  outline: 2px solid var(--tw-blue);
+  outline-offset: 2px;
+}
+
+.sim-choice-card-header {
+  position: relative;
+  align-items: center;
+  background: #0074be;
+  color: #fff;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 78px;
+  padding: 14px;
+  border-radius: 14px;
+  text-align: left;
+}
+
+.sim-choice-card--navy .sim-choice-card-header {
+  background: #273a89;
+}
+
+.sim-choice-card-name {
+  color: #ffe000;
+  flex: 1 1 auto;
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1.15;
+  margin: 0;
+  min-width: 0;
+}
+
+.sim-choice-card-meta {
+  color: rgba(255, 255, 255, 0.86);
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1px;
+  max-width: 46%;
+  text-align: right;
+}
+
+.sim-choice-card-meta--price {
+  animation: simChoiceMetaIn 0.42s ease both;
+  color: #fff;
+  display: grid;
+  gap: 1px;
+  font-weight: 900;
+  line-height: 1.05;
+  margin-top: 0;
+  text-transform: uppercase;
+}
+
+.sim-choice-card-meta-from {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.sim-choice-card-meta-amount {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 950;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.sim-choice-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 12px 7px 7px;
+  text-align: left;
+}
+
+.sim-choice-card-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 0 0 10px;
+}
+
+.sim-choice-card-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  margin: 0 0 10px;
+}
+
+.sim-choice-benefits-label {
+  color: #333;
+  font-size: 13px;
+  font-weight: 400;
+  margin: 0 0 8px;
+}
+
+.sim-choice-benefits {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.sim-choice-benefits li {
+  align-items: center;
+  color: #333;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  line-height: 1.35;
+}
+
+.sim-choice-benefits li svg {
+  color: #0074be;
+  flex: 0 0 auto;
+  height: 18px;
+  margin-top: 1px;
+  width: 18px;
+}
+
+.sim-choice-card--navy .sim-choice-benefits li svg {
+  color: #273a89;
+}
+
+.sim-choice-card-cta {
+  width: 100%;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.sim-choice-card-cta span {
+  align-items: center;
+  background: #0074be;
+  border-radius: 10px;
+  color: var(--white);
+  display: flex;
+  font-size: 14px;
+  font-weight: 600;
+  justify-content: center;
+  padding: 10px 20px;
+  transition: background 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.sim-choice-card--navy .sim-choice-card-cta span {
+  background: #273a89;
+}
+
+.sim-choice-card:hover .sim-choice-card-cta span {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.sim-choice-plan-detail,
+.sim-choice-protection-detail {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.sim-choice-protection-detail {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #e7ebf1;
+}
+
+.sim-choice-plan-top {
+  display: block;
+  margin-bottom: 9px;
+}
+
+.sim-choice-plan-top h5 {
+  color: #171827;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.15;
+  margin: 0 0 5px;
+}
+
+.sim-choice-plan-price {
+  align-items: baseline;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.sim-choice-plan-strike {
+  color: #c95154;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.sim-choice-plan-free {
+  animation: simChoicePromoPulse 1.9s ease-in-out infinite;
+  color: #15965d;
+  white-space: nowrap;
+}
+
+.sim-choice-section-divider {
+  display: none;
+}
+
+@keyframes simChoiceMetaIn {
+  from {
+    opacity: 0;
+    transform: translateX(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes simChoicePromoPulse {
+  0%, 100% {
+    opacity: 0.78;
+    text-shadow: 0 0 0 rgba(21, 150, 93, 0);
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(21, 150, 93, 0.28);
+  }
+}
+
+.sim-choice-feature-list,
+.sim-choice-protection-list {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sim-choice-feature-list li,
+.sim-choice-protection-list li {
+  align-items: center;
+  color: #171827;
+  display: grid;
+  font-size: 12.5px;
+  font-weight: 850;
+  gap: 8px;
+  line-height: 1.25;
+}
+
+.sim-choice-feature-list li {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.sim-choice-feature-icon,
+.sim-choice-provider-logo {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dfe4ec;
+  border-radius: 10px;
+  color: #111827;
+  display: flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.sim-choice-feature-icon svg {
+  height: 17px;
+  width: 17px;
+}
+
+.sim-choice-protection-detail > p {
+  color: #687384;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+
+.sim-choice-protection-list li {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.sim-choice-provider-logo {
+  flex-direction: column;
+  gap: 1px;
+  height: 36px;
+  width: 36px;
+}
+
+.sim-choice-provider-logo strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.sim-choice-provider-logo small {
+  color: #111827;
+  display: block;
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.05;
+  max-width: 32px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.sim-choice-provider-logo--zurich strong {
+  align-items: center;
+  border: 1px solid #243d8f;
+  border-radius: 999px;
+  color: #243d8f;
+  display: flex;
+  font-family: Georgia, serif;
+  height: 15px;
+  justify-content: center;
+  width: 15px;
+}
+
+.sim-choice-provider-logo--metlife strong {
+  color: #d84239;
+  font-size: 14px;
+  letter-spacing: -0.08em;
+  text-transform: lowercase;
+}
+
+@media (max-width: 640px) {
+  .sim-choice-backdrop {
+    align-items: center;
+    padding: 12px;
+  }
+  .sim-choice-dialog {
+    width: 94vw;
+    border-radius: 14px;
+    padding: 15px;
+  }
+  .sim-choice-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 0;
+  }
+  .sim-choice-head h3 {
+    font-size: 20px;
+  }
+  .sim-choice-head {
+    margin-bottom: 12px;
+    padding: 0;
+  }
+  .sim-choice-back {
+    margin: -2px 0 12px;
+  }
+  .sim-choice-card {
+    min-height: 0;
+    padding: 6px;
+  }
+  .sim-choice-card-header {
+    align-items: center;
+    min-height: 68px;
+    padding: 12px;
+  }
+  .sim-choice-card-name {
+    font-size: 18px;
+  }
+  .sim-choice-card-meta,
+  .sim-choice-card-subtitle,
+  .sim-choice-benefits-label,
+  .sim-choice-benefits li {
+    font-size: 12px;
+  }
+  .sim-choice-card-meta {
+    max-width: 48%;
+  }
+  .sim-choice-card-meta-from {
+    font-size: 10px;
+  }
+  .sim-choice-card-meta-amount {
+    font-size: 15px;
+  }
+  .sim-choice-plan-detail,
+  .sim-choice-protection-detail {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sim-choice-plan-price {
+    font-size: 11px;
+    gap: 5px;
+  }
+  .sim-choice-feature-list,
+  .sim-choice-protection-list {
+    gap: 7px;
+  }
+  .sim-choice-feature-list li,
+  .sim-choice-protection-list li {
+    font-size: 12px;
+    gap: 7px;
+  }
+  .sim-choice-feature-list li {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+  .sim-choice-protection-list li {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .sim-choice-feature-icon {
+    height: 30px;
+    width: 30px;
+  }
+  .sim-choice-provider-logo {
+    height: 34px;
+    width: 34px;
+  }
+  .sim-choice-feature-icon svg {
+    height: 16px;
+    width: 16px;
+  }
+}
+
 /* ============= CHECKOUT PAGE ============= */
 .checkout-form {
   max-width: 600px;
+}
+
+.checkout-referral-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 14px 16px;
+}
+
+.checkout-referral-card p {
+  margin: 0;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.checkout-referral-card div {
+  display: grid;
+  gap: 2px;
+}
+
+.checkout-referral-card strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.checkout-referral-card span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .checkout-form .form-group {

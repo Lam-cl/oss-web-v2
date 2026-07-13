@@ -8,7 +8,8 @@ interface Props {
 }
 
 export default function USPBar({ items }: Props) {
-  const tickerItems = [...items, ...items];
+  const repeatCount = items.length < 5 ? 4 : 2;
+  const tickerItems = Array.from({ length: repeatCount }, () => items).flat();
 
   return (
     <div className="usp-bar" aria-label="ToneWow benefits">

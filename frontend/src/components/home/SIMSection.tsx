@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { searchNumbers } from '@/lib/api';
 import type { NumberResult } from '@/types';
 import USPBar from './USPBar';
@@ -51,6 +53,28 @@ const SPECIAL_NUMBER_INCLUDES = [
   ...SPECIAL_NUMBER_TIERS.map((tier) => `${tier.label}: ${tier.price} · ${tier.plan} · ${tier.details}`),
   ...SPECIAL_NUMBER_BENEFITS,
 ];
+
+type SimChoiceScreen = 'main' | 'custom' | 'bundle';
+
+type PreloadBenefitsResponse = {
+  metadata?: Record<string, { benefits?: string[] }>;
+};
+
+const FALLBACK_MODAL_BENEFITS: Record<string, string[]> = {
+  superlite: ['2GB Welcome Data', 'FREE PA Takaful RM10,000'],
+  lite: ['2GB Welcome Data', '20GB Bonus Data', 'FREE PA Takaful RM30,000'],
+  pro: ['FU 35', 'RM35 / 30 Days', 'FREE for 1 month', '150GB Data', 'Unlimited Calls', 'FREE PA Takaful RM30,000', 'FREE Life Insurance RM4,000'],
+  biz: ['FU 60', 'RM60 / 30 Days', 'FREE for 1 month', '500GB Data', 'Unlimited Calls', 'FREE PA Takaful RM50,000', 'FREE Life Insurance RM4,000'],
+};
+
+function cleanModalBenefits(items?: string[]) {
+  return (items || [])
+    .map(item => item.replace(/\s*-\s*validity\s+30\s+days/ig, '').trim())
+    .map(item => /^2GB Data$/i.test(item) ? '2GB Welcome Data' : item)
+    .filter(item => !/^WELCOME DATA$/i.test(item))
+    .filter(item => item && !/subscribe to any plan within 7 days/i.test(item))
+    .filter((item, index, arr) => arr.indexOf(item) === index);
+}
 
 const simUSPItems = [
   {
@@ -105,12 +129,81 @@ function CheckIcon() {
   );
 }
 
+function DataIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10" />
+      <path d="M3 17h18l-1.5 2h-15L3 17Z" />
+      <path d="M8 9h8M8 12h5" />
+    </svg>
+  );
+}
+
+function CallsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 16.92v2a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 3.2 2 2 0 0 1 4.11 1h2a2 2 0 0 1 2 1.72c.13.96.35 1.9.66 2.8a2 2 0 0 1-.45 2.11L7.5 8.45a16 16 0 0 0 6 6l.82-.82a2 2 0 0 1 2.11-.45c.9.31 1.84.53 2.8.66A2 2 0 0 1 22 16.92Z" />
+    </svg>
+  );
+}
+
+function GiftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7" />
+      <path d="M12 7H7.5A2.5 2.5 0 1 1 10 4.5C10 6 12 7 12 7ZM12 7h4.5A2.5 2.5 0 1 0 14 4.5C14 6 12 7 12 7Z" />
+    </svg>
+  );
+}
+
+function DefaultPlanIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function getPlanBenefitIcon(item: string) {
+  const normalized = item.toLowerCase();
+  if (normalized.includes('call')) return <CallsIcon />;
+  if (normalized.includes('bonus') || normalized.includes('welcome') || normalized.includes('free')) return <GiftIcon />;
+  if (normalized.includes('data') || normalized.includes('gb')) return <DataIcon />;
+  return <DefaultPlanIcon />;
+}
+
+function providerForProtection(item: string) {
+  if (/life insurance/i.test(item)) {
+    return { className: 'metlife', name: 'A.MetLife', mark: 'am', detail: 'A.MetLife' };
+  }
+  return { className: 'zurich', name: 'Zurich Takaful', mark: 'Z', detail: 'Zurich Takaful' };
+}
+
+function formatProtectionText(item: string) {
+  return item.replace(/^FREE\s+/i, 'FREE ');
+}
+
+function splitPlanBenefits(benefits: string[] = []) {
+  const protection = benefits.filter(item => /takaful|insurance/i.test(item));
+  const nonProtection = benefits.filter(item => !/takaful|insurance/i.test(item));
+  const planName = nonProtection.find(item => /^FU\s*\d+/i.test(item));
+  const price = nonProtection.find(item => /^RM[\d.]+\s*\/\s*\d+\s*Days/i.test(item));
+  const promo = nonProtection.find(item => /^FREE\s+for/i.test(item));
+  const planBenefits = nonProtection.filter(item => item !== planName && item !== price && item !== promo);
+
+  return { planName, price, promo, planBenefits, protection };
+}
+
 type SimCategory = 'normal' | 'special' | null;
 
 export default function SIMSection() {
   const router = useRouter();
   const sectionRef = useRef<HTMLDivElement>(null);
   const [simCategory, setSimCategory] = useState<SimCategory>(null);
+  const [choiceOpen, setChoiceOpen] = useState(false);
+  const [choiceScreen, setChoiceScreen] = useState<SimChoiceScreen>('main');
+  const [preloadBenefits, setPreloadBenefits] = useState<Record<string, string[]>>({});
+  const [mounted, setMounted] = useState(false);
 
   // Special number search state
   const [digits, setDigits] = useState('');
@@ -139,6 +232,17 @@ export default function SIMSection() {
     if (currentPage < totalPages - 2) paginationPages.push('...');
     paginationPages.push(totalPages);
   }
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('sim-choice-modal-open', choiceOpen);
+    return () => {
+      document.body.classList.remove('sim-choice-modal-open');
+    };
+  }, [choiceOpen]);
 
   const doSearch = async (query: string, source: 'auto' | 'manual') => {
     setLoading(true); setSearched(true); setCurrentPage(1); setSelectedNumber(null);
@@ -174,6 +278,156 @@ export default function SIMSection() {
     const bizPlan = { slug: 'biz', name: 'Biz', price: 0 };
     localStorage.setItem('tw_selected_plan', JSON.stringify(bizPlan));
     router.push('/sim/purchase?special=1');
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('https://api.tonewow.com/static-content/slug/preload-benefits')
+      .then(res => res.ok ? res.json() : null)
+      .then((data: PreloadBenefitsResponse | null) => {
+        if (cancelled || !data?.metadata) return;
+        const liteBenefits = cleanModalBenefits(data.metadata.LINDUNG_LITE?.benefits);
+        const proBenefits = cleanModalBenefits(data.metadata.LINDUNG_PRO?.benefits);
+        const bizBenefits = cleanModalBenefits(data.metadata.LINDUNG_BIZ?.benefits);
+        setPreloadBenefits({
+          lite: liteBenefits.length ? liteBenefits : FALLBACK_MODAL_BENEFITS.lite,
+          pro: proBenefits.length ? proBenefits : FALLBACK_MODAL_BENEFITS.pro,
+          biz: bizBenefits.length ? bizBenefits : FALLBACK_MODAL_BENEFITS.biz,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getModalBenefits = (key: keyof typeof FALLBACK_MODAL_BENEFITS) => {
+    return preloadBenefits[key] || FALLBACK_MODAL_BENEFITS[key];
+  };
+
+  const openChoice = () => {
+    setChoiceScreen('main');
+    setChoiceOpen(true);
+  };
+
+  const closeChoice = () => setChoiceOpen(false);
+
+  const routeToPackage = (href: string) => {
+    setChoiceOpen(false);
+    router.push(href);
+  };
+
+  const renderChoiceCard = ({
+    title,
+    meta,
+    description,
+    benefits,
+    onClick,
+    tone = 'blue',
+    detailed = false,
+  }: {
+    title: string;
+    meta?: string;
+    description?: string;
+    benefits?: string[];
+    onClick: () => void;
+    tone?: 'blue' | 'navy';
+    detailed?: boolean;
+  }) => {
+    const detail = splitPlanBenefits(benefits);
+    const metaMatch = meta?.match(/^(From)\s+(.+)$/i);
+
+    return (
+      <button className={`sim-choice-card sim-choice-card--${tone}`} type="button" onClick={onClick}>
+        <div className="sim-choice-card-header">
+          <h4 className="sim-choice-card-name">{title}</h4>
+          {meta && (
+            <div className={`sim-choice-card-meta${metaMatch ? ' sim-choice-card-meta--price' : ''}`}>
+              {metaMatch ? (
+                <>
+                  <span className="sim-choice-card-meta-from">{metaMatch[1]}</span>
+                  <span className="sim-choice-card-meta-amount">{metaMatch[2]}</span>
+                </>
+              ) : (
+                <span>{meta}</span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="sim-choice-card-body">
+          <div className="sim-choice-card-divider" />
+          {description && <p className="sim-choice-card-subtitle">{description}</p>}
+
+          {detailed ? (
+            <>
+              <div className="sim-choice-plan-detail">
+                {(detail.planName || detail.price || detail.promo) && (
+                  <div className="sim-choice-plan-top">
+                    {detail.planName && <h5>{detail.planName}</h5>}
+                    <div className="sim-choice-plan-price">
+                      {detail.price && <span className="sim-choice-plan-strike">{detail.price}</span>}
+                      {detail.promo && <span className="sim-choice-plan-free">{detail.promo}</span>}
+                    </div>
+                  </div>
+                )}
+                {detail.planBenefits.length > 0 && (
+                  <>
+                    <ul className="sim-choice-feature-list">
+                      {detail.planBenefits.map(item => (
+                        <li key={item}>
+                          <span className="sim-choice-feature-icon">{getPlanBenefitIcon(item)}</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+
+              {detail.protection.length > 0 && (
+                <div className="sim-choice-protection-detail">
+                  <p>Protection</p>
+                  <ul className="sim-choice-protection-list">
+                    {detail.protection.map(item => {
+                      const provider = providerForProtection(item);
+                      return (
+                        <li key={item}>
+                          <span className={`sim-choice-provider-logo sim-choice-provider-logo--${provider.className}`} aria-label={provider.name}>
+                            <strong>{provider.mark}</strong>
+                            <small>{provider.detail}</small>
+                          </span>
+                          <span>{formatProtectionText(item)}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {benefits && benefits.length > 0 && (
+                <>
+                  <p className="sim-choice-benefits-label">Includes:</p>
+                  <ul className="sim-choice-benefits">
+                    {benefits.map(item => (
+                      <li key={item}>
+                        <CheckIcon />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+
+          <div className="sim-choice-card-cta">
+            <span>Select</span>
+          </div>
+        </div>
+      </button>
+    );
   };
 
   useEffect(() => {
@@ -254,6 +508,116 @@ export default function SIMSection() {
           </div>
         </button>
       </div>
+
+      {mounted && createPortal(
+        <AnimatePresence>
+          {choiceOpen && (
+            <motion.div
+              className="sim-choice-backdrop"
+              role="dialog"
+              aria-modal="true"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onMouseDown={closeChoice}
+            >
+              <motion.div
+                className="sim-choice-dialog"
+                initial={{ opacity: 0, y: 22, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 14, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="sim-choice-head">
+                  <div>
+                    <p className="sim-choice-kicker">Normal Number</p>
+                    <h3>
+                      {choiceScreen === 'main'
+                        ? 'Choose how you want to start'
+                        : choiceScreen === 'custom'
+                          ? 'Build your own plan'
+                          : 'Ready made bundle'}
+                    </h3>
+                  </div>
+                  <button className="sim-choice-close" type="button" onClick={closeChoice} aria-label="Close">×</button>
+                </div>
+
+                {choiceScreen !== 'main' && (
+                  <button className="sim-choice-back" type="button" onClick={() => setChoiceScreen('main')}>
+                    ← Back
+                  </button>
+                )}
+
+                {choiceScreen === 'main' && (
+                  <div className="sim-choice-grid">
+                    {renderChoiceCard({
+                      title: 'Build your own plan',
+                      meta: 'Custom',
+                      description: 'Pick SUPERLITE or LITE, then customize your plan and protection.',
+                      benefits: ['Choose your plan', 'Flexible protection', 'Checkout after setup'],
+                      onClick: () => setChoiceScreen('custom'),
+                      tone: 'blue',
+                    })}
+                    {renderChoiceCard({
+                      title: 'Ready made bundle',
+                      meta: 'Fast checkout',
+                      description: 'Choose Pro or Biz and go straight to checkout.',
+                      benefits: ['Preloaded plan', 'Insurance benefits', 'Faster purchase flow'],
+                      onClick: () => setChoiceScreen('bundle'),
+                      tone: 'navy',
+                    })}
+                  </div>
+                )}
+
+                {choiceScreen === 'custom' && (
+                  <div className="sim-choice-grid">
+                    {renderChoiceCard({
+                      title: 'SUPERLITE',
+                      meta: 'From RM10',
+                      benefits: getModalBenefits('superlite'),
+                      onClick: () => routeToPackage('/sim/purchase?mode=superlite'),
+                      tone: 'blue',
+                      detailed: true,
+                    })}
+                    {renderChoiceCard({
+                      title: 'LITE',
+                      meta: 'From RM19.50',
+                      benefits: getModalBenefits('lite'),
+                      onClick: () => routeToPackage('/sim/purchase'),
+                      tone: 'blue',
+                      detailed: true,
+                    })}
+                  </div>
+                )}
+
+                {choiceScreen === 'bundle' && (
+                  <div className="sim-choice-grid">
+                    {renderChoiceCard({
+                      title: 'PRO',
+                      meta: 'RM49.50',
+                      benefits: getModalBenefits('pro'),
+                      onClick: () => routeToPackage('/sim/purchase?bundle=pro'),
+                      tone: 'navy',
+                      detailed: true,
+                    })}
+                    {renderChoiceCard({
+                      title: 'BIZ',
+                      meta: 'RM128',
+                      benefits: getModalBenefits('biz'),
+                      onClick: () => routeToPackage('/sim/purchase?bundle=biz'),
+                      tone: 'navy',
+                      detailed: true,
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
 
       {simCategory === 'special' && (

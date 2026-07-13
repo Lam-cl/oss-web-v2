@@ -55,10 +55,16 @@ export default function FloatingReferralQR() {
   const qrUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const origin = window.location.origin;
-    if (type === 'TWE' && tweValid && tweId) return `${origin}/ms?promoterID=${encodeURIComponent(tweId)}`;
-    if (type === 'TWP' && referenceID) return `${origin}/ms?referenceID=${encodeURIComponent(referenceID)}`;
+    if (type === 'TWE' && tweValid && tweId) {
+      const code = tweId.replace('TWE', '').replace('-', '').replace(/\D/g, '');
+      return `${origin}/?promoter=TWE&code=${encodeURIComponent(code)}`;
+    }
+    if (type === 'TWP' && referenceID && twpFields.memberID) {
+      const code = twpFields.memberID.replace('TWP', '').replace('-', '').replace(/\D/g, '');
+      return `${origin}/?promoter=TWP&code=${encodeURIComponent(code)}&referenceID=${encodeURIComponent(referenceID)}`;
+    }
     return '';
-  }, [type, tweValid, tweId, referenceID]);
+  }, [type, tweValid, tweId, referenceID, twpFields.memberID]);
 
   const resetForm = (nextType = type) => {
     setTweId('');

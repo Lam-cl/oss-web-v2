@@ -838,7 +838,7 @@ function DeviceCheckoutInner() {
           background: #e5e7eb; color: #94a3b8; transition: all 0.2s;
         }
         .sidebar-step-circle.completed { background: #16a34a; color: #fff; }
-        .sidebar-step-circle.active { background: #2563eb; color: #fff; }
+        .sidebar-step-circle.active { background: #334EFF; color: #fff; }
         .sidebar-step-label { font-size: 14px; color: #94a3b8; }
         .sidebar-step-label.active { font-weight: 700; color: #1e293b; }
         .sidebar-step-connector { width: 2px; height: 24px; margin-left: 17px; background: #e5e7eb; }

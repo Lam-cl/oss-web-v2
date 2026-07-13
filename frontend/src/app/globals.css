@@ -73,7 +73,7 @@
   gap: 8px;
   padding: 0 15px;
   border-radius: 999px;
-  background: #1a56db;
+  background: #334EFF;
   border: 1px solid rgba(255, 255, 255, 0.5);
   color: #fff;
   box-shadow: 0 14px 34px rgba(26, 86, 219, 0.28);
@@ -1563,7 +1563,7 @@ h5 { font-size: 1.1rem; }
 }
 
 .category-tab.active {
-  background: var(--tw-blue) !important;
+  background: #334EFF!important;
   color: var(--white) !important;
   font-weight: 700 !important;
 }
@@ -4311,7 +4311,7 @@ body.bg-page {
 }
 
 .btn-blue {
-  background: var(--tw-blue) !important;
+  background: #334EFF!important;
   color: var(--white) !important;
   border: none;
   padding: 12px 32px;
@@ -6063,7 +6063,7 @@ body.sim-choice-modal-open .referral-floating-widget {
   margin: 0 0 40px calc(50% - 50vw) !important;
   padding: 0 !important;
   overflow: hidden !important;
-  background: #0057b8 !important;
+  background: #334EFF !important;
   border-radius: 0 !important;
   display: block !important;
   white-space: nowrap !important;

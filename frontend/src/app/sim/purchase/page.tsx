@@ -1924,7 +1924,7 @@ function SIMPurchaseWizard() {
           transition: all 0.2s; flex-shrink: 0;
         }
         .sidebar-step-circle.completed { background: #16a34a; color: #fff; cursor: pointer; }
-        .sidebar-step-circle.active { background: #2563eb; color: #fff; }
+        .sidebar-step-circle.active { background: #334EFF; color: #fff; }
         .sidebar-step-label { font-size: 14px; color: #94a3b8; }
         .sidebar-step-label.active { font-weight: 700; color: #1e293b; }
         .sidebar-step-connector {
@@ -2049,9 +2049,9 @@ function SIMPurchaseWizard() {
           opacity: 1; transform: translateX(-50%) translateY(0);
         }
         .sim-type-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
-        .sim-type-price { font-size: 16px; font-weight: 800; color: #2563eb; margin: 0; }
+        .sim-type-price { font-size: 16px; font-weight: 800; color: #334EFF; margin: 0; }
         .sim-type-selected-badge {
-          font-size: 11px; font-weight: 700; color: #2563eb;
+          font-size: 11px; font-weight: 700; color: #334EFF;
           background: #dbeafe; padding: 2px 8px; border-radius: 20px;
         }
         .sim-type-soon-badge {
@@ -2068,7 +2068,7 @@ function SIMPurchaseWizard() {
           padding: 8px 24px; border: none; font-size: 14px; font-weight: 600;
           cursor: pointer; background: #fff; color: #64748b; transition: all 0.15s;
         }
-        .referral-toggle-btn.active { background: #2563eb; color: #fff; }
+        .referral-toggle-btn.active { background: #334EFF; color: #fff; }
         .referral-toggle-btn:first-child { border-right: 1.5px solid #d1d5db; }
 
         .checkout-referral-card {

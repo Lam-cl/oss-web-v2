@@ -2337,7 +2337,7 @@ function SIMPurchaseWizard() {
         .fu-plan-validity-col { font-size: 11px; color: rgba(255,255,255,0.7); margin: 3px 0 0; }
 
         .fu-plan-header {
-          position: relative; background: #0074be; color: #fff;
+          position: relative; background: #334eff; color: #fff;
           padding: 16px; border-radius: 16px; text-align: left;
           display: flex; align-items: center; gap: 12px;
         }
@@ -2357,7 +2357,7 @@ function SIMPurchaseWizard() {
           border-radius: 50%; background: #fff; display: flex;
           align-items: center; justify-content: center;
         }
-        .fu-plan-check svg { stroke: #0074be; }
+        .fu-plan-check svg { stroke: #334eff; }
         .fu-plan-name { font-size: 14px; font-weight: 500; color: #fff; margin: 0 0 2px; }
         .fu-plan-data { font-size: 28px; font-weight: 700; color: #ffe000; margin: 0; line-height: 1.1; }
         .fu-plan-body { padding: 14px 8px 8px; text-align: left; }
@@ -2395,8 +2395,8 @@ function SIMPurchaseWizard() {
           display: flex; align-items: center; gap: 12px;
         }
         .ins-card-radio-wrap { flex-shrink: 0; }
-        .ins-card-header--basic { background: #0074be; }
-        .ins-card-header--premium { background: #0074be; }
+        .ins-card-header--basic { background: #334EFF; }
+        .ins-card-header--premium { background: #334EFF; }
         .ins-card-badge {
           position: absolute; top: 0; right: 0; background: #ff0077; color: #fff;
           font-size: 10px; font-weight: 800; padding: 4px 10px;

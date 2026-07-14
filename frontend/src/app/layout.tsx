@@ -42,6 +42,22 @@ export default function RootLayout({
             `,
           }}
         />
+        
+{/* Google Analytics (gtag.js) */}
+<Script
+  async
+  src="https://www.googletagmanager.com/gtag/js?id=G-KJRLRC6NMX"
+  strategy="afterInteractive"
+/>
+<Script id="google-analytics" strategy="afterInteractive">
+  {`
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-KJRLRC6NMX');
+  `}
+</Script>
+
         <noscript>
           <iframe
             src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}

@@ -194,7 +194,7 @@ const PACKAGE_OPTIONS: Record<PackageChoice, {
     price: 'RM19.50',
     data: 'LITE',
     tagline: '',
-    benefits: ['2GB Welcome Data', 'Unlimited Calls*', 'Free PA Takaful RM10,000*'],
+    benefits: ['2GB Welcome Data', '20GB* Bonus Data', 'Free PA Takaful RM30,000*'],
   },
   pro: {
     label: 'PRO',

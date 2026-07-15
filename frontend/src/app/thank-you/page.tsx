@@ -135,7 +135,7 @@ function ThankYouContent() {
 
     // No GKash status — fallback: poll payment API
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 40;
 
     const retryOrSetPending = () => {
       attempts++;

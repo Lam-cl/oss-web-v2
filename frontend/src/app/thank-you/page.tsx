@@ -135,7 +135,16 @@ function ThankYouContent() {
 
     // No GKash status — fallback: poll payment API
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
+
+    const retryOrSetPending = () => {
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(check, 3000);
+        return;
+      }
+      setStatus('pending');
+    };
 
     const check = async () => {
       try {
@@ -144,17 +153,16 @@ function ThankYouContent() {
         const res = await fetch(url);
         const data = await res.json();
 
-        const paymentStatus = data?.data?.[0]?.status;
+        const paymentRecord = data?.data?.[0];
+        const paymentStatus = paymentRecord?.status;
         if (paymentStatus === '2') { setStatus('success'); return; }
-        if (paymentStatus === '1' && attempts < maxAttempts) {
-          attempts++;
-          setTimeout(check, 3000);
+        if (paymentRecord && paymentStatus && paymentStatus !== '1') {
+          setStatus('failed');
           return;
         }
-        setStatus(paymentStatus === '1' ? 'pending' : 'failed');
+        retryOrSetPending();
       } catch {
-        if (attempts < maxAttempts) { attempts++; setTimeout(check, 3000); return; }
-        setStatus('failed');
+        retryOrSetPending();
       }
     };
 

@@ -91,6 +91,15 @@ export default function RootLayout({
           data-chat="true"
           data-widgetid="0ea239f2-5ea8-4d9c-82cf-7a75fb61665f"
         />
+
+          {/* Balam AI Assistant */}
+        <Script
+          src="https://widget.ibalam.ai/assistant"
+          data-balam-assistant="10682d00-7c37-4ec8-95e6-22aeb9e94b49"
+          data-balam-origin="https://admin.ibalam.ai"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

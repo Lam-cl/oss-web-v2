@@ -74,13 +74,6 @@ export default function RootLayout({
         <Footer />
         <FloatingReferralQR />
 
-        <Script
-          src="//fw-cdn.com/12344265/4786741.js"
-          strategy="afterInteractive"
-          data-chat="true"
-          data-widgetid="0ea239f2-5ea8-4d9c-82cf-7a75fb61665f"
-        />
-
           {/* Balam AI Assistant */}
         <Script
           src="https://widget.ibalam.ai/assistant"

@@ -918,7 +918,6 @@ function SIMPurchaseWizard() {
         dataPlanID: '0',
         insurance: insuranceApiValue,
         isEsim: simType === 'esim' ? '1' : '0',
-        esim: simType === 'esim' ? '1' : '0',
         twpReferenceID: paymentTwpReferenceID,
         alloReferenceID: paymentAlloReferenceID,
       });
@@ -927,7 +926,7 @@ function SIMPurchaseWizard() {
 
       if (simType === 'esim') {
         const paymentRefNo = `${paymentMethod}${refNo}`;
-        const confirmationUrl = `${window.location.origin}/confirmation/esim?refno=${encodeURIComponent(paymentRefNo)}`;
+        const confirmationUrl = `${window.location.origin}/confirmation?esim=1&refno=${encodeURIComponent(paymentRefNo)}`;
         params.set('returnurl', confirmationUrl);
         params.set('callbackurl', confirmationUrl);
         params.set('failureurl', confirmationUrl);

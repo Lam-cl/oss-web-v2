@@ -6065,7 +6065,7 @@ body.sim-choice-modal-open .referral-floating-widget {
   overflow: hidden !important;
   background: #334EFF !important;
   border-radius: 0 !important;
-  display: block !important;
+  display: none !important;
   white-space: nowrap !important;
 }
 

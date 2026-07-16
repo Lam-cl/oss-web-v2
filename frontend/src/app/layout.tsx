@@ -74,17 +74,6 @@ export default function RootLayout({
         <Footer />
         <FloatingReferralQR />
 
-        {/* Freshdesk Widget */}
-        <Script
-          id="freshdesk-settings"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.fwSettings = { 'widget_id': 4786741 };
-              !function(){if("function"!=typeof window.FreshworksWidget){var n=function(){n.q.push(arguments)};n.q=[],window.FreshworksWidget=n}}()
-            `,
-          }}
-        />
         <Script
           src="//fw-cdn.com/12344265/4786741.js"
           strategy="afterInteractive"

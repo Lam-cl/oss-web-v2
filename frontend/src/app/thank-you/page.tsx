@@ -135,7 +135,16 @@ function ThankYouContent() {
 
     // No GKash status — fallback: poll payment API
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 40;
+
+    const retryOrSetPending = () => {
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(check, 3000);
+        return;
+      }
+      setStatus('pending');
+    };
 
     const check = async () => {
       try {
@@ -144,17 +153,16 @@ function ThankYouContent() {
         const res = await fetch(url);
         const data = await res.json();
 
-        const paymentStatus = data?.data?.[0]?.status;
+        const paymentRecord = data?.data?.[0];
+        const paymentStatus = paymentRecord?.status;
         if (paymentStatus === '2') { setStatus('success'); return; }
-        if (paymentStatus === '1' && attempts < maxAttempts) {
-          attempts++;
-          setTimeout(check, 3000);
+        if (paymentRecord && paymentStatus && paymentStatus !== '1') {
+          setStatus('failed');
           return;
         }
-        setStatus(paymentStatus === '1' ? 'pending' : 'failed');
+        retryOrSetPending();
       } catch {
-        if (attempts < maxAttempts) { attempts++; setTimeout(check, 3000); return; }
-        setStatus('failed');
+        retryOrSetPending();
       }
     };
 
@@ -170,10 +178,12 @@ function ThankYouContent() {
     let cancelled = false;
 
     const redirectToEsimSuccess = async () => {
-      if (!(isEsimReturn || hasMatchingStoredEsimOrder(refNo))) return;
+      const knownEsimOrder = isEsimReturn || hasMatchingStoredEsimOrder(refNo);
+      const maxAttempts = knownEsimOrder ? 40 : 13;
+      const retryDelay = knownEsimOrder ? 3000 : 10000;
 
-      setEsimPreparing(true);
-      for (let attempt = 0; attempt < 10; attempt++) {
+      if (knownEsimOrder) setEsimPreparing(true);
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const details = await fetchEsimDetails(refNo);
           if (cancelled) return;
@@ -181,23 +191,22 @@ function ThankYouContent() {
             try {
               sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
             } catch { /* ignore */ }
+            clearEsimOrderMarker();
             router.replace(buildEsimSuccessUrl(refNo, details));
             return;
           }
         } catch { /* retry below */ }
 
-        if (attempt < 9) await sleep(3000);
+        if (attempt < maxAttempts - 1) await sleep(retryDelay);
         if (cancelled) return;
       }
 
-      router.replace(buildEsimSuccessUrl(refNo));
+      if (knownEsimOrder) setEsimPreparing(false);
     };
 
-    try {
-      redirectToEsimSuccess();
-    } catch {
-      clearEsimOrderMarker();
-    }
+    redirectToEsimSuccess().catch(() => {
+      if (!cancelled) setEsimPreparing(false);
+    });
 
     return () => { cancelled = true; };
   }, [status, refNo, isEsimReturn, router]);

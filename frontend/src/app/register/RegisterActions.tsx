@@ -27,8 +27,8 @@ export default function RegisterActions({ clipboardText }: RegisterActionsProps)
     setDeviceType(detectDeviceType());
   }, []);
 
-  const openAppThenFallback = async () => {
-    await openToneWowAppWithRegistration(clipboardText, deviceType);
+  const openAppThenFallback = () => {
+    openToneWowAppWithRegistration(clipboardText, deviceType);
   };
 
   return (

@@ -91,6 +91,32 @@ function selectResolvedPromoter(
   return resolution.promoter;
 }
 
+async function prepareRegistrationPayload(details: EsimDetails, promoter: EsimPromoterSession | null) {
+  const prefix = promoter?.prefix?.trim().toLowerCase() || '';
+  const code = promoter?.code?.trim() || '';
+  const body: { serial?: string; twe?: string; twp?: string; referralName?: string; createShortUrl: boolean } = {
+    createShortUrl: false,
+  };
+
+  if (details.simSerial) body.serial = details.simSerial;
+  if (promoter?.name) body.referralName = promoter.name;
+  if (prefix === 'twp' && code) body.twp = code;
+  else if (prefix === 'twe' && code) body.twe = code;
+  else body.twe = '8937777';
+
+  const res = await fetch('/register-token/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.clipboardText) {
+    throw new Error(data?.error || 'Unable to prepare registration token. Please try again.');
+  }
+
+  return data.clipboardText as string;
+}
+
 export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps) {
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -178,11 +204,11 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
             return;
           }
           const resolvedPromoter = selectResolvedPromoter(resolution, tokenPromoter || storedPromoter);
+          const preparedRegistration = await prepareRegistrationPayload(tokenDetails, resolvedPromoter)
+            .catch(() => data.registration?.clipboardText || '');
           setDetails(tokenDetails);
           setPromoter(resolvedPromoter);
-          if (!resolution.resolved && data.registration?.clipboardText) {
-            setRegistrationClipboardText(data.registration.clipboardText);
-          }
+          setRegistrationClipboardText(preparedRegistration);
           try {
             sessionStorage.setItem('tw_esim_details', JSON.stringify(data.details));
           } catch { /* ignore */ }
@@ -216,7 +242,9 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
         return;
       }
       const resolvedPromoter = selectResolvedPromoter(resolution, storedPromoter);
+      const preparedRegistration = await prepareRegistrationPayload(nextDetails, resolvedPromoter).catch(() => '');
       setPromoter(resolvedPromoter);
+      setRegistrationClipboardText(preparedRegistration);
       setReferralStatus('ready');
 
       if (hasUrlDetails) {
@@ -395,49 +423,29 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
     link.remove();
   };
 
-  const registerPrefix = promoter?.prefix?.trim().toLowerCase() || '';
-  const registerCode = promoter?.code?.trim() || '';
-
   const serialDigits = simSerial.replace(/\D/g, '');
   const groupedSerial = serialDigits ? serialDigits.replace(/(.{4})/g, '$1 ').trim() : 'SIM serial not available';
   const isDetailsPending = !simSerial && !esimQR;
 
-  const openRegisterToken = async () => {
-    setRegisterLoading(true);
+  const openRegisterToken = () => {
     setRegisterMessage('');
 
-    try {
-      if (registrationClipboardText) {
-        await openToneWowAppWithRegistration(registrationClipboardText, deviceType);
-        setRegisterLoading(false);
-        return;
-      }
-
-      const body: { serial?: string; twe?: string; twp?: string; referralName?: string; createShortUrl: boolean } = { createShortUrl: false };
-      if (simSerial) body.serial = simSerial;
-      if (promoter?.name) body.referralName = promoter.name;
-      if (registerPrefix === 'twp' && registerCode) body.twp = registerCode;
-      else if (registerPrefix === 'twe' && registerCode) body.twe = registerCode;
-      else body.twe = '8937777';
-
-      const res = await fetch('/register-token/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data?.clipboardText) {
-        throw new Error(data?.error || 'Unable to prepare registration token. Please try again.');
-      }
-
-      setRegistrationClipboardText(data.clipboardText);
-      await openToneWowAppWithRegistration(data.clipboardText, deviceType);
-      setRegisterLoading(false);
-    } catch (err: any) {
-      setRegisterMessage(err?.message || 'Unable to prepare registration token. Please try again.');
-      setRegisterLoading(false);
+    if (registrationClipboardText) {
+      openToneWowAppWithRegistration(registrationClipboardText, deviceType);
+      return;
     }
+
+    setRegisterLoading(true);
+    void prepareRegistrationPayload(details, promoter)
+      .then((clipboardText) => {
+        setRegistrationClipboardText(clipboardText);
+        setRegisterLoading(false);
+        setRegisterMessage('Registration is ready. Tap the button again to open the app.');
+      })
+      .catch((err: any) => {
+        setRegisterMessage(err?.message || 'Unable to prepare registration token. Please try again.');
+        setRegisterLoading(false);
+      });
   };
 
   const renderCopyIcon = (active: boolean) => active ? (

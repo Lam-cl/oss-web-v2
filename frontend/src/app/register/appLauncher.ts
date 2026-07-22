@@ -18,14 +18,35 @@ export function detectDeviceType(): DeviceType {
   return 'other';
 }
 
-export async function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
-  const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
+function copyRegistrationText(clipboardText: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = clipboardText;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, clipboardText.length);
 
   try {
-    await navigator.clipboard.writeText(clipboardText);
+    document.execCommand('copy');
   } catch {
-    // Continue anyway; Android referrer and server token still carry the payload.
+    // The modern Clipboard API attempt below may still succeed.
+  } finally {
+    textarea.remove();
   }
+
+  try {
+    void navigator.clipboard?.writeText(clipboardText).catch(() => undefined);
+  } catch {
+    // Continue to app launch even when clipboard access is unavailable.
+  }
+}
+
+export function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
+  const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
+  copyRegistrationText(clipboardText);
 
   const webLink = new URL(window.location.href);
   webLink.searchParams.set('openApp', Date.now().toString());
@@ -44,23 +65,23 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
 
   let appOpened = false;
   let fallbackTimer: number | undefined;
-  const appLaunchFrame = document.createElement('iframe');
-  appLaunchFrame.setAttribute('aria-hidden', 'true');
-  appLaunchFrame.style.display = 'none';
 
   const cleanup = () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
-    appLaunchFrame.remove();
+    window.removeEventListener('pagehide', handlePageHide);
+  };
+  const markAppOpened = () => {
+    appOpened = true;
+    if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    cleanup();
   };
   const handleVisibilityChange = () => {
-    if (document.hidden) {
-      appOpened = true;
-      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
-      cleanup();
-    }
+    if (document.hidden) markAppOpened();
   };
+  const handlePageHide = () => markAppOpened();
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('pagehide', handlePageHide);
   fallbackTimer = window.setTimeout(() => {
     cleanup();
     if (!appOpened && document.visibilityState === 'visible') {
@@ -68,6 +89,5 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
     }
   }, APP_OPEN_FALLBACK_DELAY_MS);
 
-  appLaunchFrame.src = deepLinkUrl;
-  document.body.appendChild(appLaunchFrame);
+  window.location.href = deepLinkUrl;
 }

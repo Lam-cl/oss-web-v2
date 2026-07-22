@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
       });
       const statusData = await statusRes.json().catch(() => null);
       const record = statusData?.data?.[0];
-      paymentResolved = statusRes.ok && Boolean(record);
-      referralCode = clean(record?.referralCode);
+      paymentResolved = statusRes.ok && statusData?.systemCode === '0' && Boolean(clean(record?.status));
+      referralCode = paymentResolved ? clean(record?.referralCode) : '';
     } catch {
       paymentResolved = false;
     }

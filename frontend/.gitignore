@@ -15,6 +15,7 @@
 
 # production
 /build
+/.token-store/
 
 # misc
 .DS_Store

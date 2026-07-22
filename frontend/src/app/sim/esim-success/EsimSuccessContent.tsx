@@ -39,21 +39,40 @@ type ReferralResolution = {
   promoter: EsimPromoterSession | null;
 };
 
+type ReferralLoadStatus = 'checking' | 'ready' | 'error';
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function resolveOrderReferral(refNo: string, contextToken: string): Promise<ReferralResolution> {
   if (!refNo) return { resolved: false, promoter: null };
-  try {
-    const res = await fetch('/api/esim-referral', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refNo, contextToken }),
-      cache: 'no-store',
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || typeof data?.resolved !== 'boolean') return { resolved: false, promoter: null };
-    return { resolved: data.resolved, promoter: data.promoter || null };
-  } catch {
-    return { resolved: false, promoter: null };
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch('/api/esim-referral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refNo, contextToken }),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.resolved === true) {
+        return { resolved: true, promoter: data.promoter || null };
+      }
+    } catch {
+      // Retry transient network and upstream failures below.
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (attempt < 2) await wait((attempt + 1) * 1500);
   }
+
+  return { resolved: false, promoter: null };
 }
 
 function selectResolvedPromoter(
@@ -89,7 +108,9 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
   const [registrationClipboardText, setRegistrationClipboardText] = useState('');
   const [deviceType, setDeviceType] = useState<DeviceType>('other');
   const [promoter, setPromoter] = useState<EsimPromoterSession | null>(null);
-  const [referralReady, setReferralReady] = useState(false);
+  const [referralStatus, setReferralStatus] = useState<ReferralLoadStatus>('checking');
+  const [referralError, setReferralError] = useState('');
+  const [referralRetryKey, setReferralRetryKey] = useState(0);
   const [details, setDetails] = useState<EsimDetails>({
     refNo: '',
     simSerial: '',
@@ -129,6 +150,8 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
     };
 
     const loadDetails = async () => {
+      setReferralStatus('checking');
+      setReferralError('');
       const storedPromoter = readStoredPromoter();
 
       const params = new URLSearchParams(window.location.search);
@@ -144,6 +167,16 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           const tokenDetails = data.details as EsimDetails;
           const tokenPromoter = data.promoter as EsimPromoterSession | null;
           const resolution = await resolveOrderReferral(tokenDetails.refNo, referralContext);
+          const hasTrustedTokenReferral = Boolean(
+            (tokenPromoter?.prefix?.trim() && tokenPromoter?.code?.trim())
+            || tokenPromoter?.twpReferenceID?.trim()
+            || tokenPromoter?.alloReferenceID?.trim(),
+          );
+          if (!resolution.resolved && !hasTrustedTokenReferral) {
+            setReferralError('We could not verify the referral for this order. Please try again.');
+            setReferralStatus('error');
+            return;
+          }
           const resolvedPromoter = selectResolvedPromoter(resolution, tokenPromoter || storedPromoter);
           setDetails(tokenDetails);
           setPromoter(resolvedPromoter);
@@ -153,10 +186,11 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           try {
             sessionStorage.setItem('tw_esim_details', JSON.stringify(data.details));
           } catch { /* ignore */ }
+          setReferralStatus('ready');
         } catch (error: any) {
           setInstallMessage(error?.message || 'Unable to load saved eSIM details.');
-        } finally {
-          setReferralReady(true);
+          setReferralError(error?.message || 'Unable to load saved eSIM details.');
+          setReferralStatus('error');
         }
         return;
       }
@@ -174,8 +208,16 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
       setDetails(nextDetails);
       const resolution = await resolveOrderReferral(nextDetails.refNo, referralContext);
+      if (!resolution.resolved) {
+        setReferralError(nextDetails.refNo
+          ? 'We could not verify the referral for this order. Please try again.'
+          : 'The payment reference is missing. Please reopen the confirmation link from your payment receipt.');
+        setReferralStatus('error');
+        return;
+      }
       const resolvedPromoter = selectResolvedPromoter(resolution, storedPromoter);
       setPromoter(resolvedPromoter);
+      setReferralStatus('ready');
 
       if (hasUrlDetails) {
         try {
@@ -196,12 +238,12 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           // Keep the original query details when durable short-token storage is unavailable.
         }
       }
-      setReferralReady(true);
     };
 
     loadDetails();
-    setTimeout(() => setAnimDone(true), 800);
-  }, []);
+    const animationTimer = setTimeout(() => setAnimDone(true), 800);
+    return () => clearTimeout(animationTimer);
+  }, [initialTokenId, referralRetryKey]);
 
   useEffect(() => {
     if (!barcodeRef.current || !simSerial) return;
@@ -404,6 +446,56 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
   );
 
+  if (referralStatus === 'checking') {
+    return (
+      <div className="container" style={{ minHeight: '68vh', display: 'grid', placeItems: 'center', padding: '72px 20px' }}>
+        <div style={{ textAlign: 'center', maxWidth: 420 }} role="status" aria-live="polite">
+          <div style={{
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            border: '4px solid #dbeafe',
+            borderTopColor: '#0074be',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 20px',
+          }} />
+          <h2 style={{ margin: '0 0 8px', color: '#172554', fontSize: 21, fontWeight: 800 }}>Verifying your referral</h2>
+          <p style={{ margin: 0, color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>Please wait while we securely confirm your order details.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (referralStatus === 'error') {
+    return (
+      <div className="container" style={{ minHeight: '68vh', display: 'grid', placeItems: 'center', padding: '72px 20px' }}>
+        <div style={{ textAlign: 'center', maxWidth: 440 }} role="alert">
+          <div style={{
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            display: 'grid',
+            placeItems: 'center',
+            background: '#fff7ed',
+            color: '#c2410c',
+            fontSize: 28,
+            fontWeight: 800,
+            margin: '0 auto 20px',
+          }}>!</div>
+          <h2 style={{ margin: '0 0 8px', color: '#172554', fontSize: 21, fontWeight: 800 }}>Unable to verify referral</h2>
+          <p style={{ margin: '0 0 22px', color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>{referralError}</p>
+          <button
+            type="button"
+            onClick={() => setReferralRetryKey((value) => value + 1)}
+            style={{ border: 0, borderRadius: 6, background: '#0074be', color: '#fff', padding: '11px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="container" style={{ paddingTop: 48, paddingBottom: 60 }}>
@@ -417,10 +509,10 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
               <img src="/images/tonewow-app.png" alt="tone wow 2.0 app" className="esim-app-art" />
 
-              <button type="button" onClick={openRegisterToken} disabled={registerLoading || !referralReady} className="esim-register-cta">
+              <button type="button" onClick={openRegisterToken} disabled={registerLoading} className="esim-register-cta">
                   <img src="/images/tonewow-app.png" alt="tone wow app" className="esim-register-icon" />
                   <div>
-                    <strong>{!referralReady ? 'Checking your referral...' : registerLoading ? 'Preparing secure registration...' : 'Get the tone wow 2.0 App'}</strong><br />
+                    <strong>{registerLoading ? 'Preparing secure registration...' : 'Get the tone wow 2.0 App'}</strong><br />
                     <span>Download & Register Now</span>
                   </div>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7m10 0v10"/></svg>

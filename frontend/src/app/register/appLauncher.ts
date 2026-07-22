@@ -2,7 +2,7 @@
 
 const GOOGLE_PLAY_BASE_URL = 'https://play.google.com/store/apps/details?id=com.mywow2.app';
 const APP_STORE_URL = 'https://apps.apple.com/my/app/tone-wow-2-0/id6751451439';
-const APP_OPEN_FALLBACK_DELAY_MS = 1600;
+const APP_OPEN_FALLBACK_DELAY_MS = 2500;
 const ANDROID_PACKAGE_NAME = 'com.mywow2.app';
 const APP_DEEP_LINK_SCHEME = 'myapp';
 
@@ -20,7 +20,6 @@ export function detectDeviceType(): DeviceType {
 
 export async function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
   const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
-  const appLinkWindow = deviceType === 'ios' ? window.open('about:blank', '_blank') : null;
 
   try {
     await navigator.clipboard.writeText(clipboardText);
@@ -28,18 +27,8 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
     // Continue anyway; Android referrer and server token still carry the payload.
   }
 
-  let appOpened = false;
-  const markAppOpened = () => {
-    appOpened = true;
-  };
-
   const webLink = new URL(window.location.href);
   webLink.searchParams.set('openApp', Date.now().toString());
-
-  window.addEventListener('pagehide', markAppOpened, { once: true });
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) markAppOpened();
-  }, { once: true });
 
   if (deviceType === 'android') {
     const fallbackUrl = encodeURIComponent(playStoreUrl);
@@ -48,16 +37,32 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
   }
 
   const deepLinkUrl = `${APP_DEEP_LINK_SCHEME}://`;
-  if (appLinkWindow && !appLinkWindow.closed) {
-    appLinkWindow.location.href = deepLinkUrl;
-  } else {
+  if (deviceType !== 'ios') {
     window.location.href = deepLinkUrl;
     return;
   }
 
-  window.setTimeout(() => {
-    if (!appOpened && !document.hidden) {
-      window.location.href = deviceType === 'ios' ? APP_STORE_URL : playStoreUrl;
+  let appOpened = false;
+  let fallbackTimer: number | undefined;
+
+  const removeVisibilityListener = () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      appOpened = true;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      removeVisibilityListener();
+    }
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  fallbackTimer = window.setTimeout(() => {
+    removeVisibilityListener();
+    if (!appOpened && document.visibilityState === 'visible') {
+      window.location.replace(APP_STORE_URL);
     }
   }, APP_OPEN_FALLBACK_DELAY_MS);
+
+  window.location.href = deepLinkUrl;
 }

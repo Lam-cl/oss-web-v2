@@ -246,7 +246,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
   }, [initialTokenId, referralRetryKey]);
 
   useEffect(() => {
-    if (!barcodeRef.current || !simSerial) return;
+    if (referralStatus !== 'ready' || !barcodeRef.current || !simSerial) return;
     try {
       JsBarcode(barcodeRef.current, simSerial, {
         format: 'CODE128',
@@ -258,7 +258,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
     } catch {
       // Keep the serial visible even if barcode rendering fails.
     }
-  }, [simSerial]);
+  }, [simSerial, referralStatus]);
 
   useEffect(() => {
     try {

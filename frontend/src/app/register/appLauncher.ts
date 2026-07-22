@@ -44,25 +44,30 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
 
   let appOpened = false;
   let fallbackTimer: number | undefined;
+  const appLaunchFrame = document.createElement('iframe');
+  appLaunchFrame.setAttribute('aria-hidden', 'true');
+  appLaunchFrame.style.display = 'none';
 
-  const removeVisibilityListener = () => {
+  const cleanup = () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    appLaunchFrame.remove();
   };
   const handleVisibilityChange = () => {
     if (document.hidden) {
       appOpened = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
-      removeVisibilityListener();
+      cleanup();
     }
   };
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   fallbackTimer = window.setTimeout(() => {
-    removeVisibilityListener();
+    cleanup();
     if (!appOpened && document.visibilityState === 'visible') {
       window.location.replace(APP_STORE_URL);
     }
   }, APP_OPEN_FALLBACK_DELAY_MS);
 
-  window.location.href = deepLinkUrl;
+  appLaunchFrame.src = deepLinkUrl;
+  document.body.appendChild(appLaunchFrame);
 }

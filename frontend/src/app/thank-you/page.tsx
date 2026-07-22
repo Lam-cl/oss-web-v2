@@ -63,7 +63,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>) {
+function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>, referralContext = '') {
   const params = new URLSearchParams();
   if (details?.refNo || refNo) params.set('refno', details?.refNo || refNo);
   if (details?.simSerial) params.set('simserial', details.simSerial);
@@ -72,6 +72,7 @@ function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>) {
   if (details?.puk1) params.set('puk1', details.puk1);
   if (details?.pin2) params.set('pin2', details.pin2);
   if (details?.puk2) params.set('puk2', details.puk2);
+  if (referralContext) params.set('refctx', referralContext);
   const query = params.toString();
   return `/sim/esim-success${query ? `?${query}` : ''}`;
 }
@@ -99,6 +100,7 @@ function ThankYouContent() {
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
   const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
+  const referralContext = searchParams.get('refctx') || '';
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
   const retryPurchase = () => {
@@ -192,7 +194,7 @@ function ThankYouContent() {
               sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
             } catch { /* ignore */ }
             clearEsimOrderMarker();
-            router.replace(buildEsimSuccessUrl(refNo, details));
+            router.replace(buildEsimSuccessUrl(refNo, details, referralContext));
             return;
           }
         } catch { /* retry below */ }
@@ -209,7 +211,7 @@ function ThankYouContent() {
     });
 
     return () => { cancelled = true; };
-  }, [status, refNo, isEsimReturn, router]);
+  }, [status, refNo, isEsimReturn, referralContext, router]);
 
   if (status === 'loading' || esimPreparing) {
     return (

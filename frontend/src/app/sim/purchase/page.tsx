@@ -885,9 +885,27 @@ function SIMPurchaseWizard() {
       const refNo = generateRefNo();
 
       const promoterId = hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : '';
-      const paymentReferralCode = hasPromoter ? twpReferenceID || promoterId : '';
-      const paymentTwpReferenceID = hasPromoter ? twpReferenceID : '';
-      const paymentAlloReferenceID = hasPromoter ? alloReferenceID : '';
+      const paymentRefNo = `${paymentMethod}${refNo}`;
+      let paymentReferralCode = hasPromoter ? twpReferenceID || promoterId : '';
+      let paymentTwpReferenceID = hasPromoter ? twpReferenceID : '';
+      let paymentAlloReferenceID = hasPromoter ? alloReferenceID : '';
+      let referralContextToken = '';
+
+      if (simType === 'esim' && hasPromoter && form.promoterPrefix === 'TWP') {
+        const contextRes = await fetch('/api/payment-referral/context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refNo: paymentRefNo, memberID: promoterId }),
+        });
+        const contextData = await contextRes.json().catch(() => null);
+        if (!contextRes.ok || !contextData?.token || !contextData?.referenceID) {
+          throw new Error(contextData?.error || 'Unable to secure the TWP referral. Please try again.');
+        }
+        paymentReferralCode = contextData.referenceID;
+        paymentTwpReferenceID = contextData.referenceID;
+        paymentAlloReferenceID = contextData.referenceID;
+        referralContextToken = contextData.token;
+      }
       const totalStr = STAGING_MODE ? '1.00' : String(total);
       const params = new URLSearchParams({
         transactionType: 'OSSPayment',
@@ -926,11 +944,12 @@ function SIMPurchaseWizard() {
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim') {
-        const paymentRefNo = `${paymentMethod}${refNo}`;
-        const confirmationUrl = `${window.location.origin}/confirmation/esim?refno=${encodeURIComponent(paymentRefNo)}`;
-        params.set('returnurl', confirmationUrl);
-        params.set('callbackurl', confirmationUrl);
-        params.set('failureurl', confirmationUrl);
+        const confirmationUrl = new URL('/confirmation/esim', window.location.origin);
+        confirmationUrl.searchParams.set('refno', paymentRefNo);
+        if (referralContextToken) confirmationUrl.searchParams.set('refctx', referralContextToken);
+        params.set('returnurl', confirmationUrl.toString());
+        params.set('callbackurl', confirmationUrl.toString());
+        params.set('failureurl', confirmationUrl.toString());
 
         const promoData = {
           prefix: hasPromoter ? form.promoterPrefix : '',

@@ -22,6 +22,7 @@ export async function handlePaymentConfirmation(
   let refno = searchParams.get('refno') || searchParams.get('refNo') || '';
   let status = searchParams.get('status') || '';
   let description = searchParams.get('desc') || searchParams.get('description') || '';
+  let referralContext = searchParams.get('refctx') || '';
   let isEsim = forceEsim || searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
   const esimDetails: Record<(typeof ESIM_DETAIL_KEYS)[number], string> = {
     simserial: searchParams.get('simserial') || searchParams.get('simSerial') || '',
@@ -42,6 +43,7 @@ export async function handlePaymentConfirmation(
         || '';
       status = status || body.get('status')?.toString() || '';
       description = description || body.get('desc')?.toString() || body.get('description')?.toString() || '';
+      referralContext = referralContext || body.get('refctx')?.toString() || '';
       const bodyEsim = body.get('esim')?.toString() || body.get('isEsim')?.toString() || '';
       isEsim = isEsim || bodyEsim === '1' || bodyEsim.toLowerCase() === 'true';
       for (const key of ESIM_DETAIL_KEYS) {
@@ -57,6 +59,7 @@ export async function handlePaymentConfirmation(
     const successUrl = new URL('/sim/esim-success', publicOriginFor(req));
     if (refno) successUrl.searchParams.set('refno', refno);
     successUrl.searchParams.set('locale', searchParams.get('locale') || 'en');
+    if (referralContext) successUrl.searchParams.set('refctx', referralContext);
     for (const key of ESIM_DETAIL_KEYS) {
       if (esimDetails[key]) successUrl.searchParams.set(key, esimDetails[key]);
     }
@@ -67,6 +70,7 @@ export async function handlePaymentConfirmation(
   if (refno) url.searchParams.set('refno', refno);
   url.searchParams.set('locale', searchParams.get('locale') || 'en');
   if (isEsim) url.searchParams.set('esim', '1');
+  if (referralContext) url.searchParams.set('refctx', referralContext);
   if (status) url.searchParams.set('status', status);
   if (description) url.searchParams.set('desc', description);
 

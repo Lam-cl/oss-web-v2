@@ -34,6 +34,44 @@ type EsimSuccessPageProps = {
   initialTokenId?: string;
 };
 
+type ReferralResolution = {
+  resolved: boolean;
+  promoter: EsimPromoterSession | null;
+};
+
+async function resolveOrderReferral(refNo: string, contextToken: string): Promise<ReferralResolution> {
+  if (!refNo) return { resolved: false, promoter: null };
+  try {
+    const res = await fetch('/api/esim-referral', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refNo, contextToken }),
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || typeof data?.resolved !== 'boolean') return { resolved: false, promoter: null };
+    return { resolved: data.resolved, promoter: data.promoter || null };
+  } catch {
+    return { resolved: false, promoter: null };
+  }
+}
+
+function selectResolvedPromoter(
+  resolution: ReferralResolution,
+  fallback: EsimPromoterSession | null,
+): EsimPromoterSession | null {
+  if (!resolution.resolved) return fallback;
+  if (!resolution.promoter) return null;
+
+  const recoveredReference = resolution.promoter.twpReferenceID?.trim() || '';
+  const fallbackReference = fallback?.twpReferenceID?.trim() || '';
+  if (!resolution.promoter.prefix && fallback?.prefix && recoveredReference && recoveredReference === fallbackReference) {
+    return { ...fallback, ...resolution.promoter };
+  }
+
+  return resolution.promoter;
+}
+
 export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps) {
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -51,6 +89,7 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
   const [registrationClipboardText, setRegistrationClipboardText] = useState('');
   const [deviceType, setDeviceType] = useState<DeviceType>('other');
   const [promoter, setPromoter] = useState<EsimPromoterSession | null>(null);
+  const [referralReady, setReferralReady] = useState(false);
   const [details, setDetails] = useState<EsimDetails>({
     refNo: '',
     simSerial: '',
@@ -91,10 +130,10 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
     const loadDetails = async () => {
       const storedPromoter = readStoredPromoter();
-      if (storedPromoter) setPromoter(storedPromoter);
 
       const params = new URLSearchParams(window.location.search);
       const successToken = initialTokenId || params.get('id')?.trim() || params.get('token')?.trim();
+      const referralContext = params.get('refctx')?.trim() || '';
 
       if (successToken) {
         setSuccessTokenId(successToken);
@@ -102,14 +141,22 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           const res = await fetch(`/esim-success-token/resolve?token=${encodeURIComponent(successToken)}`);
           const data = await res.json().catch(() => null);
           if (!res.ok || !data?.details) throw new Error(data?.error || 'Unable to load saved eSIM details.');
-          setDetails(data.details as EsimDetails);
-          if (data.promoter) setPromoter(data.promoter as EsimPromoterSession);
-          if (data.registration?.clipboardText) setRegistrationClipboardText(data.registration.clipboardText);
+          const tokenDetails = data.details as EsimDetails;
+          const tokenPromoter = data.promoter as EsimPromoterSession | null;
+          const resolution = await resolveOrderReferral(tokenDetails.refNo, referralContext);
+          const resolvedPromoter = selectResolvedPromoter(resolution, tokenPromoter || storedPromoter);
+          setDetails(tokenDetails);
+          setPromoter(resolvedPromoter);
+          if (!resolution.resolved && data.registration?.clipboardText) {
+            setRegistrationClipboardText(data.registration.clipboardText);
+          }
           try {
             sessionStorage.setItem('tw_esim_details', JSON.stringify(data.details));
           } catch { /* ignore */ }
         } catch (error: any) {
           setInstallMessage(error?.message || 'Unable to load saved eSIM details.');
+        } finally {
+          setReferralReady(true);
         }
         return;
       }
@@ -126,6 +173,9 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
       }
 
       setDetails(nextDetails);
+      const resolution = await resolveOrderReferral(nextDetails.refNo, referralContext);
+      const resolvedPromoter = selectResolvedPromoter(resolution, storedPromoter);
+      setPromoter(resolvedPromoter);
 
       if (hasUrlDetails) {
         try {
@@ -136,17 +186,17 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           const res = await fetch('/esim-success-token/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ details: nextDetails, promoter: storedPromoter }),
+            body: JSON.stringify({ details: nextDetails, promoter: resolvedPromoter }),
           });
           const data = await res.json().catch(() => null);
           if (data?.id) setSuccessTokenId(data.id);
           const cleanUrl = data?.successUrl || `${window.location.origin}/sim/esim-success`;
           window.history.replaceState({}, document.title, cleanUrl);
         } catch {
-          const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-          window.history.replaceState({}, document.title, cleanUrl);
+          // Keep the original query details when durable short-token storage is unavailable.
         }
       }
+      setReferralReady(true);
     };
 
     loadDetails();
@@ -367,10 +417,10 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
               <img src="/images/tonewow-app.png" alt="tone wow 2.0 app" className="esim-app-art" />
 
-              <button type="button" onClick={openRegisterToken} disabled={registerLoading} className="esim-register-cta">
+              <button type="button" onClick={openRegisterToken} disabled={registerLoading || !referralReady} className="esim-register-cta">
                   <img src="/images/tonewow-app.png" alt="tone wow app" className="esim-register-icon" />
                   <div>
-                    <strong>{registerLoading ? 'Preparing secure registration...' : 'Get the tone wow 2.0 App'}</strong><br />
+                    <strong>{!referralReady ? 'Checking your referral...' : registerLoading ? 'Preparing secure registration...' : 'Get the tone wow 2.0 App'}</strong><br />
                     <span>Download & Register Now</span>
                   </div>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7m10 0v10"/></svg>

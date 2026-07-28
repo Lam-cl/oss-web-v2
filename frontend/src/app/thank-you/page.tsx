@@ -1,7 +1,8 @@
 'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { trackAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
 type EsimDetails = {
@@ -63,7 +64,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>, referralContext = '') {
+function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>, referralContext = '', isAdx = false) {
   const params = new URLSearchParams();
   if (details?.refNo || refNo) params.set('refno', details?.refNo || refNo);
   if (details?.simSerial) params.set('simserial', details.simSerial);
@@ -74,7 +75,8 @@ function buildEsimSuccessUrl(refNo: string, details?: Partial<EsimDetails>, refe
   if (details?.puk2) params.set('puk2', details.puk2);
   if (referralContext) params.set('refctx', referralContext);
   const query = params.toString();
-  return `/sim/esim-success${query ? `?${query}` : ''}`;
+  const pathname = isAdx ? '/adx/esim-success' : '/sim/esim-success';
+  return `${pathname}${query ? `?${query}` : ''}`;
 }
 
 async function fetchEsimDetails(refNo: string): Promise<EsimDetails | null> {
@@ -96,6 +98,8 @@ async function fetchEsimDetails(refNo: string): Promise<EsimDetails | null> {
 function ThankYouContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const isAdx = pathname.startsWith('/adx/');
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
@@ -172,6 +176,24 @@ function ThankYouContent() {
   }, [refNo, gkashStatus]);
 
   useEffect(() => {
+    if (!isAdx || status !== 'success' || !refNo) return;
+
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    const sendPurchase = () => {
+      const result = trackAdxPurchase(refNo);
+      if (result !== 'not-ready' || attempts >= 20) return;
+      attempts++;
+      retryTimer = window.setTimeout(sendPurchase, 500);
+    };
+
+    sendPurchase();
+    return () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [isAdx, status, refNo]);
+
+  useEffect(() => {
     if (status === 'failed') {
       clearEsimOrderMarker();
       return;
@@ -194,7 +216,7 @@ function ThankYouContent() {
               sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
             } catch { /* ignore */ }
             clearEsimOrderMarker();
-            router.replace(buildEsimSuccessUrl(refNo, details, referralContext));
+            router.replace(buildEsimSuccessUrl(refNo, details, referralContext, isAdx));
             return;
           }
         } catch { /* retry below */ }
@@ -211,7 +233,7 @@ function ThankYouContent() {
     });
 
     return () => { cancelled = true; };
-  }, [status, refNo, isEsimReturn, referralContext, router]);
+  }, [status, refNo, isEsimReturn, referralContext, router, isAdx]);
 
   if (status === 'loading' || esimPreparing) {
     return (

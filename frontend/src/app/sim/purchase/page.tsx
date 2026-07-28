@@ -21,6 +21,7 @@ import {
   type ReferralPrefix,
 } from '@/lib/referral';
 import type { NumberResult } from '@/types';
+import { rememberAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 /* ═══════════════════════════════════════════════
    CONSTANTS
@@ -913,7 +914,7 @@ function SIMPurchaseWizard() {
         paymentId: paymentMethod,
         extraCharges: '0',
         refNo,
-        prodDesc: 'OSSPayment',
+        prodDesc: isAdxDirectFlow ? 'OSSPaymentADX' : 'OSSPayment',
         username: customerName,
         email: form.email,
         contact: form.phone,
@@ -943,14 +944,20 @@ function SIMPurchaseWizard() {
 
       const apiBase = getNestApiBaseUrl();
 
-      if (simType === 'esim') {
-        const confirmationUrl = new URL('/confirmation/esim', window.location.origin);
+      if (simType === 'esim' || isAdxDirectFlow) {
+        const confirmationUrl = new URL(
+          simType === 'esim' ? '/confirmation/esim' : '/confirmation',
+          window.location.origin,
+        );
         confirmationUrl.searchParams.set('refno', paymentRefNo);
+        if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
         if (referralContextToken) confirmationUrl.searchParams.set('refctx', referralContextToken);
         params.set('returnurl', confirmationUrl.toString());
         params.set('callbackurl', confirmationUrl.toString());
         params.set('failureurl', confirmationUrl.toString());
+      }
 
+      if (simType === 'esim') {
         const promoData = {
           prefix: hasPromoter ? form.promoterPrefix : '',
           code: hasPromoter ? form.promoterCode : '',
@@ -971,6 +978,17 @@ function SIMPurchaseWizard() {
           ? '/sim/purchase?simID=superlite'
           : '/sim/purchase';
       localStorage.setItem('tw_purchase_retry_url', retryUrl);
+      if (isAdxDirectFlow) {
+        rememberAdxPurchase({
+          refNo,
+          paymentRefNo,
+          value: Number(totalStr),
+          currency: 'MYR',
+          itemId: purchaseMode,
+          itemName: `${purchaseMode === 'superliteplus' ? 'SUPERLITE+' : 'SUPERLITE'} ${simType === 'esim' ? 'eSIM' : 'SIM'}`,
+          simType,
+        });
+      }
       if (isSuperlitePlusMode) {
         localStorage.setItem('tw_purchase_retry_mode', 'superliteplus');
         localStorage.setItem('tw_purchase_retry_started_at', String(Date.now()));

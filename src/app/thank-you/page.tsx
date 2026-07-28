@@ -1,13 +1,16 @@
 'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { normalizeAdxPaymentRef, trackAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
 
 function ThankYouContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const isAdx = pathname.startsWith('/adx/');
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
@@ -53,6 +56,24 @@ function ThankYouContent() {
   }, [refNo, gkashStatus]);
 
   useEffect(() => {
+    if (!isAdx || status !== 'success' || !refNo) return;
+
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    const sendPurchase = () => {
+      const result = trackAdxPurchase(refNo);
+      if (result !== 'not-ready' || attempts >= 20) return;
+      attempts++;
+      retryTimer = window.setTimeout(sendPurchase, 500);
+    };
+
+    sendPurchase();
+    return () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [isAdx, status, refNo]);
+
+  useEffect(() => {
     if (status === 'failed') {
       localStorage.removeItem('tw_esim_order');
       return;
@@ -61,14 +82,20 @@ function ThankYouContent() {
     try {
       const raw = localStorage.getItem('tw_esim_order');
       if (!raw) return;
-      const order = JSON.parse(raw) as { refNo?: string };
-      if (!order.refNo || order.refNo === refNo) {
-        router.replace(`/sim/esim-success${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
+      const order = JSON.parse(raw) as { refNo?: string; paymentRefNo?: string };
+      const normalizedRef = normalizeAdxPaymentRef(refNo);
+      if (
+        !order.refNo
+        || normalizeAdxPaymentRef(order.refNo) === normalizedRef
+        || normalizeAdxPaymentRef(order.paymentRefNo || '') === normalizedRef
+      ) {
+        const destination = isAdx ? '/adx/esim-success' : '/sim/esim-success';
+        router.replace(`${destination}${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
       }
     } catch {
       localStorage.removeItem('tw_esim_order');
     }
-  }, [status, refNo, router]);
+  }, [status, refNo, router, isAdx]);
 
   if (status === 'loading') {
     return (

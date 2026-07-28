@@ -14,6 +14,7 @@ import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES, getNestApiBaseUrl } from '@/lib/constants';
 import { isEsimEnabled } from '@/lib/features';
 import type { NumberResult } from '@/types';
+import { rememberAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 /* ═══════════════════════════════════════════════
    CONSTANTS
@@ -244,6 +245,7 @@ function SIMPurchaseWizard() {
   const purchaseMode: PurchaseMode = simID === 'superlite' || simID === 'superliteplus' ? simID : 'lite';
   const isSuperliteMode = purchaseMode === 'superlite' || purchaseMode === 'superliteplus';
   const isSuperlitePlusMode = purchaseMode === 'superliteplus';
+  const isAdxDirectFlow = isSuperliteMode;
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [BASE_SIM_PRICE, setBasePrice] = useState(DEFAULT_BASE_SIM_PRICE);
@@ -570,6 +572,7 @@ function SIMPurchaseWizard() {
       const refNo = generateRefNo();
 
       const promoterId = hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : '';
+      const paymentRefNo = `${paymentMethod}${refNo}`;
       const totalStr = STAGING_MODE ? '1.00' : String(total);
       const params = new URLSearchParams({
         transactionType: 'OSSPayment',
@@ -577,7 +580,7 @@ function SIMPurchaseWizard() {
         paymentId: paymentMethod,
         extraCharges: '0',
         refNo,
-        prodDesc: 'OSSPayment',
+        prodDesc: isAdxDirectFlow ? 'OSSPaymentADX' : 'OSSPayment',
         username: customerName,
         email: form.email,
         contact: form.phone,
@@ -606,6 +609,16 @@ function SIMPurchaseWizard() {
 
       const apiBase = getNestApiBaseUrl();
 
+      if (simType === 'esim' || isAdxDirectFlow) {
+        const confirmationUrl = new URL('/api/confirmation', window.location.origin);
+        confirmationUrl.searchParams.set('refno', paymentRefNo);
+        if (simType === 'esim') confirmationUrl.searchParams.set('esim', '1');
+        if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
+        params.set('returnurl', confirmationUrl.toString());
+        params.set('callbackurl', confirmationUrl.toString());
+        params.set('failureurl', confirmationUrl.toString());
+      }
+
       if (simType === 'esim') {
         const promoData = {
           prefix: hasPromoter ? form.promoterPrefix : '',
@@ -616,11 +629,22 @@ function SIMPurchaseWizard() {
           alloReferenceID,
         };
         localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
-        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, email: form.email }));
+        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, paymentRefNo, email: form.email }));
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
       }
 
       fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
+      if (isAdxDirectFlow) {
+        rememberAdxPurchase({
+          refNo,
+          paymentRefNo,
+          value: Number(totalStr),
+          currency: 'MYR',
+          itemId: purchaseMode,
+          itemName: `${purchaseMode === 'superliteplus' ? 'SUPERLITE+' : 'SUPERLITE'} ${simType === 'esim' ? 'eSIM' : 'SIM'}`,
+          simType,
+        });
+      }
       window.location.href = `${OSS_PAYMENT_URL}?${params.toString()}`;
     } catch (err: any) { setError(err.message || 'Something went wrong. Please try again.'); setSubmitting(false); }
   };

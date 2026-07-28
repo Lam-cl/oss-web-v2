@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
 import { QRCodeCanvas } from 'qrcode.react';
 import { detectDeviceType, openToneWowAppWithRegistration, type DeviceType } from '@/app/register/appLauncher';
+import { trackAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 type EsimDetails = {
   refNo: string;
@@ -32,9 +33,10 @@ type ReferralDisplay = {
 
 type EsimSuccessPageProps = {
   initialTokenId?: string;
+  isAdx?: boolean;
 };
 
-export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps) {
+export function EsimSuccessContent({ initialTokenId = '', isAdx = false }: EsimSuccessPageProps) {
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -140,7 +142,11 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
           });
           const data = await res.json().catch(() => null);
           if (data?.id) setSuccessTokenId(data.id);
-          const cleanUrl = data?.successUrl || `${window.location.origin}/sim/esim-success`;
+          const cleanUrl = isAdx
+            ? data?.id
+              ? `/adx/esim-success/${data.id}`
+              : `${window.location.origin}/adx/esim-success`
+            : data?.successUrl || `${window.location.origin}/sim/esim-success`;
           window.history.replaceState({}, document.title, cleanUrl);
         } catch {
           const cleanUrl = `${window.location.origin}${window.location.pathname}`;
@@ -151,7 +157,25 @@ export function EsimSuccessContent({ initialTokenId = '' }: EsimSuccessPageProps
 
     loadDetails();
     setTimeout(() => setAnimDone(true), 800);
-  }, []);
+  }, [initialTokenId, isAdx]);
+
+  useEffect(() => {
+    if (!isAdx || !details.refNo) return;
+
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    const sendPurchase = () => {
+      const result = trackAdxPurchase(details.refNo);
+      if (result !== 'not-ready' || attempts >= 20) return;
+      attempts++;
+      retryTimer = window.setTimeout(sendPurchase, 500);
+    };
+
+    sendPurchase();
+    return () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [isAdx, details.refNo]);
 
   useEffect(() => {
     if (!barcodeRef.current || !simSerial) return;

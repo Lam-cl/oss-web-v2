@@ -2,7 +2,6 @@
 
 const GOOGLE_PLAY_BASE_URL = 'https://play.google.com/store/apps/details?id=com.mywow2.app';
 const APP_STORE_URL = 'https://apps.apple.com/my/app/tone-wow-2-0/id6751451439';
-const APP_OPEN_FALLBACK_DELAY_MS = 2500;
 const ANDROID_PACKAGE_NAME = 'com.mywow2.app';
 const APP_DEEP_LINK_SCHEME = 'myapp';
 
@@ -18,7 +17,7 @@ export function detectDeviceType(): DeviceType {
   return 'other';
 }
 
-function copyRegistrationText(clipboardText: string) {
+function copyRegistrationText(clipboardText: string): Promise<void> {
   const textarea = document.createElement('textarea');
   textarea.value = clipboardText;
   textarea.setAttribute('readonly', '');
@@ -29,24 +28,34 @@ function copyRegistrationText(clipboardText: string) {
   textarea.select();
   textarea.setSelectionRange(0, clipboardText.length);
 
+  let copied = false;
   try {
-    document.execCommand('copy');
+    copied = document.execCommand('copy');
   } catch {
     // The modern Clipboard API attempt below may still succeed.
   } finally {
     textarea.remove();
   }
 
+  if (copied || !navigator.clipboard?.writeText) {
+    return Promise.resolve();
+  }
+
   try {
-    void navigator.clipboard?.writeText(clipboardText).catch(() => undefined);
+    return navigator.clipboard.writeText(clipboardText).catch(() => undefined);
   } catch {
-    // Continue to app launch even when clipboard access is unavailable.
+    return Promise.resolve();
   }
 }
 
 export function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
   const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
-  copyRegistrationText(clipboardText);
+  const copyPromise = copyRegistrationText(clipboardText);
+
+  if (deviceType === 'ios') {
+    void copyPromise.then(() => window.location.assign(APP_STORE_URL));
+    return;
+  }
 
   const webLink = new URL(window.location.href);
   webLink.searchParams.set('openApp', Date.now().toString());
@@ -57,37 +66,5 @@ export function openToneWowAppWithRegistration(clipboardText: string, deviceType
     return;
   }
 
-  const deepLinkUrl = `${APP_DEEP_LINK_SCHEME}://`;
-  if (deviceType !== 'ios') {
-    window.location.href = deepLinkUrl;
-    return;
-  }
-
-  let appOpened = false;
-  let fallbackTimer: number | undefined;
-
-  const cleanup = () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    window.removeEventListener('pagehide', handlePageHide);
-  };
-  const markAppOpened = () => {
-    appOpened = true;
-    if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
-    cleanup();
-  };
-  const handleVisibilityChange = () => {
-    if (document.hidden) markAppOpened();
-  };
-  const handlePageHide = () => markAppOpened();
-
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('pagehide', handlePageHide);
-  fallbackTimer = window.setTimeout(() => {
-    cleanup();
-    if (!appOpened && document.visibilityState === 'visible') {
-      window.location.replace(APP_STORE_URL);
-    }
-  }, APP_OPEN_FALLBACK_DELAY_MS);
-
-  window.location.href = deepLinkUrl;
+  window.location.href = `${APP_DEEP_LINK_SCHEME}://`;
 }

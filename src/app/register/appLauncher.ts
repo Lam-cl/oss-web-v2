@@ -2,7 +2,6 @@
 
 const GOOGLE_PLAY_BASE_URL = 'https://play.google.com/store/apps/details?id=com.mywow2.app';
 const APP_STORE_URL = 'https://apps.apple.com/my/app/tone-wow-2-0/id6751451439';
-const APP_OPEN_FALLBACK_DELAY_MS = 1600;
 const ANDROID_PACKAGE_NAME = 'com.mywow2.app';
 const APP_DEEP_LINK_SCHEME = 'myapp';
 
@@ -18,28 +17,48 @@ export function detectDeviceType(): DeviceType {
   return 'other';
 }
 
-export async function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
-  const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
-  const appLinkWindow = deviceType === 'ios' ? window.open('about:blank', '_blank') : null;
+function copyRegistrationText(clipboardText: string): Promise<void> {
+  const textarea = document.createElement('textarea');
+  textarea.value = clipboardText;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, clipboardText.length);
 
+  let copied = false;
   try {
-    await navigator.clipboard.writeText(clipboardText);
+    copied = document.execCommand('copy');
   } catch {
-    // Continue anyway; Android referrer and server token still carry the payload.
+    // The modern Clipboard API attempt below may still succeed.
+  } finally {
+    textarea.remove();
   }
 
-  let appOpened = false;
-  const markAppOpened = () => {
-    appOpened = true;
-  };
+  if (copied || !navigator.clipboard?.writeText) {
+    return Promise.resolve();
+  }
+
+  try {
+    return navigator.clipboard.writeText(clipboardText).catch(() => undefined);
+  } catch {
+    return Promise.resolve();
+  }
+}
+
+export function openToneWowAppWithRegistration(clipboardText: string, deviceType: DeviceType) {
+  const playStoreUrl = `${GOOGLE_PLAY_BASE_URL}&referrer=${encodeURIComponent(clipboardText)}`;
+  const copyPromise = copyRegistrationText(clipboardText);
+
+  if (deviceType === 'ios') {
+    void copyPromise.then(() => window.location.assign(APP_STORE_URL));
+    return;
+  }
 
   const webLink = new URL(window.location.href);
   webLink.searchParams.set('openApp', Date.now().toString());
-
-  window.addEventListener('pagehide', markAppOpened, { once: true });
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) markAppOpened();
-  }, { once: true });
 
   if (deviceType === 'android') {
     const fallbackUrl = encodeURIComponent(playStoreUrl);
@@ -47,17 +66,5 @@ export async function openToneWowAppWithRegistration(clipboardText: string, devi
     return;
   }
 
-  const deepLinkUrl = `${APP_DEEP_LINK_SCHEME}://`;
-  if (appLinkWindow && !appLinkWindow.closed) {
-    appLinkWindow.location.href = deepLinkUrl;
-  } else {
-    window.location.href = deepLinkUrl;
-    return;
-  }
-
-  window.setTimeout(() => {
-    if (!appOpened && !document.hidden) {
-      window.location.href = deviceType === 'ios' ? APP_STORE_URL : playStoreUrl;
-    }
-  }, APP_OPEN_FALLBACK_DELAY_MS);
+  window.location.href = `${APP_DEEP_LINK_SCHEME}://`;
 }

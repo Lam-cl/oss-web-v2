@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import JsBarcode from 'jsbarcode';
 import { QRCodeCanvas } from 'qrcode.react';
 import { detectDeviceType, openToneWowAppWithRegistration, type DeviceType } from '@/app/register/appLauncher';
-import { trackAdxPurchase } from '@/lib/adxPurchaseTracking';
+import { getMatchingAdxPurchase, trackAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 type EsimDetails = {
   refNo: string;
@@ -154,6 +154,19 @@ export function EsimSuccessContent({ initialTokenId = '', isAdx = false }: EsimS
   useEffect(() => {
     setDeviceType(detectDeviceType());
 
+    const redirectToTrackedAdxSuccess = (refNo: string) => {
+      if (isAdx || !refNo) return false;
+      const metadata = getMatchingAdxPurchase(refNo);
+      if (metadata?.simType !== 'esim') return false;
+
+      const adxPath = window.location.pathname.replace(/^\/sim\/esim-success/, '/adx/esim-success');
+      window.location.replace(`${adxPath}${window.location.search}${window.location.hash}`);
+      return true;
+    };
+
+    const initialRefNo = new URLSearchParams(window.location.search).get('refno') || '';
+    if (redirectToTrackedAdxSuccess(initialRefNo)) return;
+
     const readStoredPromoter = () => {
       try {
         const raw = localStorage.getItem('tw_esim_promoter');
@@ -193,6 +206,7 @@ export function EsimSuccessContent({ initialTokenId = '', isAdx = false }: EsimS
           const data = await res.json().catch(() => null);
           if (!res.ok || !data?.details) throw new Error(data?.error || 'Unable to load saved eSIM details.');
           const tokenDetails = data.details as EsimDetails;
+          if (redirectToTrackedAdxSuccess(tokenDetails.refNo)) return;
           const tokenPromoter = data.promoter as EsimPromoterSession | null;
           const resolution = await resolveOrderReferral(tokenDetails.refNo, referralContext);
           const hasTrustedTokenReferral = Boolean(
@@ -234,6 +248,7 @@ export function EsimSuccessContent({ initialTokenId = '', isAdx = false }: EsimS
         } catch { /* ignore */ }
       }
 
+      if (redirectToTrackedAdxSuccess(nextDetails.refNo)) return;
       setDetails(nextDetails);
       const resolution = await resolveOrderReferral(nextDetails.refNo, referralContext);
       if (!resolution.resolved) {

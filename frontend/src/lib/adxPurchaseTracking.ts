@@ -1,7 +1,15 @@
 'use client';
 
+import {
+  ADX_PURCHASE_COOKIE_KEY,
+  normalizeAdxPaymentRef,
+  serializeAdxPurchaseMarker,
+} from '@/lib/adxPurchaseMarker';
+
 const ADX_PURCHASE_STORAGE_KEY = 'tw_adx_purchase';
 const ADX_TRACKED_PREFIX = 'tw_adx_purchase_tracked:';
+
+export { normalizeAdxPaymentRef } from '@/lib/adxPurchaseMarker';
 
 export type AdxPurchaseMetadata = {
   refNo: string;
@@ -19,12 +27,15 @@ declare global {
   }
 }
 
-export function normalizeAdxPaymentRef(value: string) {
-  return value.replace(/^(16|2|3)(twoss)/i, '$2').trim().toLowerCase();
-}
-
 export function rememberAdxPurchase(metadata: AdxPurchaseMetadata) {
   localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
+  const marker = serializeAdxPurchaseMarker({
+    refNo: metadata.refNo,
+    paymentRefNo: metadata.paymentRefNo,
+    simType: metadata.simType,
+  });
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${ADX_PURCHASE_COOKIE_KEY}=${marker}; Path=/; Max-Age=7200; SameSite=Lax${secure}`;
 }
 
 export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | null {

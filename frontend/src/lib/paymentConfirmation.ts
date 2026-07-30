@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  ADX_PURCHASE_COOKIE_KEY,
+  matchesAdxPurchaseMarker,
+  parseAdxPurchaseMarker,
+} from '@/lib/adxPurchaseMarker';
 
 const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2'] as const;
 
@@ -67,7 +72,21 @@ export async function handlePaymentConfirmation(
     } catch { /* body parse failed, use query params only */ }
   }
 
-  const isAdx = forceAdx || flow.toLowerCase() === 'adx' || prodDesc.toLowerCase() === 'osspaymentadx';
+  const storedAdxMarker = parseAdxPurchaseMarker(req.cookies.get(ADX_PURCHASE_COOKIE_KEY)?.value);
+  const matchedAdxMarker = matchesAdxPurchaseMarker(storedAdxMarker, refno) ? storedAdxMarker : null;
+  const isAdx = forceAdx
+    || flow.toLowerCase() === 'adx'
+    || prodDesc.toLowerCase() === 'osspaymentadx'
+    || Boolean(matchedAdxMarker);
+  isEsim = isEsim || matchedAdxMarker?.simType === 'esim';
+
+  const redirect = (url: URL) => {
+    const response = NextResponse.redirect(url, method === 'POST' ? 303 : 307);
+    if (matchedAdxMarker) {
+      response.cookies.set(ADX_PURCHASE_COOKIE_KEY, '', { path: '/', maxAge: 0 });
+    }
+    return response;
+  };
 
   if (ESIM_DETAIL_KEYS.some((key) => esimDetails[key])) {
     const successUrl = new URL(isAdx ? '/adx/esim-success' : '/sim/esim-success', publicOriginFor(req));
@@ -77,7 +96,7 @@ export async function handlePaymentConfirmation(
     for (const key of ESIM_DETAIL_KEYS) {
       if (esimDetails[key]) successUrl.searchParams.set(key, esimDetails[key]);
     }
-    return NextResponse.redirect(successUrl, method === 'POST' ? 303 : 307);
+    return redirect(successUrl);
   }
 
   const url = new URL(isAdx ? '/adx/thank-you' : '/thank-you', publicOriginFor(req));
@@ -88,5 +107,5 @@ export async function handlePaymentConfirmation(
   if (status) url.searchParams.set('status', status);
   if (description) url.searchParams.set('desc', description);
 
-  return NextResponse.redirect(url, method === 'POST' ? 303 : 307);
+  return redirect(url);
 }

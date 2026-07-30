@@ -2,7 +2,7 @@
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { trackAdxPurchase } from '@/lib/adxPurchaseTracking';
+import { getMatchingAdxPurchase, trackAdxPurchase } from '@/lib/adxPurchaseTracking';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
 type EsimDetails = {
@@ -107,6 +107,16 @@ function ThankYouContent() {
   const referralContext = searchParams.get('refctx') || '';
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
+
+  useEffect(() => {
+    if (isAdx || !refNo) return;
+    const metadata = getMatchingAdxPurchase(refNo);
+    if (!metadata) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (metadata.simType === 'esim') params.set('esim', '1');
+    router.replace(`/adx/thank-you?${params.toString()}`);
+  }, [isAdx, refNo, router, searchParams]);
   const retryPurchase = () => {
     const retryMode = localStorage.getItem('tw_purchase_retry_mode');
     if (retryMode === 'superliteplus' || retryMode === 'superlite') {

@@ -34,9 +34,10 @@ const STEPS = [
   'Complete Order',
 ];
 
-const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
 const DEFAULT_BASE_SIM_PRICE = 19.50;
-const OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
+const PRODUCTION_OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
+const STAGING_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const STAGING_PAYMENT_HOSTS = new Set(['tonewow-v2.xifuhalim.com']);
 const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
 const ESIM_ORDER_COOKIE = 'tw_esim_refno';
 
@@ -51,6 +52,14 @@ const NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon SIM activation. Subscribe 
 const SUPERLITE_NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon registration.';
 const BASIC_TAKAFUL_TOOLTIP = 'Granted when you subscribe to any FU Data Plan within 7 days after activation.';
 const SUPERLITE_BASIC_TOOLTIP = 'Minimum reload of RM30/month required.';
+
+function getOssPaymentUrl() {
+  const overrideUrl = process.env.NEXT_PUBLIC_OSS_PAYMENT_URL?.trim();
+  if (overrideUrl) return overrideUrl;
+  return STAGING_PAYMENT_HOSTS.has(window.location.hostname)
+    ? STAGING_OSS_PAYMENT_URL
+    : PRODUCTION_OSS_PAYMENT_URL;
+}
 
 type PurchaseMode = 'lite' | 'superlite' | 'superliteplus';
 type ReadyBundleMode = 'pro' | 'biz';
@@ -907,7 +916,7 @@ function SIMPurchaseWizard() {
         paymentAlloReferenceID = contextData.referenceID;
         referralContextToken = contextData.token;
       }
-      const totalStr = STAGING_MODE ? '1.00' : String(total);
+      const totalStr = String(total);
       const params = new URLSearchParams({
         transactionType: 'OSSPayment',
         documentID: form.nric,
@@ -945,8 +954,13 @@ function SIMPurchaseWizard() {
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim' || isAdxDirectFlow) {
+        const confirmationPath = isAdxDirectFlow
+          ? simType === 'esim'
+            ? '/confirmation/adx/esim'
+            : '/confirmation/adx'
+          : '/confirmation/esim';
         const confirmationUrl = new URL(
-          simType === 'esim' ? '/confirmation/esim' : '/confirmation',
+          confirmationPath,
           window.location.origin,
         );
         confirmationUrl.searchParams.set('refno', paymentRefNo);
@@ -999,7 +1013,7 @@ function SIMPurchaseWizard() {
         localStorage.removeItem('tw_purchase_retry_mode');
         localStorage.removeItem('tw_purchase_retry_started_at');
       }
-      window.location.href = `${OSS_PAYMENT_URL}?${params.toString()}`;
+      window.location.href = `${getOssPaymentUrl()}?${params.toString()}`;
     } catch (err: any) { setError(err.message || 'Something went wrong. Please try again.'); setSubmitting(false); }
   };
 

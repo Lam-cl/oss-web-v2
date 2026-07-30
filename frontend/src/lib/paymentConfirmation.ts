@@ -17,6 +17,7 @@ export async function handlePaymentConfirmation(
   req: NextRequest,
   method: 'GET' | 'POST',
   forceEsim = false,
+  forceAdx = false,
 ) {
   const { searchParams } = req.nextUrl;
   let refno = searchParams.get('refno') || searchParams.get('refNo') || '';
@@ -66,7 +67,7 @@ export async function handlePaymentConfirmation(
     } catch { /* body parse failed, use query params only */ }
   }
 
-  const isAdx = flow.toLowerCase() === 'adx' || prodDesc.toLowerCase() === 'osspaymentadx';
+  const isAdx = forceAdx || flow.toLowerCase() === 'adx' || prodDesc.toLowerCase() === 'osspaymentadx';
 
   if (ESIM_DETAIL_KEYS.some((key) => esimDetails[key])) {
     const successUrl = new URL(isAdx ? '/adx/esim-success' : '/sim/esim-success', publicOriginFor(req));

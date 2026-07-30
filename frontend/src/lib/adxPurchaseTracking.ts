@@ -27,6 +27,29 @@ export function rememberAdxPurchase(metadata: AdxPurchaseMetadata) {
   localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
 }
 
+export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | null {
+  const normalizedRef = normalizeAdxPaymentRef(refNo);
+  if (!normalizedRef) return null;
+
+  try {
+    const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
+    const metadata = raw ? JSON.parse(raw) as AdxPurchaseMetadata : null;
+    if (
+      metadata
+      && (
+        normalizeAdxPaymentRef(metadata.refNo) === normalizedRef
+        || normalizeAdxPaymentRef(metadata.paymentRefNo) === normalizedRef
+      )
+    ) {
+      return metadata;
+    }
+  } catch {
+    // Ignore invalid or unavailable browser storage.
+  }
+
+  return null;
+}
+
 export function trackAdxPurchase(refNo: string): 'tracked' | 'already-tracked' | 'not-ready' {
   const normalizedRef = normalizeAdxPaymentRef(refNo);
   if (!normalizedRef) return 'not-ready';
@@ -35,23 +58,8 @@ export function trackAdxPurchase(refNo: string): 'tracked' | 'already-tracked' |
   if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
   if (typeof window.gtag !== 'function') return 'not-ready';
 
-  let metadata: AdxPurchaseMetadata | null = null;
-  try {
-    const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
-    metadata = raw ? JSON.parse(raw) as AdxPurchaseMetadata : null;
-  } catch {
-    return 'not-ready';
-  }
-
-  if (
-    !metadata
-    || (
-      normalizeAdxPaymentRef(metadata.refNo) !== normalizedRef
-      && normalizeAdxPaymentRef(metadata.paymentRefNo) !== normalizedRef
-    )
-  ) {
-    return 'not-ready';
-  }
+  const metadata = getMatchingAdxPurchase(refNo);
+  if (!metadata) return 'not-ready';
 
   window.gtag('event', 'purchase', {
     transaction_id: metadata.paymentRefNo || refNo,

@@ -6,20 +6,7 @@ import { useCartStore } from '@/store/cartStore';
 import { createOrder, initiatePayment, verifyPromoter, checkExistingMember } from '@/lib/api';
 import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES } from '@/lib/constants';
-
-function calculateShipping(items: any[]) {
-  let shippingTotal = 0;
-  for (const item of items) {
-    if (item.type === 'sim') {
-      const cat = (item.category || item.numberType || '').toUpperCase();
-      const isSpecial = ['PREMIUM', 'VIP', 'VVIP'].includes(cat);
-      if (!isSpecial) {
-        shippingTotal += 10 * item.quantity;
-      }
-    }
-  }
-  return shippingTotal;
-}
+import { calculateDeliveryShipping } from '@/lib/shipping';
 
 /* ─── shared styles ─── */
 const sectionStyle: React.CSSProperties = {
@@ -237,7 +224,7 @@ export default function CheckoutPage() {
 
     try {
       const customerName = `${form.firstName} ${form.lastName}`.trim();
-      const shipping = calculateShipping(items);
+      const shipping = pickupOption === 'self' ? 0 : calculateDeliveryShipping(items);
       const grandTotal = getTotal() + shipping;
 
       const shippingAddr = pickupOption === 'self' ? {
@@ -260,6 +247,8 @@ export default function CheckoutPage() {
         items: items.map((i) => ({
           name: i.name, type: i.type, plan: i.plan,
           number: i.number, price: i.price, quantity: i.quantity, simType: i.simType,
+          productId: i.productId, slug: i.slug, variant: i.variant, size: i.size,
+          image: i.image, description: i.description,
         })),
         total: grandTotal,
         shipping: shipping,
@@ -340,7 +329,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const shipping = calculateShipping(items);
+  const shipping = pickupOption === 'self' ? 0 : calculateDeliveryShipping(items);
   const grandTotal = getTotal() + shipping;
 
   const card: React.CSSProperties = { background: '#fff', borderRadius: 14, padding: '24px 28px', border: '1px solid #e5e7eb', marginBottom: 20 };

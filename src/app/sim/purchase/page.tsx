@@ -122,16 +122,16 @@ const FU_PLAN_IDS: Record<string, { physical: number; esim: number }> = {
   fu120: { physical: 23, esim: 24 },
 };
 
-const SUPERLITE_FU_PLAN_IDS: Record<string, number> = {
-  fu10: 25,
-  fu20: 26,
-  'fu20+': 27,
-  fu20plus: 27,
-  fu35: 28,
-  fu50: 29,
-  fu60: 30,
-  fu80: 31,
-  fu120: 32,
+const SUPERLITE_FU_PLAN_IDS: Record<string, { physical: number; esim?: number }> = {
+  fu10: { physical: 25, esim: 36 },
+  fu20: { physical: 26, esim: 37 },
+  'fu20+': { physical: 27 },
+  fu20plus: { physical: 27 },
+  fu35: { physical: 28, esim: 38 },
+  fu50: { physical: 29, esim: 39 },
+  fu60: { physical: 30, esim: 40 },
+  fu80: { physical: 31, esim: 41 },
+  fu120: { physical: 32, esim: 42 },
 };
 
 /** Generate 20-char refNo: twoss + 5 random digits + YYMMDDHHmmss */
@@ -353,9 +353,9 @@ function SIMPurchaseWizard() {
   /* ── Superlite / Superlite+ gated modes via ?simID= ── */
   useEffect(() => {
     if (!isSuperliteMode) return;
-    setSimType('physical');
 
     if (isSuperlitePlusMode) {
+      setSimType('physical');
       const fu35 = FU_PLANS.find(p => p.id.replace(/\s+/g, '').toLowerCase() === 'fu35');
       if (fu35 && (selectedDataPlan?.id !== fu35.id || selectedDataPlan?.price !== fu35.price || selectedDataPlan?.data !== fu35.data)) {
         setSelectedDataPlan(fu35);
@@ -365,7 +365,7 @@ function SIMPurchaseWizard() {
       return;
     }
 
-    if (step === 0) setStep(1);
+    // Keep Step 0 available for SUPERLITE so customers can choose Physical SIM or eSIM.
   }, [isSuperliteMode, isSuperlitePlusMode, FU_PLANS, selectedDataPlan?.id, selectedDataPlan?.price, selectedDataPlan?.data, step]);
 
   useEffect(() => {
@@ -517,11 +517,15 @@ function SIMPurchaseWizard() {
     if (selectedDataPlan) {
       const key = selectedDataPlan.id.replace(/\s+/g, '').toLowerCase();
       if (isSuperlitePlusMode) return 33;
-      if (purchaseMode === 'superlite') return SUPERLITE_FU_PLAN_IDS[key] || 28;
+      if (purchaseMode === 'superlite') {
+        const superliteIds = SUPERLITE_FU_PLAN_IDS[key];
+        if (superliteIds) return simType === 'esim' ? superliteIds.esim || 35 : superliteIds.physical;
+        return simType === 'esim' ? 35 : 28;
+      }
       const ids = FU_PLAN_IDS[key];
       if (ids) return simType === 'esim' ? ids.esim : ids.physical;
     }
-    if (purchaseMode === 'superlite') return 34;
+    if (purchaseMode === 'superlite') return simType === 'esim' ? 35 : 34;
     if (simType === 'esim') return 9;
     return 1;
   };
@@ -557,7 +561,6 @@ function SIMPurchaseWizard() {
       setSelectedNumber(null);
       localStorage.removeItem('tw_selected_number');
     }
-    if (isSuperliteMode && step === 1) return;
     if (step === 0) { router.back(); return; }
     setDirection(-1);
     setStep(step - 1);
@@ -603,6 +606,7 @@ function SIMPurchaseWizard() {
         dataPlanID: '0',
         insurance: insuranceApiValue,
         isEsim: simType === 'esim' ? '1' : '0',
+        esim: simType === 'esim' ? '1' : '0',
         twpReferenceID,
         alloReferenceID,
       });
@@ -610,7 +614,12 @@ function SIMPurchaseWizard() {
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim' || isAdxDirectFlow) {
-        const confirmationUrl = new URL('/api/confirmation', window.location.origin);
+        const confirmationPath = isAdxDirectFlow
+          ? simType === 'esim'
+            ? '/confirmation/adx/esim'
+            : '/confirmation/adx'
+          : '/api/confirmation';
+        const confirmationUrl = new URL(confirmationPath, window.location.origin);
         confirmationUrl.searchParams.set('refno', paymentRefNo);
         if (simType === 'esim') confirmationUrl.searchParams.set('esim', '1');
         if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
@@ -1375,11 +1384,13 @@ function SIMPurchaseWizard() {
           {/* ── Bottom nav ── */}
           {step < 3 && (
             <div className="step-nav" style={{ marginBottom: 32 }}>
-              <button className="btn btn-blue" onClick={goBack}>Back</button>
+              {!(isSuperliteMode && step === 0) && (
+                <button className="btn btn-blue" onClick={goBack}>Back</button>
+              )}
               <button className="btn btn-blue" onClick={goNext}>Next</button>
             </div>
           )}
-          {step === 3 && (
+          {step === 3 && !isSuperlitePlusMode && (
             <div className="step-nav" style={{ marginBottom: 32 }}>
               <button className="btn btn-blue" onClick={goBack}>Back</button>
             </div>

@@ -2,9 +2,69 @@
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { normalizeAdxPaymentRef, trackAdxPurchase } from '@/lib/adxPurchaseTracking';
+import {
+  getMatchingAdxPurchase,
+  normalizeAdxPaymentRef,
+  trackAdxPaymentOutcome,
+  trackAdxPurchase,
+} from '@/lib/adxPurchaseTracking';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
+type EsimDetails = {
+  refNo: string;
+  simSerial: string;
+  esimQR: string;
+  pin1: string;
+  puk1: string;
+  pin2: string;
+  puk2: string;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hasMatchingStoredEsimOrder(refNo: string) {
+  const raw = localStorage.getItem('tw_esim_order');
+  if (!raw) return false;
+
+  try {
+    const order = JSON.parse(raw) as { refNo?: string; paymentRefNo?: string };
+    const normalizedRef = normalizeAdxPaymentRef(refNo);
+    return !order.refNo
+      || normalizeAdxPaymentRef(order.refNo) === normalizedRef
+      || normalizeAdxPaymentRef(order.paymentRefNo || '') === normalizedRef;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchEsimDetails(refNo: string): Promise<EsimDetails | null> {
+  for (const endpoint of ['/esim-info', '/api/esim-info']) {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refNo }),
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.ready && data?.details) return data.details as EsimDetails;
+    if (res.status !== 404) return null;
+  }
+
+  return null;
+}
+
+function buildEsimSuccessUrl(refNo: string, details: EsimDetails, isAdx: boolean) {
+  const params = new URLSearchParams({ refno: details.refNo || refNo });
+  if (details.simSerial) params.set('simserial', details.simSerial);
+  if (details.esimQR) params.set('esimQR', details.esimQR);
+  if (details.pin1) params.set('pin1', details.pin1);
+  if (details.puk1) params.set('puk1', details.puk1);
+  if (details.pin2) params.set('pin2', details.pin2);
+  if (details.puk2) params.set('puk2', details.puk2);
+  return `${isAdx ? '/adx/esim-success' : '/sim/esim-success'}?${params.toString()}`;
+}
 
 function ThankYouContent() {
   const searchParams = useSearchParams();
@@ -14,13 +74,31 @@ function ThankYouContent() {
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
+  const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
   const [status, setStatus] = useState<Status>('loading');
+  const [esimPreparing, setEsimPreparing] = useState(false);
+  const [paymentCheckKey, setPaymentCheckKey] = useState(0);
+
+  const checkPaymentAgain = () => {
+    setStatus('loading');
+    setPaymentCheckKey((key) => key + 1);
+  };
+
+  useEffect(() => {
+    if (isAdx || !refNo) return;
+    const metadata = getMatchingAdxPurchase(refNo);
+    if (!metadata) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (metadata.simType === 'esim') params.set('esim', '1');
+    router.replace(`/adx/thank-you?${params.toString()}`);
+  }, [isAdx, refNo, router, searchParams]);
 
   useEffect(() => {
     if (!refNo && !gkashStatus) { setStatus('failed'); return; }
 
     // If GKash sent status directly, use it
-    if (gkashStatus) {
+    if (gkashStatus && paymentCheckKey === 0) {
       const isSuccess = gkashStatus.startsWith('88');
       const isFailed = gkashStatus.startsWith('66') || gkashStatus.startsWith('11') || gkashStatus.startsWith('99');
       setStatus(isSuccess ? 'success' : isFailed ? 'failed' : 'pending');
@@ -29,31 +107,42 @@ function ThankYouContent() {
 
     // No GKash status — fallback: poll payment API
     let attempts = 0;
-    const maxAttempts = 10;
+    let cancelled = false;
+    let retryTimer: number | undefined;
+    const maxAttempts = 40;
+
+    const retryOrSetPending = () => {
+      if (cancelled) return;
+      attempts++;
+      if (attempts < maxAttempts) {
+        retryTimer = window.setTimeout(check, 3000);
+        return;
+      }
+      setStatus('pending');
+    };
 
     const check = async () => {
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
         const url = `${apiBase}/api/proxy?url=${encodeURIComponent(`https://www.tonewow.net/tgpayment/getPaymentStatus?refNo=${refNo}`)}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         const data = await res.json();
+        if (cancelled) return;
 
         const paymentStatus = data?.data?.[0]?.status;
         if (paymentStatus === '2') { setStatus('success'); return; }
-        if (paymentStatus === '1' && attempts < maxAttempts) {
-          attempts++;
-          setTimeout(check, 3000);
-          return;
-        }
-        setStatus(paymentStatus === '1' ? 'pending' : 'failed');
+        retryOrSetPending();
       } catch {
-        if (attempts < maxAttempts) { attempts++; setTimeout(check, 3000); return; }
-        setStatus('failed');
+        retryOrSetPending();
       }
     };
 
-    setTimeout(check, 3000);
-  }, [refNo, gkashStatus]);
+    retryTimer = window.setTimeout(check, 3000);
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [refNo, gkashStatus, paymentCheckKey]);
 
   useEffect(() => {
     if (!isAdx || status !== 'success' || !refNo) return;
@@ -74,30 +163,65 @@ function ThankYouContent() {
   }, [isAdx, status, refNo]);
 
   useEffect(() => {
+    if (!isAdx || !refNo || (status !== 'failed' && status !== 'pending')) return;
+
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    const sendOutcome = () => {
+      const result = trackAdxPaymentOutcome(refNo, status);
+      if (result !== 'not-ready' || attempts >= 20) return;
+      attempts++;
+      retryTimer = window.setTimeout(sendOutcome, 500);
+    };
+
+    sendOutcome();
+    return () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [isAdx, status, refNo]);
+
+  useEffect(() => {
     if (status === 'failed') {
       localStorage.removeItem('tw_esim_order');
       return;
     }
     if (status !== 'success') return;
-    try {
-      const raw = localStorage.getItem('tw_esim_order');
-      if (!raw) return;
-      const order = JSON.parse(raw) as { refNo?: string; paymentRefNo?: string };
-      const normalizedRef = normalizeAdxPaymentRef(refNo);
-      if (
-        !order.refNo
-        || normalizeAdxPaymentRef(order.refNo) === normalizedRef
-        || normalizeAdxPaymentRef(order.paymentRefNo || '') === normalizedRef
-      ) {
-        const destination = isAdx ? '/adx/esim-success' : '/sim/esim-success';
-        router.replace(`${destination}${refNo ? `?refno=${encodeURIComponent(refNo)}` : ''}`);
-      }
-    } catch {
-      localStorage.removeItem('tw_esim_order');
-    }
-  }, [status, refNo, router, isAdx]);
+    if (!isAdx && getMatchingAdxPurchase(refNo)) return;
 
-  if (status === 'loading') {
+    const knownEsimOrder = isEsimReturn || hasMatchingStoredEsimOrder(refNo);
+    if (!knownEsimOrder) return;
+
+    let cancelled = false;
+    const prepareEsimDetails = async () => {
+      setEsimPreparing(true);
+      for (let attempt = 0; attempt < 40; attempt++) {
+        try {
+          const details = await fetchEsimDetails(refNo);
+          if (cancelled) return;
+          if (details) {
+            sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
+            localStorage.removeItem('tw_esim_order');
+            router.replace(buildEsimSuccessUrl(refNo, details, isAdx));
+            return;
+          }
+        } catch {
+          // The upstream eSIM record can take time to become available.
+        }
+
+        if (attempt < 39) await sleep(3000);
+        if (cancelled) return;
+      }
+
+      setEsimPreparing(false);
+    };
+
+    prepareEsimDetails().catch(() => {
+      if (!cancelled) setEsimPreparing(false);
+    });
+    return () => { cancelled = true; };
+  }, [status, refNo, router, isAdx, isEsimReturn]);
+
+  if (status === 'loading' || esimPreparing) {
     return (
       <div className="container" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>
         <div style={{ maxWidth: 480, margin: '0 auto' }}>
@@ -106,8 +230,14 @@ function ThankYouContent() {
             borderTopColor: '#0074be', animation: 'spin 0.8s linear infinite',
             margin: '0 auto 24px',
           }} />
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>Verifying Payment</h2>
-          <p style={{ fontSize: 14, color: '#64748b', marginTop: 8 }}>Please wait while we confirm your payment...</p>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>
+            {esimPreparing ? 'Preparing eSIM Details' : 'Verifying Payment'}
+          </h2>
+          <p style={{ fontSize: 14, color: '#64748b', marginTop: 8 }}>
+            {esimPreparing
+              ? 'Please wait while we prepare your eSIM QR, PIN, and PUK...'
+              : 'Please wait while we confirm your payment...'}
+          </p>
           {refNo && <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 16, fontFamily: 'monospace' }}>Ref: {refNo}</p>}
         </div>
       </div>
@@ -201,11 +331,16 @@ function ThankYouContent() {
             </p>
           </div>
         )}
-        <button onClick={() => router.push('/sim/purchase')} style={{
+        <button
+          onClick={status === 'pending' && isAdx ? checkPaymentAgain : () => router.push('/sim/purchase')}
+          style={{
           background: 'linear-gradient(135deg, #0074be, #273a89)',
           color: '#fff', border: 'none', borderRadius: 12,
           padding: '14px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
-        }}>Try Again</button>
+        }}
+        >
+          {status === 'pending' && isAdx ? 'Check Again' : 'Try Again'}
+        </button>
       </div>
     </div>
   );

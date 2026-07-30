@@ -1,23 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCartStore } from '@/store/cartStore';
 import { formatRM } from '@/lib/utils';
-
-function calculateShipping(items: any[]) {
-  let shippingTotal = 0;
-  for (const item of items) {
-    if (item.type === 'sim') {
-      const cat = (item.category || item.numberType || '').toUpperCase();
-      const isSpecial = ['PREMIUM', 'VIP', 'VVIP'].includes(cat);
-      if (!isSpecial) {
-        shippingTotal += 10 * item.quantity;
-      }
-    }
-  }
-  return shippingTotal;
-}
+import { calculateDeliveryShipping } from '@/lib/shipping';
 
 export default function CartPage() {
   const router = useRouter();
@@ -27,7 +15,7 @@ export default function CartPage() {
   const clear = useCartStore((s) => s.clear);
   const getTotal = useCartStore((s) => s.getTotal);
 
-  const shipping = calculateShipping(items);
+  const shipping = calculateDeliveryShipping(items);
   const grandTotal = getTotal() + shipping;
 
   return (
@@ -73,10 +61,21 @@ export default function CartPage() {
           <div className="cart-items">
             {items.map((item) => (
               <div key={item.id} className="cart-item-card">
+                {item.image && (
+                  <div className="cart-item-thumb">
+                    <Image src={item.image} alt={item.name} fill sizes="88px" />
+                  </div>
+                )}
                 <div className="cart-item-info">
                   <h4>{item.name}</h4>
                   {item.description && <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{item.description}</p>}
                   {item.simType && <span className="sim-type-badge">{item.simType === 'esim' ? 'eSIM' : 'Physical SIM'}</span>}
+                  {(item.variant || item.size) && (
+                    <div className="cart-item-variants">
+                      {item.variant && <span>{item.variant}</span>}
+                      {item.size && <span>Size {item.size}</span>}
+                    </div>
+                  )}
                 </div>
                 <div className="cart-item-actions">
                   <div className="quantity-control">
@@ -90,7 +89,7 @@ export default function CartPage() {
               </div>
             ))}
 
-            {/* Add Another Plan Button */}
+            {/* Add Another Item Button */}
             <Link
               href="/"
               style={{
@@ -107,7 +106,7 @@ export default function CartPage() {
                 transition: 'all 0.2s',
               }}
             >
-              + Add Another Plan
+              + Continue Shopping
             </Link>
           </div>
 
@@ -123,7 +122,7 @@ export default function CartPage() {
               <span>{shipping === 0 ? 'FREE' : formatRM(shipping)}</span>
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
-              Shipping: RM10 per BIASA SIM. Special numbers (PREMIUM/VIP/VVIP) ship for FREE.
+              Merchandise delivery is RM10 per order. SIM shipping rules remain unchanged. Self-pickup is free.
             </p>
             <div className="cart-summary-total">
               <span>Total</span>

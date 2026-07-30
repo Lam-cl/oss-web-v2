@@ -22,7 +22,12 @@ export const useCartStore = create<CartState>()(
       addItem: (item) => {
         set((state) => {
           const existing = state.items.find(
-            (i) => i.type === item.type && i.plan === item.plan && i.number === item.number,
+            (i) => item.type === 'merchandise'
+              ? i.type === 'merchandise'
+                && i.productId === item.productId
+                && i.variant === item.variant
+                && i.size === item.size
+              : i.type === item.type && i.plan === item.plan && i.number === item.number,
           );
           if (existing) {
             return {

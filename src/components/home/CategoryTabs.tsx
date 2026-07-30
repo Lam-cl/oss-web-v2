@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DeviceSection from './DeviceSection';
 import SIMSection from './SIMSection';
+import MerchandiseSection from './MerchandiseSection';
 import type { AppSettings } from '@/lib/api';
 import { isDevicesEnabled, isMerchandiseEnabled } from '@/lib/features';
 
@@ -97,14 +98,7 @@ export default function CategoryTabs({ settings }: Props) {
       {/* Tab Content */}
       {activeTab === 'devices' && (devicesEnabled ? <DeviceSection /> : <ComingSoonHero kind="devices" />)}
       {activeTab === 'sim' && <SIMSection />}
-      {activeTab === 'merchandise' && (merchandiseEnabled ? (
-        <div style={{ padding: '48px 0', textAlign: 'center' }}>
-          <h2>Merchandise</h2>
-          <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: '1.1rem' }}>
-            Coming Soon
-          </p>
-        </div>
-      ) : <ComingSoonHero kind="merchandise" />)}
+      {activeTab === 'merchandise' && (merchandiseEnabled ? <MerchandiseSection /> : <ComingSoonHero kind="merchandise" />)}
     </section>
   );
 }

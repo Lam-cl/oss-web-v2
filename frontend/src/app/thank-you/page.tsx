@@ -2,7 +2,11 @@
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { getMatchingAdxPurchase, trackAdxPurchase } from '@/lib/adxPurchaseTracking';
+import {
+  getMatchingAdxPurchase,
+  trackAdxPaymentOutcome,
+  trackAdxPurchase,
+} from '@/lib/adxPurchaseTracking';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
 type EsimDetails = {
@@ -107,6 +111,7 @@ function ThankYouContent() {
   const referralContext = searchParams.get('refctx') || '';
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
+  const [paymentCheckKey, setPaymentCheckKey] = useState(0);
 
   useEffect(() => {
     if (isAdx || !refNo) return;
@@ -137,12 +142,16 @@ function ThankYouContent() {
     }
     router.push(retryUrl);
   };
+  const checkPaymentAgain = () => {
+    setStatus('loading');
+    setPaymentCheckKey((key) => key + 1);
+  };
 
   useEffect(() => {
     if (!refNo && !gkashStatus) { setStatus('failed'); return; }
 
     // If GKash sent status directly, use it
-    if (gkashStatus) {
+    if (gkashStatus && paymentCheckKey === 0) {
       const isSuccess = gkashStatus.startsWith('88');
       const isFailed = gkashStatus.startsWith('66') || gkashStatus.startsWith('11') || gkashStatus.startsWith('99');
       setStatus(isSuccess ? 'success' : isFailed ? 'failed' : 'pending');
@@ -151,12 +160,15 @@ function ThankYouContent() {
 
     // No GKash status — fallback: poll payment API
     let attempts = 0;
+    let cancelled = false;
+    let retryTimer: number | undefined;
     const maxAttempts = 40;
 
     const retryOrSetPending = () => {
+      if (cancelled) return;
       attempts++;
       if (attempts < maxAttempts) {
-        setTimeout(check, 3000);
+        retryTimer = window.setTimeout(check, 3000);
         return;
       }
       setStatus('pending');
@@ -166,24 +178,25 @@ function ThankYouContent() {
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
         const url = `${apiBase}/api/proxy?url=${encodeURIComponent(`https://www.tonewow.net/tgpayment/getPaymentStatus?refNo=${refNo}`)}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         const data = await res.json();
+        if (cancelled) return;
 
         const paymentRecord = data?.data?.[0];
         const paymentStatus = paymentRecord?.status;
         if (paymentStatus === '2') { setStatus('success'); return; }
-        if (paymentRecord && paymentStatus && paymentStatus !== '1') {
-          setStatus('failed');
-          return;
-        }
         retryOrSetPending();
       } catch {
         retryOrSetPending();
       }
     };
 
-    setTimeout(check, 3000);
-  }, [refNo, gkashStatus]);
+    retryTimer = window.setTimeout(check, 3000);
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [refNo, gkashStatus, paymentCheckKey]);
 
   useEffect(() => {
     if (!isAdx || status !== 'success' || !refNo) return;
@@ -198,6 +211,24 @@ function ThankYouContent() {
     };
 
     sendPurchase();
+    return () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [isAdx, status, refNo]);
+
+  useEffect(() => {
+    if (!isAdx || !refNo || (status !== 'failed' && status !== 'pending')) return;
+
+    let attempts = 0;
+    let retryTimer: number | undefined;
+    const sendOutcome = () => {
+      const result = trackAdxPaymentOutcome(refNo, status);
+      if (result !== 'not-ready' || attempts >= 20) return;
+      attempts++;
+      retryTimer = window.setTimeout(sendOutcome, 500);
+    };
+
+    sendOutcome();
     return () => {
       if (retryTimer) window.clearTimeout(retryTimer);
     };
@@ -355,11 +386,11 @@ function ThankYouContent() {
             </p>
           </div>
         )}
-        <button onClick={retryPurchase} style={{
+        <button onClick={status === 'pending' && isAdx ? checkPaymentAgain : retryPurchase} style={{
           background: 'linear-gradient(135deg, #0074be, #273a89)',
           color: '#fff', border: 'none', borderRadius: 12,
           padding: '14px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
-        }}>Try Again</button>
+        }}>{status === 'pending' && isAdx ? 'Check Again' : 'Try Again'}</button>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
 
 const ADX_PURCHASE_STORAGE_KEY = 'tw_adx_purchase';
 const ADX_TRACKED_PREFIX = 'tw_adx_purchase_tracked:';
+const ADX_OUTCOME_TRACKED_PREFIX = 'tw_adx_payment_outcome_tracked:';
 
 export { normalizeAdxPaymentRef } from '@/lib/adxPurchaseMarker';
 
@@ -20,6 +21,9 @@ export type AdxPurchaseMetadata = {
   itemName: string;
   simType: 'physical' | 'esim';
 };
+
+export type AdxPaymentOutcome = 'failed' | 'pending';
+type TrackingResult = 'tracked' | 'already-tracked' | 'not-ready';
 
 declare global {
   interface Window {
@@ -61,7 +65,7 @@ export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | nul
   return null;
 }
 
-export function trackAdxPurchase(refNo: string): 'tracked' | 'already-tracked' | 'not-ready' {
+export function trackAdxPurchase(refNo: string): TrackingResult {
   const normalizedRef = normalizeAdxPaymentRef(refNo);
   if (!normalizedRef) return 'not-ready';
 
@@ -88,5 +92,35 @@ export function trackAdxPurchase(refNo: string): 'tracked' | 'already-tracked' |
 
   localStorage.setItem(trackedKey, '1');
   localStorage.removeItem(ADX_PURCHASE_STORAGE_KEY);
+  return 'tracked';
+}
+
+export function trackAdxPaymentOutcome(refNo: string, outcome: AdxPaymentOutcome): TrackingResult {
+  const normalizedRef = normalizeAdxPaymentRef(refNo);
+  if (!normalizedRef) return 'not-ready';
+
+  const trackedKey = `${ADX_OUTCOME_TRACKED_PREFIX}${outcome}:${normalizedRef}`;
+  if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  if (typeof window.gtag !== 'function') return 'not-ready';
+
+  const metadata = getMatchingAdxPurchase(refNo);
+  if (!metadata) return 'not-ready';
+
+  window.gtag('event', `payment_${outcome}`, {
+    transaction_id: metadata.paymentRefNo || refNo,
+    value: metadata.value,
+    currency: metadata.currency,
+    payment_status: outcome,
+    items: [{
+      item_id: metadata.itemId,
+      item_name: metadata.itemName,
+      item_category: 'ADX SIM',
+      item_variant: metadata.simType,
+      price: metadata.value,
+      quantity: 1,
+    }],
+  });
+
+  localStorage.setItem(trackedKey, '1');
   return 'tracked';
 }

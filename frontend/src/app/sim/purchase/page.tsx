@@ -964,7 +964,10 @@ function SIMPurchaseWizard() {
           window.location.origin,
         );
         confirmationUrl.searchParams.set('refno', paymentRefNo);
+        confirmationUrl.searchParams.set('esim', simType === 'esim' ? '1' : '0');
+        confirmationUrl.searchParams.set('prodDesc', isAdxDirectFlow ? 'OSSPaymentADX' : 'OSSPayment');
         if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
+        else if (simType === 'esim') confirmationUrl.searchParams.set('flow', 'esim');
         if (referralContextToken) confirmationUrl.searchParams.set('refctx', referralContextToken);
         params.set('returnurl', confirmationUrl.toString());
         params.set('callbackurl', confirmationUrl.toString());

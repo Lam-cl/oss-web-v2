@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   ADX_PURCHASE_COOKIE_KEY,
   matchesAdxPurchaseMarker,
+  normalizeAdxPaymentRef,
   parseAdxPurchaseMarker,
 } from '@/lib/adxPurchaseMarker';
 
 const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2'] as const;
+
+// These orders were created before ADX markers were embedded in the gateway callback URL.
+const LEGACY_ADX_ORDERS: Record<string, { simType: 'physical' | 'esim' }> = {
+  twoss847682607301559: { simType: 'esim' },
+};
 
 function publicOriginFor(req: NextRequest): string {
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
@@ -74,11 +80,15 @@ export async function handlePaymentConfirmation(
 
   const storedAdxMarker = parseAdxPurchaseMarker(req.cookies.get(ADX_PURCHASE_COOKIE_KEY)?.value);
   const matchedAdxMarker = matchesAdxPurchaseMarker(storedAdxMarker, refno) ? storedAdxMarker : null;
+  const legacyAdxOrder = LEGACY_ADX_ORDERS[normalizeAdxPaymentRef(refno)];
   const isAdx = forceAdx
     || flow.toLowerCase() === 'adx'
     || prodDesc.toLowerCase() === 'osspaymentadx'
-    || Boolean(matchedAdxMarker);
-  isEsim = isEsim || matchedAdxMarker?.simType === 'esim';
+    || Boolean(matchedAdxMarker)
+    || Boolean(legacyAdxOrder);
+  isEsim = isEsim
+    || matchedAdxMarker?.simType === 'esim'
+    || legacyAdxOrder?.simType === 'esim';
 
   const redirect = (url: URL) => {
     const response = NextResponse.redirect(url, method === 'POST' ? 303 : 307);

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  ADX_PURCHASE_COOKIE_KEY,
-  matchesAdxPurchaseMarker,
-  parseAdxPurchaseMarker,
-} from '@/lib/adxPurchaseMarker';
+import { readAdxPaymentReference } from '@/lib/adxPaymentReferenceStore';
+
+const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2'] as const;
 
 function publicOriginFor(req: NextRequest): string {
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
@@ -26,12 +24,21 @@ export async function handlePaymentConfirmation(
   let refno = searchParams.get('refno') || searchParams.get('refNo') || '';
   let status = searchParams.get('status') || '';
   let description = searchParams.get('desc') || searchParams.get('description') || '';
+  let referralContext = searchParams.get('refctx') || '';
+  let locale = searchParams.get('locale') || 'en';
   let flow = searchParams.get('flow') || '';
   let prodDesc = searchParams.get('prodDesc')
     || searchParams.get('proddesc')
     || searchParams.get('PRODDESC')
     || '';
   let isEsim = forceEsim || searchParams.get('esim') === '1' || flow === 'esim';
+  const esimDetails: Partial<Record<(typeof ESIM_DETAIL_KEYS)[number], string>> = {};
+  for (const key of ESIM_DETAIL_KEYS) {
+    const value = key === 'simserial'
+      ? searchParams.get('simserial') || searchParams.get('simSerial')
+      : searchParams.get(key);
+    if (value) esimDetails[key] = value;
+  }
 
   if (method === 'POST') {
     try {
@@ -43,6 +50,8 @@ export async function handlePaymentConfirmation(
         || '';
       status = status || body.get('status')?.toString() || '';
       description = description || body.get('desc')?.toString() || body.get('description')?.toString() || '';
+      referralContext = referralContext || body.get('refctx')?.toString() || '';
+      locale = searchParams.get('locale') || body.get('locale')?.toString() || 'en';
       flow = flow || body.get('flow')?.toString() || '';
       prodDesc = prodDesc
         || body.get('prodDesc')?.toString()
@@ -51,28 +60,39 @@ export async function handlePaymentConfirmation(
         || '';
       const bodyEsim = body.get('esim')?.toString() || body.get('isEsim')?.toString() || '';
       isEsim = isEsim || bodyEsim === '1' || bodyEsim.toLowerCase() === 'true';
+      for (const key of ESIM_DETAIL_KEYS) {
+        const value = key === 'simserial'
+          ? body.get('simserial')?.toString() || body.get('simSerial')?.toString()
+          : body.get(key)?.toString();
+        if (!esimDetails[key] && value) esimDetails[key] = value;
+      }
     } catch {
       // Use the query parameters when the gateway body is unavailable.
     }
   }
 
-  const storedAdxMarker = parseAdxPurchaseMarker(req.cookies.get(ADX_PURCHASE_COOKIE_KEY)?.value);
-  const matchedAdxMarker = matchesAdxPurchaseMarker(storedAdxMarker, refno) ? storedAdxMarker : null;
+  const serverAdxMarker = refno ? await readAdxPaymentReference(refno) : null;
   const isAdx = forceAdx
-    || flow.toLowerCase() === 'adx'
-    || prodDesc.toLowerCase() === 'osspaymentadx'
-    || Boolean(matchedAdxMarker);
-  isEsim = isEsim || matchedAdxMarker?.simType === 'esim';
-  const url = new URL(isAdx ? '/adx/thank-you' : '/thank-you', publicOriginFor(req));
+    || prodDesc === 'OSSPaymentADX'
+    || Boolean(serverAdxMarker);
+  isEsim = isEsim || serverAdxMarker?.simType === 'esim';
+  const hasEsimDetails = ESIM_DETAIL_KEYS.some(key => Boolean(esimDetails[key]));
+  const destination = hasEsimDetails
+    ? isAdx ? '/adx/esim-success' : '/sim/esim-success'
+    : isAdx ? '/adx/thank-you' : '/thank-you';
+  const url = new URL(destination, publicOriginFor(req));
   if (refno) url.searchParams.set('refno', refno);
-  url.searchParams.set('locale', searchParams.get('locale') || 'en');
-  if (isEsim) url.searchParams.set('esim', '1');
-  if (status) url.searchParams.set('status', status);
-  if (description) url.searchParams.set('desc', description);
-
-  const response = NextResponse.redirect(url, method === 'POST' ? 303 : 307);
-  if (matchedAdxMarker) {
-    response.cookies.set(ADX_PURCHASE_COOKIE_KEY, '', { path: '/', maxAge: 0 });
+  url.searchParams.set('locale', locale);
+  if (isEsim && !hasEsimDetails) url.searchParams.set('esim', '1');
+  if (referralContext) url.searchParams.set('refctx', referralContext);
+  if (hasEsimDetails) {
+    for (const key of ESIM_DETAIL_KEYS) {
+      if (esimDetails[key]) url.searchParams.set(key, esimDetails[key]);
+    }
+  } else {
+    if (status) url.searchParams.set('status', status);
+    if (description) url.searchParams.set('desc', description);
   }
-  return response;
+
+  return NextResponse.redirect(url, method === 'POST' ? 303 : 307);
 }

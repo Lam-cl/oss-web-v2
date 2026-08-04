@@ -319,10 +319,44 @@ function SIMPurchaseWizard() {
     promoterPrefix: 'TWE', promoterCode: '',
   });
   const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
+  const [adxFlowProof, setAdxFlowProof] = useState('');
+  const [adxProofError, setAdxProofError] = useState('');
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
   const [directCheckout, setDirectCheckout] = useState(false);
   const planAutoSelected = useRef(false);
   const [esimConfirmed, setEsimConfirmed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAdxDirectFlow) {
+      setAdxFlowProof('');
+      setAdxProofError('');
+      return () => { cancelled = true; };
+    }
+
+    setAdxFlowProof('');
+    setAdxProofError('');
+    fetch('/adx-reference/proof', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purchaseMode }),
+    })
+      .then(async response => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.proof) {
+          throw new Error(data?.error || 'ADX checkout session could not be verified.');
+        }
+        if (!cancelled) setAdxFlowProof(data.proof);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setAdxProofError(error instanceof Error ? error.message : 'ADX checkout session could not be verified.');
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [isAdxDirectFlow, purchaseMode]);
 
   /* ── Direct checkout via ?dataPlanID= ── */
   useEffect(() => {
@@ -576,6 +610,49 @@ function SIMPurchaseWizard() {
 
       const promoterId = hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : '';
       const paymentRefNo = `${paymentMethod}${refNo}`;
+      let paymentReferralCode = hasPromoter ? twpReferenceID || promoterId : '';
+      let paymentTwpReferenceID = hasPromoter ? twpReferenceID : '';
+      let paymentAlloReferenceID = hasPromoter ? alloReferenceID : '';
+      let referralContextToken = '';
+
+      if (isAdxDirectFlow) {
+        if (!adxFlowProof) {
+          throw new Error(adxProofError || 'ADX checkout is still being verified. Please wait a moment and try again.');
+        }
+
+        const markerRes = await fetch('/adx-reference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            proof: adxFlowProof,
+            refNo,
+            paymentRefNo,
+            prodDesc: 'OSSPaymentADX',
+            purchaseMode,
+            simType,
+          }),
+        });
+        const markerData = await markerRes.json().catch(() => null);
+        if (!markerRes.ok || !markerData?.success) {
+          throw new Error(markerData?.error || 'Unable to secure the ADX payment route. Please try again.');
+        }
+      }
+
+      if (isAdxDirectFlow && simType === 'esim' && hasPromoter && form.promoterPrefix === 'TWP') {
+        const contextRes = await fetch('/payment-referral/context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refNo: paymentRefNo, memberID: promoterId }),
+        });
+        const contextData = await contextRes.json().catch(() => null);
+        if (!contextRes.ok || !contextData?.token || !contextData?.referenceID) {
+          throw new Error(contextData?.error || 'Unable to secure the TWP referral. Please try again.');
+        }
+        paymentReferralCode = contextData.referenceID;
+        paymentTwpReferenceID = contextData.referenceID;
+        paymentAlloReferenceID = contextData.referenceID;
+        referralContextToken = contextData.token;
+      }
       const totalStr = STAGING_MODE ? '1.00' : String(total);
       const params = new URLSearchParams({
         transactionType: 'OSSPayment',
@@ -602,13 +679,13 @@ function SIMPurchaseWizard() {
         memberId: promoterId,
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || '',
-        referralCode: promoterId ? `${promoterId}${twpReferenceID}` : twpReferenceID,
+        referralCode: paymentReferralCode,
         dataPlanID: '0',
         insurance: insuranceApiValue,
         isEsim: simType === 'esim' ? '1' : '0',
         esim: simType === 'esim' ? '1' : '0',
-        twpReferenceID,
-        alloReferenceID,
+        twpReferenceID: paymentTwpReferenceID,
+        alloReferenceID: paymentAlloReferenceID,
       });
 
       const apiBase = getNestApiBaseUrl();
@@ -622,7 +699,11 @@ function SIMPurchaseWizard() {
         const confirmationUrl = new URL(confirmationPath, window.location.origin);
         confirmationUrl.searchParams.set('refno', paymentRefNo);
         if (simType === 'esim') confirmationUrl.searchParams.set('esim', '1');
-        if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
+        if (isAdxDirectFlow) {
+          confirmationUrl.searchParams.set('flow', 'adx');
+          confirmationUrl.searchParams.set('prodDesc', 'OSSPaymentADX');
+        }
+        if (referralContextToken) confirmationUrl.searchParams.set('refctx', referralContextToken);
         params.set('returnurl', confirmationUrl.toString());
         params.set('callbackurl', confirmationUrl.toString());
         params.set('failureurl', confirmationUrl.toString());
@@ -634,11 +715,15 @@ function SIMPurchaseWizard() {
           code: hasPromoter ? form.promoterCode : '',
           name: hasPromoter ? promoterName : '',
           email: form.email,
-          twpReferenceID,
-          alloReferenceID,
+          twpReferenceID: paymentTwpReferenceID,
+          alloReferenceID: paymentAlloReferenceID,
         };
-        localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
-        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, paymentRefNo, email: form.email }));
+        try {
+          localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
+          localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, paymentRefNo, email: form.email }));
+        } catch {
+          // Signed referral context preserves ADX TWP attribution when storage is unavailable.
+        }
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
       }
 

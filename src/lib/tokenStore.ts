@@ -40,6 +40,10 @@ function createSlug() {
   return randomBytes(8).toString('base64url');
 }
 
+function validRecordId(id: string) {
+  return /^[A-Za-z0-9_-]{8,64}$/.test(id);
+}
+
 async function runKvCommand<T>(config: KvConfig, command: unknown[]): Promise<T> {
   const res = await fetch(config.url, {
     method: 'POST',
@@ -58,6 +62,11 @@ async function runKvCommand<T>(config: KvConfig, command: unknown[]): Promise<T>
 
 export async function createTokenRecord<T>(type: string, payload: T, ttlSeconds: number) {
   const id = createSlug();
+  return writeTokenRecord(type, id, payload, ttlSeconds);
+}
+
+export async function writeTokenRecord<T>(type: string, id: string, payload: T, ttlSeconds: number) {
+  if (!validRecordId(id)) throw new Error('Invalid token record ID');
   const record: StoredToken<T> = {
     expiresAt: Date.now() + ttlSeconds * 1000,
     payload,
@@ -79,7 +88,7 @@ export async function createTokenRecord<T>(type: string, payload: T, ttlSeconds:
 }
 
 export async function readTokenRecord<T>(type: string, id: string) {
-  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return null;
+  if (!validRecordId(id)) return null;
 
   const kv = getKvConfig();
   if (kv) {

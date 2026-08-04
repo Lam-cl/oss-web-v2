@@ -20,12 +20,18 @@ type EsimDetails = {
   puk2: string;
 };
 
+function clearEsimOrderMarker() {
+  try { localStorage.removeItem('tw_esim_order'); } catch { /* storage may be disabled */ }
+  try { sessionStorage.removeItem('tw_esim_order'); } catch { /* storage may be disabled */ }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function hasMatchingStoredEsimOrder(refNo: string) {
-  const raw = localStorage.getItem('tw_esim_order');
+  let raw: string | null = null;
+  try { raw = localStorage.getItem('tw_esim_order'); } catch { /* storage may be disabled */ }
   if (!raw) return false;
 
   try {
@@ -55,7 +61,7 @@ async function fetchEsimDetails(refNo: string): Promise<EsimDetails | null> {
   return null;
 }
 
-function buildEsimSuccessUrl(refNo: string, details: EsimDetails, isAdx: boolean) {
+function buildEsimSuccessUrl(refNo: string, details: EsimDetails, referralContext: string, isAdx: boolean) {
   const params = new URLSearchParams({ refno: details.refNo || refNo });
   if (details.simSerial) params.set('simserial', details.simSerial);
   if (details.esimQR) params.set('esimQR', details.esimQR);
@@ -63,6 +69,7 @@ function buildEsimSuccessUrl(refNo: string, details: EsimDetails, isAdx: boolean
   if (details.puk1) params.set('puk1', details.puk1);
   if (details.pin2) params.set('pin2', details.pin2);
   if (details.puk2) params.set('puk2', details.puk2);
+  if (referralContext) params.set('refctx', referralContext);
   return `${isAdx ? '/adx/esim-success' : '/sim/esim-success'}?${params.toString()}`;
 }
 
@@ -75,6 +82,7 @@ function ThankYouContent() {
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
   const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
+  const referralContext = searchParams.get('refctx') || '';
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
   const [paymentCheckKey, setPaymentCheckKey] = useState(0);
@@ -182,7 +190,7 @@ function ThankYouContent() {
 
   useEffect(() => {
     if (status === 'failed') {
-      localStorage.removeItem('tw_esim_order');
+      clearEsimOrderMarker();
       return;
     }
     if (status !== 'success') return;
@@ -199,9 +207,9 @@ function ThankYouContent() {
           const details = await fetchEsimDetails(refNo);
           if (cancelled) return;
           if (details) {
-            sessionStorage.setItem('tw_esim_details', JSON.stringify(details));
-            localStorage.removeItem('tw_esim_order');
-            router.replace(buildEsimSuccessUrl(refNo, details, isAdx));
+            try { sessionStorage.setItem('tw_esim_details', JSON.stringify(details)); } catch { /* storage may be disabled */ }
+            clearEsimOrderMarker();
+            router.replace(buildEsimSuccessUrl(refNo, details, referralContext, isAdx));
             return;
           }
         } catch {
@@ -219,7 +227,7 @@ function ThankYouContent() {
       if (!cancelled) setEsimPreparing(false);
     });
     return () => { cancelled = true; };
-  }, [status, refNo, router, isAdx, isEsimReturn]);
+  }, [status, refNo, router, isAdx, isEsimReturn, referralContext]);
 
   if (status === 'loading' || esimPreparing) {
     return (

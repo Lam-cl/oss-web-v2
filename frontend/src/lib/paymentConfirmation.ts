@@ -10,14 +10,22 @@ const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2']
 const BIJAKBUATDUIT_RETURN_RESOLVER =
   'https://bijakbuatduit.com/api/XH-tonewow-return-resolver.php';
 
-async function resolveBijakBuatDuitReturn(refno: string): Promise<string | null> {
+async function resolveBijakBuatDuitReturn(
+  refno: string,
+  status: string,
+  description: string,
+): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{1,50}$/.test(refno)) return null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
   try {
+    const resolverUrl = new URL(BIJAKBUATDUIT_RETURN_RESOLVER);
+    resolverUrl.searchParams.set('ref', refno);
+    if (status) resolverUrl.searchParams.set('status', status);
+    if (description) resolverUrl.searchParams.set('description', description);
     const response = await fetch(
-      `${BIJAKBUATDUIT_RETURN_RESOLVER}?ref=${encodeURIComponent(refno)}`,
+      resolverUrl,
       { cache: 'no-store', signal: controller.signal },
     );
     if (!response.ok) return null;
@@ -112,7 +120,7 @@ export async function handlePaymentConfirmation(
   // Only exact full payment references created by BijakBuatDuit are routed
   // back there. All ordinary ToneWow confirmations retain the existing flow.
   if (refno) {
-    const bijakBuatDuitReturn = await resolveBijakBuatDuitReturn(refno);
+    const bijakBuatDuitReturn = await resolveBijakBuatDuitReturn(refno, status, description);
     if (bijakBuatDuitReturn) {
       return NextResponse.redirect(bijakBuatDuitReturn, method === 'POST' ? 303 : 307);
     }

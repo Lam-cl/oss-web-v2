@@ -7,6 +7,37 @@ import {
 } from '@/lib/adxPurchaseMarker';
 
 const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2'] as const;
+const BIJAKBUATDUIT_RETURN_RESOLVER =
+  'https://bijakbuatduit.com/api/XH-tonewow-return-resolver.php';
+
+async function resolveBijakBuatDuitReturn(refno: string): Promise<string | null> {
+  if (!/^[A-Za-z0-9_-]{1,50}$/.test(refno)) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(
+      `${BIJAKBUATDUIT_RETURN_RESOLVER}?ref=${encodeURIComponent(refno)}`,
+      { cache: 'no-store', signal: controller.signal },
+    );
+    if (!response.ok) return null;
+    const result = await response.json().catch(() => null);
+    if (!result?.matched || typeof result.redirect_url !== 'string') return null;
+
+    const destination = new URL(result.redirect_url);
+    if (destination.protocol !== 'https:'
+      || destination.hostname !== 'bijakbuatduit.com'
+      || destination.pathname !== '/api/XH-tonewow-payment-return.php') {
+      return null;
+    }
+    return destination.toString();
+  } catch {
+    // Fail open: ordinary ToneWow confirmations must continue unchanged.
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 // These orders were created before ADX markers were embedded in the gateway callback URL.
 const LEGACY_ADX_ORDERS: Record<string, { simType: 'physical' | 'esim' }> = {
@@ -76,6 +107,15 @@ export async function handlePaymentConfirmation(
           || '';
       }
     } catch { /* body parse failed, use query params only */ }
+  }
+
+  // Only exact full payment references created by BijakBuatDuit are routed
+  // back there. All ordinary ToneWow confirmations retain the existing flow.
+  if (refno) {
+    const bijakBuatDuitReturn = await resolveBijakBuatDuitReturn(refno);
+    if (bijakBuatDuitReturn) {
+      return NextResponse.redirect(bijakBuatDuitReturn, method === 'POST' ? 303 : 307);
+    }
   }
 
   const storedAdxMarker = parseAdxPurchaseMarker(req.cookies.get(ADX_PURCHASE_COOKIE_KEY)?.value);

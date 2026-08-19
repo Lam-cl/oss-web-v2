@@ -641,6 +641,26 @@ function SIMPurchaseWizard() {
       setAlloReferenceID(context.alloReferenceID || '');
     };
 
+    // Token-gated SuperLITE purchases are a direct channel and must never
+    // inherit an upline from URL parameters or a previous browser session.
+    if (isAdxDirectFlow) {
+      setForm(current => ({
+        ...current,
+        promoterPrefix: 'TWE',
+        promoterCode: '',
+      }));
+      setHasReferral(false);
+      setPromoterLocked(false);
+      setPromoterName('');
+      setPromoterError('');
+      setPromoterVerifying(false);
+      setTwpReferenceID('');
+      setAlloReferenceID('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if ((p === 'TWE' || p === 'TWP') && c) {
       const code = normalizeReferralCode(p, c);
       const memberID = buildMemberID(p, code);
@@ -695,20 +715,15 @@ function SIMPurchaseWizard() {
       return;
     }
 
-    if (!isSuperliteDirectFlow) {
-      const context = readReferralContext();
-      if (context) {
-        applyContext(context);
-      }
-      return () => {
-        cancelled = true;
-      };
+    const context = readReferralContext();
+    if (context) {
+      applyContext(context);
     }
 
     return () => {
       cancelled = true;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [doVerifyPromoter, isAdxDirectFlow, searchParams]);
 
 
   /* ── Load pre-selected special number (VIP flow) — only when ?special=1 ── */
@@ -752,7 +767,7 @@ function SIMPurchaseWizard() {
   const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceById.basic || insuranceOptions[0];
   const insurancePrice = selectedInsuranceOption.price;
   const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
-  const hasPromoter = !isSuperliteDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
+  const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
   const isBareOrder = !hasPromoter && !selectedDataPlan && insurancePrice === 0 && !selectedNumber;
   const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : readyBundle ? 0 : isBareOrder ? 5 : 0;
 

@@ -33,6 +33,9 @@ yarn-error.log*
 
 # runtime storage
 .token-store/
+.data/
+.rollback/
+.merdeka-promo-deploy.lock
 
 # backup files
 *.bak

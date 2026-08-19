@@ -1,0 +1,87 @@
+name: Deploy Merdeka Promo staging
+
+on:
+  push:
+    branches:
+      - staging/merdeka-promo
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merdeka-promo-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out deployment commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject files outside the Merdeka Promo scope
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            BASE_SHA="$(git rev-parse "$AFTER_SHA^")"
+          else
+            BASE_SHA="$BEFORE_SHA"
+          fi
+
+          invalid=0
+          while IFS= read -r path; do
+            case "$path" in
+              .gitignore|.github/workflows/deploy-merdeka-staging.yml|scripts/deploy-merdeka-staging.sh|scripts/publish-merdeka-staging.sh|public/images/merdeka-promo/*|src/app/api/merdeka-promo/*|src/app/merdeka-promo-api/*|src/app/merdeka-promo/*|src/lib/merdekaPromo.ts)
+                ;;
+              *)
+                echo "::error file=$path::File is outside the Merdeka Promo allowlist"
+                invalid=1
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$AFTER_SHA")
+          exit "$invalid"
+
+      - name: Validate deployment secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -eu
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+
+      - name: Deploy promo overlay to staging
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/tonewow_merdeka_key
+          chmod 600 ~/.ssh/tonewow_merdeka_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+
+          ssh -p "$SSH_PORT" -i ~/.ssh/tonewow_merdeka_key "$SSH_USER@$SSH_HOST" \
+            DEPLOY_SHA="$DEPLOY_SHA" bash -se <<'DEPLOY'
+          set -euo pipefail
+          LIVE_DIR="/www/wwwroot/tonewow.xifuhalim.com"
+          BRANCH="staging/merdeka-promo"
+          git -C "$LIVE_DIR" fetch origin "$BRANCH"
+          test "$(git -C "$LIVE_DIR" rev-parse "origin/$BRANCH^{commit}")" = "$DEPLOY_SHA"
+          DEPLOY_SCRIPT="$(mktemp)"
+          trap 'rm -f -- "$DEPLOY_SCRIPT"' EXIT
+          git -C "$LIVE_DIR" show "origin/$BRANCH:scripts/deploy-merdeka-staging.sh" > "$DEPLOY_SCRIPT"
+          chmod 700 "$DEPLOY_SCRIPT"
+          "$DEPLOY_SCRIPT" "$LIVE_DIR" "origin/$BRANCH" "$DEPLOY_SHA"
+          DEPLOY

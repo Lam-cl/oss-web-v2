@@ -144,7 +144,7 @@ export async function fetchMerdekaMember(value: unknown): Promise<MerdekaMember>
     postcode: clean(data.addressInfo?.addPostCode),
     city: clean(data.addressInfo?.addCity),
     state: clean(data.addressInfo?.addState),
-    currentPlan: null,
+    currentPlan: clean(data.mainPlanName) || null,
   };
 }
 

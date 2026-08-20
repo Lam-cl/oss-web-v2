@@ -30,6 +30,25 @@ function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null) {
   return Math.round(plan.monthlyPrice * (duration === 6 ? 5.5 : 11) * 100) / 100;
 }
 
+function isPlanEligible(plan: MerdekaPlan, currentPlan: string | null): boolean {
+  const planValue = parseInt(plan.name.replace('FU', ''));
+  const currentValue = parseInt(currentPlan?.replace('FU', '').match(/\d+/)?.[0] || '0');
+
+  if (!currentPlan || currentPlan === 'Not available yet') {
+    return planValue >= 35;
+  }
+
+  if (currentPlan.includes('WOW')) {
+    return planValue > currentValue;
+  }
+
+  if (currentPlan.includes('FU')) {
+    return planValue > currentValue;
+  }
+
+  return false;
+}
+
 function TickIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>;
 }
@@ -198,7 +217,7 @@ export default function MerdekaPromoPage() {
               <span>{selectedPlan.displayName} × {duration} months</span>
               <strong>{money(regularTotal)}</strong>
             </div>
-            <div className={styles.savingRow}><span>Discount</span><strong>− {money(savings)}</strong></div>
+            <div className={styles.savingRow}><span>Discount <br />({duration === 6 ? '1 month free' : '2 month free'})</span><strong>− {money(savings)}</strong></div>
           </>
         ) : (
           <div><span>Plan &amp; duration</span><strong>Not selected</strong></div>
@@ -216,12 +235,12 @@ export default function MerdekaPromoPage() {
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>tone wow Merdeka Promo</span>
-          <h1>More months.<br />More freedom.</h1>
-          <p>Choose your FU plan and enjoy 6 or 12 months with one simple upfront payment.</p>
+          <h1>More Months.<br />More Value.</h1>
+          <p>Save up to 2 months + earn thousands of wowcher points with selected 6 or 12-month FU plans.</p>
           <div className={styles.heroBenefits}>
-            <span><TickIcon /> Save up to one month</span>
+            <span><TickIcon /> Save up to 2 months</span>
             <span><TickIcon /> One-time payment</span>
-            <span><TickIcon /> FU35 and above</span>
+            <span><TickIcon /> Up to 24,000 FREE wowchers</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
@@ -252,7 +271,7 @@ export default function MerdekaPromoPage() {
                     <span className={styles.radio}>{active && <TickIcon />}</span>
                     <span className={styles.durationDetails}>
                       <span className={styles.durationCopy}><strong>{months} months</strong></span>
-                      <span className={styles.saveTag}>Save {months === 6 ? '½ month' : '1 month'}</span>
+                      <span className={styles.saveTag}>Save {months === 6 ? '1 month' : '2 month'}</span>
                     </span>
                   </button>
                 );
@@ -260,55 +279,9 @@ export default function MerdekaPromoPage() {
             </div>
           </section>
 
-          <section className={styles.section}>
+               <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <span className={styles.step}>02</span>
-              <div><h2>Select an FU plan</h2><p>All eligible plans include 30-day validity and unlimited calls.</p></div>
-            </div>
-            {plansLoading ? (
-              <div className={styles.planGrid}>{Array.from({ length: 5 }).map((_, index) => <div key={index} className={styles.skeleton} />)}</div>
-            ) : plansError ? (
-              <div className={styles.retryState}><strong>Plans could not be loaded</strong><p>{plansError}</p><button type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button></div>
-            ) : (
-              <div className={styles.planGrid}>
-                {plans.map((plan, index) => {
-                  const active = selectedPlanId === plan.id;
-                  const tone = PLAN_TONES[index] || PLAN_TONES[0];
-                  return (
-                    <button
-                      key={plan.id}
-                      type="button"
-                      className={`${styles.planCard} ${active ? styles.selected : ''}`}
-                      style={{
-                        '--plan-accent': tone.accent,
-                        '--plan-header': tone.header,
-                        '--plan-ink': tone.ink,
-                        '--plan-shape': tone.shape,
-                        '--plan-shape-two': tone.shapeTwo,
-                        '--plan-soft': tone.soft,
-                      } as CSSProperties}
-                      onClick={() => setSelectedPlanId(plan.id)}
-                      aria-pressed={active}
-                    >
-                      <span className={styles.planHeader}>
-                        <span className={styles.planTop}><strong className={styles.planTitle}>{plan.name} <small>plan</small></strong><span className={styles.radio}>{active && <TickIcon />}</span></span>
-                        <span className={styles.planPrice}><strong>{money(plan.monthlyPrice)}</strong><small>/ month</small></span>
-                      </span>
-                      <span className={styles.planBody}>
-                        <span className={styles.planBenefits}>{plan.benefits.slice(0, 4).map((benefit) => <span key={benefit}><TickIcon />{benefit}</span>)}</span>
-                        <span className={styles.selectLabel}>{active ? 'Selected' : 'Select plan'} <ArrowIcon /></span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {!plansLoading && !plansError && <p className={styles.planFootnote}>*Subject to Fair Usage Policy (FUP).</p>}
-          </section>
-
-          <section className={styles.section}>
-            <div className={styles.sectionHeading}>
-              <span className={styles.step}>03</span>
               <div><h2>Verify your tone wow number</h2><p>We will retrieve your Member ID and registered details.</p></div>
             </div>
             <div className={styles.verifyCard}>
@@ -329,6 +302,59 @@ export default function MerdekaPromoPage() {
               )}
             </div>
           </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeading}>
+              <span className={styles.step}>03</span>
+              <div><h2>Select an FU plan</h2><p>All eligible plans include 30-day validity and unlimited calls.</p></div>
+            </div>
+            {plansLoading ? (
+              <div className={styles.planGrid}>{Array.from({ length: 5 }).map((_, index) => <div key={index} className={styles.skeleton} />)}</div>
+            ) : plansError ? (
+              <div className={styles.retryState}><strong>Plans could not be loaded</strong><p>{plansError}</p><button type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button></div>
+            ) : (
+              <div className={styles.planGrid}>
+                {plans.map((plan, index) => {
+                  const active = selectedPlanId === plan.id;
+                  const hasMember = Boolean(member);
+                  const eligible = hasMember && isPlanEligible(plan, member?.currentPlan || null);
+                  const shouldHide = hasMember && !eligible;
+                  const tone = PLAN_TONES[index] || PLAN_TONES[0];
+                  if (shouldHide) return null;
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      className={`${styles.planCard} ${active ? styles.selected : ''} ${!hasMember ? styles.disabled : ''}`}
+                      style={{
+                        '--plan-accent': tone.accent,
+                        '--plan-header': tone.header,
+                        '--plan-ink': tone.ink,
+                        '--plan-shape': tone.shape,
+                        '--plan-shape-two': tone.shapeTwo,
+                        '--plan-soft': tone.soft,
+                      } as CSSProperties}
+                      onClick={() => (hasMember && eligible) && setSelectedPlanId(plan.id)}
+                      disabled={!hasMember || !eligible}
+                      aria-pressed={active}
+                    >
+                      <span className={styles.planHeader}>
+                        <span className={styles.planTop}><strong className={styles.planTitle}>{plan.name} <small>plan</small></strong><span className={styles.radio}>{active && <TickIcon />}</span></span>
+                        <span className={styles.planPrice}><strong>{money(plan.monthlyPrice)}</strong><small>/ month</small></span>
+                      </span>
+                      <span className={styles.planBody}>
+                        <span className={styles.planBenefits}>{plan.benefits.slice(0, 4).map((benefit) => <span key={benefit}><TickIcon />{benefit}</span>)}</span>
+                        <span className={styles.selectLabel}>{active ? 'Selected' : 'Select plan'} <ArrowIcon /></span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {!plansLoading && !plansError && <p className={styles.planFootnote}>*Subject to Fair Usage Policy (FUP).</p>}
+          </section>
+
+     
 
           {member && (
             <section className={styles.section}>
@@ -356,8 +382,8 @@ export default function MerdekaPromoPage() {
 
           <section className={styles.notice}>
             <div className={styles.noticeIcon}>!</div>
-            <div><h2>Before you continue</h2><p>Any existing auto-renewal may be cancelled and replaced with this campaign coverage. You will only be charged <strong>once</strong> for the full selected 6 or 12 months.</p>
-              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I understand and agree to continue with the new campaign subscription.</span></label>
+            <div><h2>Before you continue</h2><p>Already on a Data Plan? Your current plan will be replaced with this Merdeka Promo plan. Your selected plan will auto-renew every 30 days.</p>
+              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I have read and agree to the Terms & Conditions of this promotion.<br /><a style={{ color: 'blue', textDecoration: 'underline' }} href="https://www.tonewow.com/merdekapromo-terms" target="_blank" rel="noopener noreferrer">Terms & Conditions</a></span></label>
             </div>
           </section>
 

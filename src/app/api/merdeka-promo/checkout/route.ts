@@ -15,7 +15,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const PAYMENT_ID = '16';
-const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+// const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspayMerdeka2026.jsp';
 
 function text(value: unknown, max = 160) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';

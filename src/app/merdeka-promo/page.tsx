@@ -217,7 +217,7 @@ export default function MerdekaPromoPage() {
               <span>{selectedPlan.displayName} × {duration} months</span>
               <strong>{money(regularTotal)}</strong>
             </div>
-            <div className={styles.savingRow}><span>Discount <br />({duration === 6 ? '1 month free' : '2 month free'})</span><strong>− {money(savings)}</strong></div>
+            <div className={styles.savingRow}><span>Discount <br />({duration === 6 ? '1 Month Free' : '2 Months Free'})</span><strong>− {money(savings)}</strong></div>
           </>
         ) : (
           <div><span>Plan &amp; duration</span><strong>Not selected</strong></div>
@@ -271,7 +271,7 @@ export default function MerdekaPromoPage() {
                     <span className={styles.radio}>{active && <TickIcon />}</span>
                     <span className={styles.durationDetails}>
                       <span className={styles.durationCopy}><strong>{months} months</strong></span>
-                      <span className={styles.saveTag}>Save {months === 6 ? '1 month' : '2 month'}</span>
+                      <span className={styles.saveTag}>Save {months === 6 ? '1 Month' : '2 Months'}</span>
                     </span>
                   </button>
                 );

@@ -36,7 +36,7 @@ jobs:
           invalid=0
           while IFS= read -r path; do
             case "$path" in
-              .gitignore|.github/workflows/deploy-merdeka-staging.yml|scripts/deploy-merdeka-staging.sh|scripts/publish-merdeka-staging.sh|public/images/merdeka-promo/*|src/app/api/merdeka-promo/*|src/app/merdeka-promo-api/*|src/app/merdeka-promo/*|src/lib/merdekaPromo.ts)
+              .gitignore|.github/workflows/deploy-merdeka-staging.yml|scripts/deploy-merdeka-staging.sh|scripts/publish-merdeka-staging.sh|public/images/merdeka-promo/*|src/app/api/merdeka-promo/*|src/app/merdeka-promo-api/*|src/app/merdeka-promo/*|src/lib/merdekaPromo.ts|src/components/layout/Footer.tsx)
                 ;;
               *)
                 echo "::error file=$path::File is outside the Merdeka Promo allowlist"

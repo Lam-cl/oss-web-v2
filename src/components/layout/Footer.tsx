@@ -34,7 +34,7 @@ export default function Footer() {
 
       {/* Legal Links */}
       <div className="footer-legal">
-        <a href="https://www.tonewow.com/merdekapromo-terms" target="_blank">Terms &amp; Conditions</a>
+        <a href="https://www.tonewow.net/en/tnc" target="_blank" rel="noopener">Terms &amp; Conditions</a>
         <span>|</span>
         <a href="https://www.tonewow.net/en/PrivacyPolicy" target="_blank" rel="noopener">Privacy Policy</a>
       </div>

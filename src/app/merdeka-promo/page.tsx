@@ -27,7 +27,7 @@ function money(value: number) {
 
 function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null) {
   if (!plan || !duration) return 0;
-  return Math.round(plan.monthlyPrice * (duration === 6 ? 5.5 : 11) * 100) / 100;
+  return Math.round(plan.monthlyPrice * (duration === 6 ? 5 : 10) * 100) / 100;
 }
 
 function isPlanEligible(plan: MerdekaPlan, currentPlan: string | null): boolean {
@@ -383,7 +383,7 @@ export default function MerdekaPromoPage() {
           <section className={styles.notice}>
             <div className={styles.noticeIcon}>!</div>
             <div><h2>Before you continue</h2><p>Already on a Data Plan? Your current plan will be replaced with this Merdeka Promo plan. Your selected plan will auto-renew every 30 days.</p>
-              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I have read and agree to the Terms & Conditions of this promotion.<br /><a style={{ color: 'blue', textDecoration: 'underline' }} href="https://www.tonewow.com/merdekapromo-terms" target="_blank" rel="noopener noreferrer">Terms & Conditions</a></span></label>
+              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I have read and agree to the Terms & Conditions of this promotion.<br /><a style={{ color: 'blue', textDecoration: 'underline' }} href="https://www.tonewow.com/merdekapromo-terms" target="_blank">Terms & Conditions</a></span></label>
             </div>
           </section>
 

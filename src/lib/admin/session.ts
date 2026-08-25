@@ -15,6 +15,8 @@ export type AdminSession = {
   expiresAt: number;
 };
 
+type RemoteSession = { actor: AdminSession['user']; bundleToken: string; expiresAt: string };
+
 const encoder = new TextEncoder();
 
 function base64UrlEncode(value: string) {
@@ -40,6 +42,26 @@ function getSecret() {
   return secret;
 }
 
+function remoteSessionConfig() {
+  const base = process.env.TONEWOW_DATA_API_URL?.trim().replace(/\/$/, '');
+  const token = process.env.TONEWOW_DATA_API_TOKEN?.trim();
+  return base && token ? { base, token } : null;
+}
+
+async function remoteSessionRequest<T>(path: string, init: RequestInit = {}) {
+  const config = remoteSessionConfig();
+  if (!config) throw new Error('ToneWow Data API is not configured.');
+  const response = await fetch(`${config.base}${path}`, {
+    ...init,
+    headers: { accept: 'application/json', authorization: `Bearer ${config.token}`, ...init.headers },
+    cache: 'no-store',
+    signal: init.signal || AbortSignal.timeout(10_000),
+  });
+  const payload = await response.json().catch(() => null) as { data?: T } | null;
+  if (!response.ok || !payload?.data) throw new Error(`Remote session request failed (${response.status}).`);
+  return payload.data;
+}
+
 async function sign(payload: string) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(getSecret()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
@@ -54,6 +76,14 @@ function safeEqual(left: string, right: string) {
 }
 
 export async function createSessionCookie(session: AdminSession) {
+  if (remoteSessionConfig()) {
+    const sessionId = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    await remoteSessionRequest('/v1/admin-sessions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, actor: session.user, bundleToken: session.token, expiresAt: new Date(session.expiresAt).toISOString() }),
+    });
+    return `v1.${sessionId}`;
+  }
   const payload = base64UrlEncode(JSON.stringify(session));
   return `${payload}.${await sign(payload)}`;
 }
@@ -61,6 +91,14 @@ export async function createSessionCookie(session: AdminSession) {
 export async function verifySessionCookie(cookie?: string | null): Promise<AdminSession | null> {
   if (!cookie) return null;
   try {
+    if (cookie.startsWith('v1.')) {
+      const [version, sessionId, extra] = cookie.split('.');
+      if (version !== 'v1' || !/^[A-Za-z0-9_-]{43}$/.test(sessionId || '') || extra || !remoteSessionConfig()) return null;
+      const session = await remoteSessionRequest<RemoteSession>(`/v1/admin-sessions/${sessionId}`);
+      const expiresAt = Date.parse(session.expiresAt);
+      if (!session.bundleToken || !session.actor?.email || !ADMIN_ROLES.includes(session.actor.role) || expiresAt <= Date.now()) return null;
+      return { token: session.bundleToken, user: session.actor, expiresAt };
+    }
     const [payload, signature, extra] = cookie.split('.');
     if (!payload || !signature || extra || !safeEqual(signature, await sign(payload))) return null;
     const session = JSON.parse(base64UrlDecode(payload)) as AdminSession;
@@ -69,6 +107,13 @@ export async function verifySessionCookie(cookie?: string | null): Promise<Admin
   } catch {
     return null;
   }
+}
+
+export async function revokeSessionCookie(cookie?: string | null) {
+  if (!cookie?.startsWith('v1.') || !remoteSessionConfig()) return;
+  const [version, sessionId, extra] = cookie.split('.');
+  if (version !== 'v1' || !/^[A-Za-z0-9_-]{43}$/.test(sessionId || '') || extra) return;
+  await remoteSessionRequest(`/v1/admin-sessions/${sessionId}`, { method: 'DELETE' });
 }
 
 export function jwtExpiry(token: string) {

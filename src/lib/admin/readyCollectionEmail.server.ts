@@ -3,6 +3,7 @@ import { chmod, mkdir, open, readFile, rename, stat, unlink } from "node:fs/prom
 import path from "node:path";
 import { orderDeliveryOption, type Order } from "@/lib/admin/types";
 import { simDataRoot } from "@/lib/admin/simVariantMigrationStore.server";
+import { createRemoteDocument, dataApiEnabled, remoteDocument, replaceRemoteDocument, withRemoteLease } from "@/lib/dataApiClient.server";
 
 export type ReadyEmailPhase =
   | "status-updating"
@@ -54,8 +55,8 @@ const parseMarker = (value: unknown, id: number): ReadyEmailMarker => {
   throw new Error();
 };
 
-export function createReadyCollectionEmailStore(dataRoot = simDataRoot()) {
-  const root = simDataRoot(dataRoot);
+export function createReadyCollectionEmailStore(dataRoot?: string) {
+  const remote=dataRoot===undefined&&dataApiEnabled(),root = simDataRoot(dataRoot);
   const directory = path.join(root, "ready-collection-email");
   const markerFile = (id: number) => path.join(directory, `${id}.json`);
   const lockFile = (id: number) => path.join(directory, `${id}.lock`);
@@ -63,6 +64,7 @@ export function createReadyCollectionEmailStore(dataRoot = simDataRoot()) {
   async function write(id: number, marker: ReadyEmailMarker) {
     if (!validId(id) || marker.orderId !== id || marker.version !== 2 ||
       !phases.includes(marker.phase) || typeof marker.updatedAt !== "string") throw new Error("Invalid ready-email marker.");
+    if(remote){const current=await remoteDocument<ReadyEmailMarker>('ready-collection-email',String(id)),now=new Date().toISOString();if(current)await replaceRemoteDocument('ready-collection-email',String(id),current.revision,marker,{revision:current.revision+1,createdAt:current.createdAt,updatedAt:now});else await createRemoteDocument('ready-collection-email',String(id),marker,{revision:1,createdAt:now,updatedAt:now});return;}
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await chmod(directory, 0o700);
     const target = markerFile(id);
@@ -88,6 +90,7 @@ export function createReadyCollectionEmailStore(dataRoot = simDataRoot()) {
   return {
     async read(id: number): Promise<ReadyEmailMarker | null> {
       if (!validId(id)) throw new Error("A positive order ID is required.");
+      if(remote){const document=await remoteDocument<ReadyEmailMarker>('ready-collection-email',String(id));return document?parseMarker(document.value,id):null;}
       try {
         return parseMarker(JSON.parse(await readFile(markerFile(id), "utf8")), id);
       } catch (reason: any) {
@@ -98,6 +101,7 @@ export function createReadyCollectionEmailStore(dataRoot = simDataRoot()) {
     write,
     async withOrderLock<T>(id: number, run: () => Promise<T>): Promise<T> {
       if (!validId(id)) throw new Error("A positive order ID is required.");
+      if(remote)return withRemoteLease(`ready-email-${id}`,run);
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await chmod(directory, 0o700);
       const lock = lockFile(id);

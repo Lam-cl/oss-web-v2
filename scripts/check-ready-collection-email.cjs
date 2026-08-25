@@ -29,6 +29,7 @@ const pickup = (status = 'PAID') => ({ id: 42, status, deliveryOption: 'PICKUP' 
         if (!path.isAbsolute(candidate) || path.normalize(candidate) !== candidate) throw new Error('absolute normalized');
         return candidate;
       } },
+      '@/lib/dataApiClient.server': { dataApiEnabled: () => false },
     });
     const storeA = server.createReadyCollectionEmailStore(root);
     const storeB = server.createReadyCollectionEmailStore(root);

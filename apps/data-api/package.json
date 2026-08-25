@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -a migrations dist/migrations",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/migrations && cp migrations/*.sql dist/migrations/",
     "start": "node dist/src/server.js",
     "test": "node --test --import tsx src/**/*.test.ts",
     "migrate": "tsx scripts/import-data.ts"

@@ -64,6 +64,13 @@ export const replaceRemoteDocument = <T>(namespace: string, key: string, expecte
     body: JSON.stringify({ revision: document.revision, value, createdAt: document.createdAt, updatedAt: document.updatedAt }),
   }));
 };
+export const deleteRemoteDocument = <T>(namespace: string, key: string, expectedRevision: number) => dataApiRequest<RemoteDocument<T>>(`/v1/state/${namespace}/${encodeURIComponent(key)}`, { method:'DELETE',headers:{'x-expected-revision':String(expectedRevision)} });
+
+export async function withRemoteLease<T>(key:string,run:()=>Promise<T>,ttlSeconds=300):Promise<T>{
+  const deadline=Date.now()+60_000;let lease:{token:string}|null=null;
+  while(!lease){try{lease=await dataApiRequest(`/v1/locks/${encodeURIComponent(key)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ttlSeconds})});}catch(error){if(!(error instanceof ToneWowDataApiError)||error.code!=='LEASE_HELD'||Date.now()>=deadline)throw error;await new Promise(resolve=>setTimeout(resolve,100));}}
+  try{return await run();}finally{await dataApiRequest(`/v1/locks/${encodeURIComponent(key)}`,{method:'DELETE',headers:{'x-lease-token':lease.token}}).catch(()=>undefined);}
+}
 
 export async function readRemoteSingleton<T>(namespace: string, fallback: () => T): Promise<T> {
   const document = await remoteDocument<T>(namespace, 'singleton');

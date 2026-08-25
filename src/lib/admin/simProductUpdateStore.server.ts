@@ -9,6 +9,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import path from "node:path";
+import { createRemoteDocument, dataApiEnabled, remoteDocument, replaceRemoteDocument, withRemoteLease } from "../dataApiClient.server";
 import { simDataRoot } from "./simVariantMigrationStore.server";
 
 export type SimUpdatePhase =
@@ -126,15 +127,16 @@ function queue<T>(key: string, fn: () => Promise<T>) {
   });
 }
 export function createSimUpdateCheckpointStore(
-  dataRoot = simDataRoot(),
+  dataRoot?: string,
 ): SimUpdateCheckpointStore {
-  const root = simDataRoot(dataRoot),
+  const remote=dataRoot===undefined&&dataApiEnabled(),root = simDataRoot(dataRoot),
     directory = path.join(root, "sim-product-updates");
   return {
     // Atomic lock directories serialize all Node processes sharing this durable store. A crashed owner leaves the lock behind deliberately: recovery is operator-driven and fail-closed rather than risking concurrent mutations.
     async withProductLock(productId, run) {
       if (productId !== 39 && productId !== 40)
         throw new Error("Valid SIM product lock ID required.");
+      if(remote)return withRemoteLease(`sim-product-${productId}`,run);
       const locks = path.join(root, "sim-product-locks"),
         lock = path.join(locks, `product-${productId}.lock`);
       await mkdir(locks, { recursive: true, mode: 0o700 });
@@ -160,6 +162,7 @@ export function createSimUpdateCheckpointStore(
     async read(id) {
       if (!validHash(id))
         throw new Error("Valid SIM update operation ID required.");
+      if(remote){const document=await remoteDocument<SimUpdateJob>('sim-product-updates',id);if(!document)return null;if(document.revision!==document.value.revision||!valid(document.value,id))throw new Error("SIM update checkpoint is corrupt.");return structuredClone(document.value);}
       try {
         const value = JSON.parse(await readFile(file(id, directory), "utf8"));
         if (!valid(value, id)) throw new Error();
@@ -198,7 +201,8 @@ export function createSimUpdateCheckpointStore(
             createdAt: now,
             updatedAt: now,
           };
-        await atomic(job, directory);
+        if(remote)await createRemoteDocument('sim-product-updates',job.operationId,job);
+        else await atomic(job, directory);
         return structuredClone(job);
       });
     },
@@ -224,7 +228,8 @@ export function createSimUpdateCheckpointStore(
         };
         if (!valid(next, id))
           throw new Error("Invalid SIM update checkpoint mutation.");
-        await atomic(next, directory);
+        if(remote)await replaceRemoteDocument('sim-product-updates',id,revision,next);
+        else await atomic(next, directory);
         return structuredClone(next);
       });
     },

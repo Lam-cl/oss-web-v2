@@ -1,6 +1,7 @@
 import { chmod, mkdir, open, readFile, rename, unlink } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { createRemoteDocument, dataApiEnabled, remoteDocument, replaceRemoteDocument, withRemoteLease } from '../dataApiClient.server';
 
 export type ProductImageAssignment = { imageId: number; valueId: number | null };
 export type ProductVariantBinding = { valueIds: number[]; variantId: number };
@@ -190,6 +191,7 @@ async function atomicWriteProductControl(
 export function withProductLock<T>(productId: number, action: () => Promise<T>, directory = PRODUCT_CONTROL_DIRECTORY): Promise<T> {
   assertId(productId);
   if (typeof action !== 'function') throw new Error('A product action is required.');
+  if(directory===PRODUCT_CONTROL_DIRECTORY&&dataApiEnabled())return withRemoteLease(`product-control-${productId}`,action);
   const key = fileFor(productId, directory), previous = queues.get(key) || Promise.resolve();
   const result = previous.then(action, action), settled = result.then(() => undefined, () => undefined);
   queues.set(key, settled);
@@ -199,6 +201,7 @@ export function withProductLock<T>(productId: number, action: () => Promise<T>, 
 
 export async function readProductControl(productId: number, directory = PRODUCT_CONTROL_DIRECTORY): Promise<ProductControlRecord | null> {
   assertId(productId);
+  if(directory===PRODUCT_CONTROL_DIRECTORY&&dataApiEnabled()){const document=await remoteDocument<ProductControlRecord>('product-control',String(productId));return document?structuredClone(validateRecord(document.value,productId)):null;}
   try {
     await secureDirectory(directory);
     const file = fileFor(productId, directory);
@@ -218,7 +221,7 @@ export async function writeProductControl(
 ): Promise<ProductControlRecord> {
   let valid: ProductControlRecord;
   try { valid = validateRecord(record); } catch { throw new Error('A valid product control record is required.'); }
-  return withProductLock(valid.productId, async () => { await atomicWriteProductControl(valid, directory, openFile); return valid; }, directory);
+  return withProductLock(valid.productId, async () => { if(directory===PRODUCT_CONTROL_DIRECTORY&&dataApiEnabled())await writeRemoteProductControl(valid);else await atomicWriteProductControl(valid, directory, openFile); return valid; }, directory);
 }
 
 // Only call while already inside withProductLock for this product; this writer deliberately does not acquire the non-reentrant lock.
@@ -229,6 +232,8 @@ export async function writeProductControlUnlocked(
 ): Promise<ProductControlRecord> {
   let valid: ProductControlRecord;
   try { valid = validateRecord(record); } catch { throw new Error('A valid product control record is required.'); }
-  await atomicWriteProductControl(valid, directory, openFile);
+  if(directory===PRODUCT_CONTROL_DIRECTORY&&dataApiEnabled())await writeRemoteProductControl(valid);else await atomicWriteProductControl(valid, directory, openFile);
   return valid;
 }
+
+async function writeRemoteProductControl(record:ProductControlRecord){const key=String(record.productId),current=await remoteDocument<ProductControlRecord>('product-control',key);if(current)await replaceRemoteDocument('product-control',key,current.revision,record,{revision:current.revision+1,createdAt:current.createdAt,updatedAt:record.updatedAt});else await createRemoteDocument('product-control',key,record,{revision:1,createdAt:record.updatedAt,updatedAt:record.updatedAt});}

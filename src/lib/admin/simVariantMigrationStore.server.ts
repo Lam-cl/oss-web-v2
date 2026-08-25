@@ -9,6 +9,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import path from "node:path";
+import { createRemoteDocument, dataApiEnabled, remoteDocument, replaceRemoteDocument, withRemoteLease } from "../dataApiClient.server";
 
 export type SimToneVariantBinding = {
   label: "Tone Excel" | "Tone Plus";
@@ -154,15 +155,16 @@ function queued<T>(key: string, run: () => Promise<T>) {
 }
 
 export function createSimVariantMigrationStore(
-  dataRoot = simDataRoot(),
+  dataRoot?: string,
 ): SimVariantMigrationStore {
-  const root = simDataRoot(dataRoot),
+  const remote=dataRoot===undefined&&dataApiEnabled(),root = simDataRoot(dataRoot),
     directory = path.join(root, "sim-tone-variant-migrations"),
     locks = path.join(root, "sim-product-locks");
   return {
     async withProductLock(productId, run) {
       if (productId !== 39 && productId !== 40)
         throw new Error("Valid SIM product lock ID required.");
+      if(remote)return withRemoteLease(`sim-product-${productId}`,run);
       const lock = path.join(locks, `product-${productId}.lock`);
       await mkdir(locks, { recursive: true, mode: 0o700 });
       await chmod(locks, 0o700);
@@ -187,6 +189,7 @@ export function createSimVariantMigrationStore(
     async read(id) {
       if (!HASH.test(id))
         throw new Error("Valid SIM migration operation ID required.");
+      if(remote){const document=await remoteDocument<SimVariantMigrationJob>('sim-tone-variant-migrations',id);if(!document)return null;if(document.revision!==document.value.revision||!valid(document.value,id))throw new Error("SIM migration checkpoint is corrupt.");return structuredClone(document.value);}
       try {
         const value = JSON.parse(await readFile(file(id, directory), "utf8"));
         if (!valid(value, id)) throw new Error();
@@ -222,7 +225,8 @@ export function createSimVariantMigrationStore(
           createdAt: now,
           updatedAt: now,
         };
-        await atomic(job, directory);
+        if(remote)await createRemoteDocument('sim-tone-variant-migrations',job.operationId,job);
+        else await atomic(job, directory);
         return structuredClone(job);
       });
     },
@@ -247,7 +251,8 @@ export function createSimVariantMigrationStore(
         };
         if (!valid(next, id))
           throw new Error("Invalid SIM migration checkpoint mutation.");
-        await atomic(next, directory);
+        if(remote)await replaceRemoteDocument('sim-tone-variant-migrations',id,revision,next);
+        else await atomic(next, directory);
         return structuredClone(next);
       });
     },

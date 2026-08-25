@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { readConfig } from './config.js';
 import { createPool, migrate } from './db.js';
@@ -9,12 +9,32 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const SHA = /^[a-f0-9]{64}$/;
 const CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ARCHIVE_ID = /^\d{8}T\d{9}Z$/;
 const param = (value: string | string[]) => Array.isArray(value) ? value[0] : value;
 const config = readConfig();
 const pool = createPool(config.databaseUrl);
 const repository = createRepository(pool);
 const objects = createObjectStore(config.minio);
 const app = express();
+const sessionKey = Buffer.from(config.sessionEncryptionKey, 'hex');
+if (!/^[a-fA-F0-9]{64}$/.test(config.sessionEncryptionKey) || sessionKey.length !== 32) {
+  throw new Error('SESSION_ENCRYPTION_KEY must be 64 hexadecimal characters.');
+}
+
+function encryptToken(token: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', sessionKey, iv);
+  const body = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${body.toString('base64url')}`;
+}
+
+function decryptToken(value: string) {
+  const [iv, tag, body, extra] = value.split('.');
+  if (!iv || !tag || !body || extra) throw new Error('Invalid encrypted session.');
+  const decipher = createDecipheriv('aes-256-gcm', sessionKey, Buffer.from(iv, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8');
+}
 
 class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -93,6 +113,197 @@ app.put('/v1/state/:namespace/:key', async (request, response, next) => {
     if (!document) throw new ApiError(409, 'REVISION_CONFLICT', 'State document revision conflict.');
     response.json({ data: document });
   } catch (error) { next(error); }
+});
+app.delete('/v1/state/:namespace/:key', async (request, response, next) => {
+  try {
+    const namespace = param(request.params.namespace); const key = param(request.params.key);
+    const expected = Number(request.header('x-expected-revision'));
+    if (!NAMESPACES.has(namespace) || !SAFE_KEY.test(key) || !Number.isSafeInteger(expected) || expected <= 0) {
+      throw new ApiError(400, 'INVALID_REVISION', 'A valid state key and positive expected revision are required.');
+    }
+    const document = await repository.remove(namespace, key, expected);
+    if (!document) throw new ApiError(409, 'REVISION_CONFLICT', 'State document revision conflict.');
+    response.json({ data: document });
+  } catch (error) { next(error); }
+});
+
+app.use('/v1/locks', serviceAuth, express.json({ limit: '4kb', strict: true }));
+app.post('/v1/locks/:key', async (request, response, next) => {
+  try {
+    const key = param(request.params.key); const ttl = Number((request.body as { ttlSeconds?: unknown })?.ttlSeconds || 300); const token = randomUUID();
+    if (!SAFE_KEY.test(key) || !Number.isSafeInteger(ttl) || ttl < 30 || ttl > 600) throw new ApiError(400, 'INVALID_LEASE', 'Lease key or duration is invalid.');
+    const row = (await pool.query(`INSERT INTO service_leases(lease_key,lease_token,expires_at) VALUES($1,$2,now()+($3||' seconds')::interval)
+      ON CONFLICT(lease_key) DO UPDATE SET lease_token=EXCLUDED.lease_token,expires_at=EXCLUDED.expires_at,created_at=now()
+      WHERE service_leases.expires_at<=now() RETURNING lease_key AS key,lease_token AS token,expires_at AS "expiresAt"`, [key, token, String(ttl)])).rows[0];
+    if (!row) throw new ApiError(409, 'LEASE_HELD', 'The operation lease is already held.');
+    response.status(201).json({ data: row });
+  } catch (error) { next(error); }
+});
+app.delete('/v1/locks/:key', async (request, response, next) => {
+  try {
+    const key = param(request.params.key); const token = request.header('x-lease-token') || '';
+    if (!SAFE_KEY.test(key) || !UUID.test(token)) throw new ApiError(400, 'INVALID_LEASE', 'Lease key or token is invalid.');
+    const row = (await pool.query('DELETE FROM service_leases WHERE lease_key=$1 AND lease_token=$2 RETURNING lease_key AS key', [key, token])).rows[0];
+    if (!row) throw new ApiError(409, 'LEASE_LOST', 'The operation lease is no longer owned.');
+    response.json({ data: row });
+  } catch (error) { next(error); }
+});
+
+app.use('/v1/admin-sessions', serviceAuth, express.json({ limit: '16kb', strict: true }));
+app.post('/v1/admin-sessions', async (request, response, next) => {
+  try {
+    const body = request.body as Record<string, any>; const sessionId = String(body?.sessionId || '');
+    const bundleToken = String(body?.bundleToken || ''); const actor = body?.actor; const expiresAt = String(body?.expiresAt || '');
+    if (!/^[A-Za-z0-9_-]{43}$/.test(sessionId) || !bundleToken || bundleToken.length > 16_384 || !actor
+      || typeof actor.email !== 'string' || !['ADMIN', 'STAFF'].includes(actor.role)
+      || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+      throw new ApiError(400, 'INVALID_SESSION', 'Admin session is invalid.');
+    }
+    const hash = createHash('sha256').update(sessionId).digest('hex');
+    await pool.query('DELETE FROM admin_sessions WHERE expires_at<=now()');
+    await pool.query('INSERT INTO admin_sessions(session_hash,actor,encrypted_bundle_token,expires_at) VALUES($1,$2,$3,$4)',
+      [hash, JSON.stringify(actor), encryptToken(bundleToken), expiresAt]);
+    response.status(201).json({ data: { sessionId, actor, expiresAt } });
+  } catch (error: any) { next(error?.code === '23505' ? new ApiError(409, 'SESSION_EXISTS', 'Admin session already exists.') : error); }
+});
+app.get('/v1/admin-sessions/:sessionId', async (request, response, next) => {
+  try {
+    const sessionId = param(request.params.sessionId);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(sessionId)) throw new ApiError(400, 'INVALID_SESSION', 'Admin session is invalid.');
+    const hash = createHash('sha256').update(sessionId).digest('hex');
+    const row = (await pool.query('SELECT actor,encrypted_bundle_token AS token,expires_at AS "expiresAt" FROM admin_sessions WHERE session_hash=$1 AND expires_at>now()', [hash])).rows[0];
+    if (!row) throw new ApiError(404, 'SESSION_NOT_FOUND', 'Admin session was not found.');
+    response.json({ data: { actor: row.actor, bundleToken: decryptToken(row.token), expiresAt: row.expiresAt } });
+  } catch (error) { next(error); }
+});
+app.delete('/v1/admin-sessions/:sessionId', async (request, response, next) => {
+  try {
+    const sessionId = param(request.params.sessionId);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(sessionId)) throw new ApiError(400, 'INVALID_SESSION', 'Admin session is invalid.');
+    const hash = createHash('sha256').update(sessionId).digest('hex');
+    await pool.query('DELETE FROM admin_sessions WHERE session_hash=$1', [hash]);
+    response.json({ data: { revoked: true } });
+  } catch (error) { next(error); }
+});
+
+type ArchivedDocument = {
+  namespace: string; key: string; revision: number; value: unknown;
+  sourceSha256: string | null; createdAt: string; updatedAt: string;
+};
+
+const archiveDocument = (row: Record<string, any>): ArchivedDocument => ({
+  namespace: row.namespace,
+  key: row.key,
+  revision: row.revision,
+  value: row.value,
+  sourceSha256: row.sourceSha256,
+  createdAt: new Date(row.createdAt).toISOString(),
+  updatedAt: new Date(row.updatedAt).toISOString(),
+});
+
+function archiveFile(source: string, archived: string, value: unknown) {
+  const body = Buffer.from(JSON.stringify(value));
+  return { source, archived, bytes: body.length, sha256: createHash('sha256').update(body).digest('hex') };
+}
+
+app.post('/v1/catalogue-archives/:catalogueId', serviceAuth, express.json({ limit: '8kb', strict: true }), async (request, response, next) => {
+  const client = await pool.connect();
+  try {
+    const catalogueId = param(request.params.catalogueId); const expectedRevision = Number((request.body as any)?.expectedRevision);
+    if (!UUID.test(catalogueId) || !Number.isSafeInteger(expectedRevision) || expectedRevision <= 0) {
+      throw new ApiError(400, 'INVALID_ARCHIVE', 'A valid catalogue ID and exact positive revision are required.');
+    }
+    await client.query('BEGIN');
+    const existing = (await client.query(
+      `SELECT revision,value FROM catalogue_documents WHERE namespace='catalogue-archives' AND document_key=$1 FOR UPDATE`, [catalogueId],
+    )).rows[0];
+    const productRow = (await client.query(
+      `SELECT namespace,document_key AS key,revision,value,source_sha256 AS "sourceSha256",created_at AS "createdAt",updated_at AS "updatedAt"
+       FROM catalogue_documents WHERE namespace='catalogue-products' AND document_key=$1 FOR UPDATE`, [catalogueId],
+    )).rows[0];
+    if (!productRow) {
+      if (existing?.value?.revision === expectedRevision) {
+        await client.query('ROLLBACK');
+        return response.json({ data: { manifest: existing.value, idempotent: true } });
+      }
+      throw new ApiError(existing ? 409 : 404, existing ? 'ARCHIVE_CONFLICT' : 'CATALOGUE_NOT_FOUND',
+        existing ? 'Catalogue product archive revision conflict.' : 'Catalogue product was not found.');
+    }
+    if (existing) throw new ApiError(409, 'ARCHIVE_CONFLICT', 'Catalogue product already has a different archive.');
+    if (productRow.revision !== expectedRevision) throw new ApiError(409, 'REVISION_CONFLICT', 'Catalogue product revision conflict.');
+    const product = productRow.value as Record<string, any>;
+    const hasActiveVersion = Array.isArray(product.bundleVersions) && product.bundleVersions.some((item: any) => item?.retiredAt === null);
+    if (product.status !== 'draft' || product.currentBundleProductId !== null || hasActiveVersion) {
+      throw new ApiError(409, 'CATALOGUE_STILL_PUBLISHED', 'Unpublish this Catalogue product and confirm its Bundle version is retired before archiving.');
+    }
+    const relatedRows = (await client.query(
+      `SELECT namespace,document_key AS key,revision,value,source_sha256 AS "sourceSha256",created_at AS "createdAt",updated_at AS "updatedAt"
+       FROM catalogue_documents
+       WHERE namespace IN ('catalogue-publications','catalogue-published','catalogue-adoptions')
+       AND jsonb_path_exists(value,'$.**.catalogueId ? (@ == $id)',jsonb_build_object('id',to_jsonb($1::text)))
+       FOR UPDATE`, [catalogueId],
+    )).rows;
+    const media = (await client.query('SELECT * FROM catalogue_media WHERE catalogue_id=$1 FOR UPDATE', [catalogueId])).rows;
+    const documents = [productRow, ...relatedRows].map(archiveDocument);
+    const archivedAt = new Date().toISOString(); const archiveId = archivedAt.replace(/[-:.]/g, '');
+    if (!ARCHIVE_ID.test(archiveId)) throw new ApiError(500, 'ARCHIVE_ID_ERROR', 'Catalogue archive timestamp is invalid.');
+    const files = [
+      ...documents.map((document) => archiveFile(`${document.namespace}/${document.key}.json`, `documents/${document.namespace}/${document.key}.json`, document)),
+      ...media.map((item: any) => archiveFile(`catalogue-media/${catalogueId}/${item.media_id}.json`, `media/${item.media_id}.json`, item)),
+    ];
+    const manifest = {
+      version: 1, state: 'archived', catalogueId, revision: expectedRevision, archivedAt, archiveId, files,
+      rollback: { destinations: files.map(({ source, archived }) => ({ source, archived })) }, documents, media,
+    };
+    await client.query(
+      `INSERT INTO catalogue_documents(namespace,document_key,revision,value,created_at,updated_at)
+       VALUES('catalogue-archives',$1,1,$2,$3,$3)`, [catalogueId, JSON.stringify(manifest), archivedAt],
+    );
+    for (const document of documents) {
+      await client.query('DELETE FROM catalogue_documents WHERE namespace=$1 AND document_key=$2 AND revision=$3',
+        [document.namespace, document.key, document.revision]);
+    }
+    await client.query('DELETE FROM catalogue_media WHERE catalogue_id=$1', [catalogueId]);
+    await client.query('COMMIT');
+    response.status(201).json({ data: { manifest, idempotent: false } });
+  } catch (error) { await client.query('ROLLBACK').catch(() => undefined); next(error); }
+  finally { client.release(); }
+});
+
+app.post('/v1/catalogue-archives/:catalogueId/restore', serviceAuth, async (request, response, next) => {
+  const client = await pool.connect();
+  try {
+    const catalogueId = param(request.params.catalogueId);
+    if (!UUID.test(catalogueId)) throw new ApiError(400, 'INVALID_ARCHIVE', 'A valid catalogue ID is required.');
+    await client.query('BEGIN');
+    const archiveRow = (await client.query(
+      `SELECT revision,value FROM catalogue_documents WHERE namespace='catalogue-archives' AND document_key=$1 FOR UPDATE`, [catalogueId],
+    )).rows[0];
+    if (!archiveRow) throw new ApiError(404, 'ARCHIVE_NOT_FOUND', 'Catalogue archive was not found.');
+    const archive = archiveRow.value as { documents?: ArchivedDocument[]; media?: Array<Record<string, any>> };
+    if (!Array.isArray(archive.documents) || !Array.isArray(archive.media)) throw new ApiError(500, 'ARCHIVE_CORRUPT', 'Catalogue archive is corrupt.');
+    for (const document of archive.documents) {
+      await client.query(
+        `INSERT INTO catalogue_documents(namespace,document_key,revision,value,source_sha256,created_at,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [document.namespace, document.key, document.revision, JSON.stringify(document.value), document.sourceSha256, document.createdAt, document.updatedAt],
+      );
+    }
+    for (const item of archive.media) {
+      await client.query(
+        `INSERT INTO catalogue_media(media_id,catalogue_id,object_key,original_name,content_type,bytes,sha256,display_order,assignment,visibility,created_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [item.media_id, item.catalogue_id, item.object_key, item.original_name, item.content_type, item.bytes, item.sha256,
+          item.display_order, item.assignment, item.visibility, item.created_at],
+      );
+    }
+    await client.query(`DELETE FROM catalogue_documents WHERE namespace='catalogue-archives' AND document_key=$1 AND revision=$2`, [catalogueId, archiveRow.revision]);
+    await client.query('COMMIT');
+    response.json({ data: { restored: true, catalogueId } });
+  } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    next(error?.code === '23505' ? new ApiError(409, 'RESTORE_CONFLICT', 'Catalogue archive restore conflicts with active data.') : error);
+  } finally { client.release(); }
 });
 
 app.post('/v1/media/:catalogueId/:mediaId', serviceAuth, express.raw({ type: Array.from(CONTENT_TYPES), limit: '10mb' }), async (request, response, next) => {

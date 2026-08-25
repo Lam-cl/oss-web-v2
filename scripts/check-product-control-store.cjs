@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const ts = require('typescript');
 
-function load(file) {
+function load(file, injected = {}) {
   const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -16,7 +16,7 @@ function load(file) {
   const module = { exports: {} };
   new Function('exports', 'require', 'module', '__filename', '__dirname', output)(
     module.exports,
-    require,
+    id => id in injected ? injected[id] : require(id),
     module,
     file,
     path.dirname(file),
@@ -24,7 +24,7 @@ function load(file) {
   return module.exports;
 }
 
-const store = load('src/lib/admin/productControl.server.ts');
+const store = load('src/lib/admin/productControl.server.ts', {'../dataApiClient.server': { dataApiEnabled: () => false }});
 const pendingStepKinds = [
   'upload-images',
   'create-option',

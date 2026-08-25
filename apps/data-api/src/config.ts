@@ -20,6 +20,7 @@ export function readConfig() {
     port: integer('PORT', 3010),
     databaseUrl: required('DATABASE_URL'),
     serviceToken,
+    sessionEncryptionKey: required('SESSION_ENCRYPTION_KEY'),
     corsOrigins: new Set((process.env.CORS_ORIGINS || '').split(',').map((item) => item.trim()).filter(Boolean)),
     publicMediaBaseUrl: required('PUBLIC_MEDIA_BASE_URL').replace(/\/$/, ''),
     minio: {

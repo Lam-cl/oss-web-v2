@@ -40,7 +40,8 @@ const next = { NextResponse:{ json:(body,init={})=>response(body,init.status||20
   const routeFile='src/app/api/admin/catalogue-products/[id]/archive/route.ts';
   const aliasFile='src/app/admin-api/catalogue-products/[id]/archive/route.ts';
   for (const rel of [helperFile,routeFile,aliasFile]) assert(fs.existsSync(path.join(root,rel)),`${rel} missing`);
-  const { archiveCatalogueProduct, CatalogueArchiveError } = compile(helperFile);
+  const localDataApi = { dataApiEnabled:()=>false, dataApiRequest:async()=>{ throw new Error('remote archive is outside this filesystem fixture'); } };
+  const { archiveCatalogueProduct, CatalogueArchiveError } = compile(helperFile,{'@/lib/dataApiClient.server':localDataApi});
 
   // Draft archive moves only the exact product, media tree, and matching publication jobs.
   const f=await fixture();
@@ -81,7 +82,7 @@ const next = { NextResponse:{ json:(body,init={})=>response(body,init.status||20
     if(!injectedFailure&&path.basename(destination)==='product.json'){injectedFailure=true;const error=new Error('injected product move failure');error.code='EIO';throw error;}
     return fsp.rename(source,destination);
   }};
-  const failingArchive=compile(helperFile,{'node:fs/promises':failingFs}).archiveCatalogueProduct;
+  const failingArchive=compile(helperFile,{'node:fs/promises':failingFs,'@/lib/dataApiClient.server':localDataApi}).archiveCatalogueProduct;
   await assert.rejects(()=>failingArchive(rollback.catalogueId,7,{dataDirectory:rollback.dataDirectory,now:()=>new Date('2026-08-24T03:04:06.678Z')}),/injected product move failure/);
   assert.equal(fs.existsSync(path.join(rollback.dataDirectory,'catalogue-products',`${rollback.catalogueId}.json`)),true);
   assert.equal(fs.existsSync(path.join(rollback.dataDirectory,'catalogue-media',rollback.catalogueId,'hero.bin')),true);
@@ -127,7 +128,7 @@ const next = { NextResponse:{ json:(body,init={})=>response(body,init.status||20
   await bounded(async media=>{await Promise.all(Array.from({length:1001},(_,i)=>fsp.writeFile(path.join(media,`many-${i}.bin`),'')));},/file.*limit/i);
   const growing=await fixture();const growingFile=path.join(growing.dataDirectory,'catalogue-media',growing.catalogueId,'grow.bin');await fsp.writeFile(growingFile,'x');let grew=false;
   const growingFs={...fsp,open:async(target,...args)=>{const handle=await fsp.open(target,...args);if(target!==growingFile)return handle;return {...handle,stat:(...statArgs)=>handle.stat(...statArgs),read:async(...readArgs)=>{if(!grew){grew=true;await fsp.appendFile(growingFile,'x');}return handle.read(...readArgs);},readFile:async(...readArgs)=>{if(!grew){grew=true;await fsp.appendFile(growingFile,'x');}return handle.readFile(...readArgs);},close:()=>handle.close()};}};
-  const growingArchive=compile(helperFile,{'node:fs/promises':growingFs}).archiveCatalogueProduct;
+  const growingArchive=compile(helperFile,{'node:fs/promises':growingFs,'@/lib/dataApiClient.server':localDataApi}).archiveCatalogueProduct;
   await assert.rejects(()=>growingArchive(growing.catalogueId,7,{dataDirectory:growing.dataDirectory}),/grew|changed|byte limit|safely/i);assert.equal(fs.existsSync(path.join(growing.dataDirectory,'catalogue-products',`${growing.catalogueId}.json`)),true);
   await bounded(async media=>{const handle=await fsp.open(path.join(media,'large.bin'),'w');try{await handle.truncate(10*1024*1024+1);}finally{await handle.close();}},/per-file|file.*byte|item.*limit/i);
   await bounded(async media=>{for(let i=0;i<11;i++){const handle=await fsp.open(path.join(media,`aggregate-${i}.bin`),'w');try{await handle.truncate(10*1024*1024);}finally{await handle.close();}}},/aggregate|total.*byte/i);

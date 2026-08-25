@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { chmod, lstat, mkdir, open, opendir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { dataApiEnabled, dataApiRequest } from '@/lib/dataApiClient.server';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OPERATION = /^[a-f0-9]{64}$/;
@@ -259,6 +260,11 @@ function enqueue<T>(key: string, action: () => Promise<T>) {
 
 export async function archiveCatalogueProduct(catalogueId: string, expectedRevision: number, options: CatalogueArchiveOptions = {}): Promise<CatalogueArchiveResult> {
   assertCatalogueId(catalogueId); assertExpectedRevision(expectedRevision);
+  if (options.dataDirectory === undefined && dataApiEnabled()) {
+    return dataApiRequest<CatalogueArchiveResult>(`/v1/catalogue-archives/${catalogueId}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision }),
+    });
+  }
   const dataDirectory = path.resolve(options.dataDirectory || path.join(process.cwd(), '.data'));
   if (options.dataDirectory && dataDirectory !== options.dataDirectory) throw new CatalogueArchiveError('Catalogue archive data root must be absolute and normalized.', 500);
   return enqueue(`${dataDirectory}\0${catalogueId}`, async () => {

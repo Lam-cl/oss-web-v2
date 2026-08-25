@@ -3,7 +3,7 @@ import type pg from 'pg';
 export const NAMESPACES = new Set([
   'catalogue-products', 'catalogue-publications', 'catalogue-published', 'catalogue-adoptions',
   'product-control', 'order-metadata', 'shipping-settings', 'sim-assignments', 'product-image-colors',
-  'sim-product-updates', 'sim-tone-variant-migrations', 'ready-collection-email',
+  'sim-product-updates', 'sim-tone-variant-migrations', 'ready-collection-email', 'catalogue-archives',
 ]);
 
 export type DocumentInput = {
@@ -36,6 +36,11 @@ export function createRepository(pool: pg.Pool) {
      RETURNING document_key AS key,revision,value,created_at AS "createdAt",updated_at AS "updatedAt"`,
     [input.namespace, input.key, expectedRevision, input.revision, input.value, input.sourceSha256 || null, input.updatedAt],
   )).rows[0] || null;
+  const remove = async (namespace: string, key: string, expectedRevision: number) => (await pool.query(
+    `DELETE FROM catalogue_documents WHERE namespace=$1 AND document_key=$2 AND revision=$3
+     RETURNING document_key AS key,revision,value,created_at AS "createdAt",updated_at AS "updatedAt"`,
+    [namespace, key, expectedRevision],
+  )).rows[0] || null;
   const importDocument = async (input: DocumentInput, sourcePath: string) => {
     const client = await pool.connect();
     try {
@@ -57,5 +62,5 @@ export function createRepository(pool: pg.Pool) {
       return { imported: true };
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   };
-  return { pool, list, get, create, replace, importDocument };
+  return { pool, list, get, create, replace, remove, importDocument };
 }

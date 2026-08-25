@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ADMIN_COOKIE, verifySessionCookie } from '@/lib/admin/session';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +20,7 @@ async function readPostedToken(req: NextRequest): Promise<string> {
 }
 
 export async function middleware(req: NextRequest) {
-  const { pathname, searchParams } = req.nextUrl;
+  const { pathname, search, searchParams } = req.nextUrl;
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-oss-public-origin', req.nextUrl.origin);
@@ -28,6 +29,27 @@ export async function middleware(req: NextRequest) {
     res.headers.set('x-oss-public-origin', req.nextUrl.origin);
     return res;
   };
+
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    const login = pathname === '/admin/login';
+    const session = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE)?.value);
+    if (!login && !session) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/admin/login';
+      url.searchParams.set('next', `${pathname}${search}`);
+      return NextResponse.redirect(url);
+    }
+    if (login && session) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/admin';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+    return withOrigin(response);
+  }
 
   // Protect direct/specialized purchase links.
   if (

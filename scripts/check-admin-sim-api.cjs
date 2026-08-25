@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const source=fs.readFileSync('src/app/api/admin/[...path]/route.ts','utf8');
+assert.equal(source.includes('sim-assignments'),true,'SIM assignment API rule missing');
+assert.equal(source.includes("from '@/lib/admin/simAssignments.server';"),false,'local SIM store must not be used');
+assert.equal(source.includes('readOrderSimAssignments('),false,'SIM GET must use Bundle');
+assert.equal(source.includes('saveOrderSimAssignments('),false,'SIM PUT must use Bundle');
+assert.equal(source.includes('assertOrderSimAssignmentsComplete('),false,'Bundle must enforce SHIPPED completion');
+assert.equal(source.includes('getSimPrefixOptions()'),true,'live prefix loading missing');
+assert.equal(source.includes('`${BUNDLE_API}/${path}`'),true,'Bundle SIM endpoint forwarding missing');
+assert.equal(source.includes("pattern: /^couriers$/"),true,'courier list proxy rule missing');
+assert.equal(source.indexOf('getAdminSession(request)') < source.indexOf('getSimPrefixOptions()'),true,'SIM route must remain behind admin auth');
+assert.equal(source.indexOf('requestIsSameOrigin(request)') < source.indexOf('getSimPrefixOptions()'),true,'SIM writes must remain behind same-origin guard');
+console.log('admin SIM API regression check passed');

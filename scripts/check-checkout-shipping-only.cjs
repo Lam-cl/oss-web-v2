@@ -1,0 +1,13 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const page = fs.readFileSync('src/app/checkout/page.tsx', 'utf8');
+assert.equal(page.includes("{pickupOption === 'self' ? 'Billing Address' : 'Shipping Address'}"), true, 'address heading must match the fulfilment option');
+assert.equal(page.includes('Same as billing address'), false, 'redundant same-as-billing control must be removed');
+assert.equal(page.includes('const sameAsBilling = true;'), true, 'single shipping address must populate both Bundle addresses');
+assert.equal(page.includes('setSameAsBilling'), false, 'same-as-billing state must be removed');
+assert.equal(page.includes('name="billingAddress"'), true, 'existing primary address input must remain');
+assert.equal(page.includes("name === 'billingPostcode'"), true, 'postcode lookup must remain');
+assert.equal(page.includes('billingAddress,'), true, 'Bundle billing address payload must remain');
+assert.equal(page.includes('shippingAddress: bundleShippingAddress'), true, 'Bundle shipping address payload must remain');
+assert.equal(page.includes("pickupOption === 'delivery' && ("), false, 'billing fields must remain visible for pickup');
+console.log('checkout shipping-only address regression check passed');

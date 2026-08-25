@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
+import 'react-day-picker/style.css';
 import './globals.css';
-import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
-import PageTransition from '@/components/layout/PageTransition';
-import FloatingReferralQR from '@/components/referral/FloatingReferralQR';
+import RouteChrome from '@/components/layout/RouteChrome';
 
 export const metadata: Metadata = {
   title: 'tone wow Shop',
@@ -15,8 +12,6 @@ export const metadata: Metadata = {
   },
 };
 
-const GTM_ID = 'GTM-KKWBVFJS';
-
 export default function RootLayout({
   children,
 }: {
@@ -24,74 +19,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        {/* Google Tag Manager */}
-        <Script
-          id="google-tag-manager"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function(w,d,s,l,i){w[l]=w[l]||[];
-              w[l].push({'gtm.start': new Date().getTime(),event:'gtm.js'});
-              var f=d.getElementsByTagName(s)[0],
-              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';
-              j.async=true;
-              j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;
-              f.parentNode.insertBefore(j,f);
-              })(window,document,'script','dataLayer','${GTM_ID}');
-            `,
-          }}
-        />
-
-        {/* Google Analytics (gtag.js) */}
-        <Script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-5XC8PGE7CD"
-          strategy="afterInteractive"
-        />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-5XC8PGE7CD');
-          `}
-        </Script>
-
-        <noscript>
-          <iframe
-            src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
-            height="0"
-            width="0"
-            style={{ display: 'none', visibility: 'hidden' }}
-          />
-        </noscript>
-        {/* End Google Tag Manager */}
-        <Header />
-        <main>
-          <PageTransition>{children}</PageTransition>
-        </main>
-        <Footer />
-        <FloatingReferralQR />
-
-        {/* Freshdesk Widget */}
-        <Script
-          id="freshdesk-settings"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.fwSettings = { 'widget_id': 4786741 };
-              !function(){if("function"!=typeof window.FreshworksWidget){var n=function(){n.q.push(arguments)};n.q=[],window.FreshworksWidget=n}}()
-            `,
-          }}
-        />
-        <Script
-          src="//fw-cdn.com/12344265/4786741.js"
-          strategy="afterInteractive"
-          data-chat="true"
-          data-widgetid="0ea239f2-5ea8-4d9c-82cf-7a75fb61665f"
-        />
-      </body>
+      <head><style>{'#Assistant-Shadow-Host{visibility:hidden!important}'}</style><script src="/js/tonewow-balam-launcher-watchdog-20260821-v4.js" /></head>
+      <body><RouteChrome>{children}</RouteChrome></body>
     </html>
   );
 }

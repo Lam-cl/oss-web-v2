@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+require.extensions['.ts']=(module,filename)=>module._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,filename);
+const sandboxModule={exports:require('../src/lib/admin/types.ts')};
+const {orderDeliveryOption}=sandboxModule.exports;
+assert.equal(orderDeliveryOption({deliveryOption:'DELIVER'}),'DELIVER');
+assert.equal(orderDeliveryOption({deliveryOption:'PICKUP'}),'PICKUP');
+assert.equal(orderDeliveryOption({shippingAddresses:{address:'Self Pick Up'}}),'PICKUP');
+assert.equal(orderDeliveryOption({shippingAddresses:JSON.stringify({address:'12 Jalan Test',state:'Selangor'})}),'DELIVER');
+assert.equal(orderDeliveryOption({shippingAddress:{address:'12 Jalan Test'}}),'DELIVER');
+assert.equal(orderDeliveryOption({}),'—');
+console.log('order delivery display check passed');

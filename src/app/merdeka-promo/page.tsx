@@ -30,6 +30,25 @@ function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null) {
   return Math.round(plan.monthlyPrice * (duration === 6 ? 5 : 10) * 100) / 100;
 }
 
+function isPlanEligible(plan: MerdekaPlan, currentPlan: string | null): boolean {
+  const planValue = parseInt(plan.name.replace('FU', ''));
+  const currentValue = parseInt(currentPlan?.replace('FU', '').match(/\d+/)?.[0] || '0');
+
+  if (!currentPlan || currentPlan === 'Not available yet') {
+    return planValue >= 35;
+  }
+
+  if (currentPlan.includes('WOW')) {
+    return planValue > currentValue;
+  }
+
+  if (currentPlan.includes('FU')) {
+    return planValue > currentValue;
+  }
+
+  return false;
+}
+
 function TickIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>;
 }
@@ -58,18 +77,8 @@ export default function MerdekaPromoPage() {
   useEffect(() => {
     document.body.classList.add('merdeka-promo-active');
     const freshworks = (window as Window & { FreshworksWidget?: (...args: unknown[]) => void }).FreshworksWidget;
-    const hideBalam = () => {
-      const main = document.getElementById('Assistant-Shadow-Host')?.shadowRoot?.getElementById('Assistant-Main');
-      if (!main) return false;
-      main.style.setProperty('display', 'none', 'important');
-      return true;
-    };
-    const balamTimer = window.setInterval(() => { if (hideBalam()) window.clearInterval(balamTimer); }, 200);
-    hideBalam();
     freshworks?.('hide');
     return () => {
-      window.clearInterval(balamTimer);
-      document.getElementById('Assistant-Shadow-Host')?.shadowRoot?.getElementById('Assistant-Main')?.style.removeProperty('display');
       document.body.classList.remove('merdeka-promo-active');
       freshworks?.('show');
     };
@@ -106,7 +115,6 @@ export default function MerdekaPromoPage() {
       setMember(null);
       setForm(emptyForm);
       setAcknowledged(false);
-      setSelectedPlanId('');
     }
     setVerifyError('');
   };
@@ -209,7 +217,7 @@ export default function MerdekaPromoPage() {
               <span>{selectedPlan.displayName} × {duration} months</span>
               <strong>{money(regularTotal)}</strong>
             </div>
-            <div className={styles.savingRow}><span>Discount <small>({duration === 6 ? '1 Month Free' : '2 Months Free'})</small></span><strong>− {money(savings)}</strong></div>
+            <div className={styles.savingRow}><span>Discount <br />({duration === 6 ? '1 Month Free' : '2 Months Free'})</span><strong>− {money(savings)}</strong></div>
           </>
         ) : (
           <div><span>Plan &amp; duration</span><strong>Not selected</strong></div>
@@ -253,7 +261,7 @@ export default function MerdekaPromoPage() {
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <span className={styles.step}>01</span>
-              <div><h2>Choose Your Promo</h2><p>Select your preferred 6 or 12-month Merdeka Promo.</p></div>
+              <div><h2>Choose your package</h2><p>Select how long you would like your campaign coverage.</p></div>
             </div>
             <div className={styles.durationGrid}>
               {([6, 12] as MerdekaDuration[]).map((months) => {
@@ -271,10 +279,10 @@ export default function MerdekaPromoPage() {
             </div>
           </section>
 
-          <section className={styles.section}>
+               <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <span className={styles.step}>02</span>
-              <div><h2>Verify Your tone wow Number</h2><p>We will retrieve your Member ID and registered details.</p></div>
+              <div><h2>Verify your tone wow number</h2><p>We will retrieve your Member ID and registered details.</p></div>
             </div>
             <div className={styles.verifyCard}>
               <label htmlFor="promo-msisdn">tone wow mobile number</label>
@@ -295,11 +303,10 @@ export default function MerdekaPromoPage() {
             </div>
           </section>
 
-          {member && (
-            <section className={styles.section}>
+          <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <span className={styles.step}>03</span>
-              <div><h2>Select FU Plan</h2><p>All eligible plans include 30-day validity and unlimited calls.</p></div>
+              <div><h2>Select an FU plan</h2><p>All eligible plans include 30-day validity and unlimited calls.</p></div>
             </div>
             {plansLoading ? (
               <div className={styles.planGrid}>{Array.from({ length: 5 }).map((_, index) => <div key={index} className={styles.skeleton} />)}</div>
@@ -309,12 +316,16 @@ export default function MerdekaPromoPage() {
               <div className={styles.planGrid}>
                 {plans.map((plan, index) => {
                   const active = selectedPlanId === plan.id;
+                  const hasMember = Boolean(member);
+                  const eligible = hasMember && isPlanEligible(plan, member?.currentPlan || null);
+                  const shouldHide = hasMember && !eligible;
                   const tone = PLAN_TONES[index] || PLAN_TONES[0];
+                  if (shouldHide) return null;
                   return (
                     <button
                       key={plan.id}
                       type="button"
-                      className={`${styles.planCard} ${active ? styles.selected : ''}`}
+                      className={`${styles.planCard} ${active ? styles.selected : ''} ${!hasMember ? styles.disabled : ''}`}
                       style={{
                         '--plan-accent': tone.accent,
                         '--plan-header': tone.header,
@@ -323,7 +334,8 @@ export default function MerdekaPromoPage() {
                         '--plan-shape-two': tone.shapeTwo,
                         '--plan-soft': tone.soft,
                       } as CSSProperties}
-                      onClick={() => setSelectedPlanId(plan.id)}
+                      onClick={() => (hasMember && eligible) && setSelectedPlanId(plan.id)}
+                      disabled={!hasMember || !eligible}
                       aria-pressed={active}
                     >
                       <span className={styles.planHeader}>
@@ -341,14 +353,14 @@ export default function MerdekaPromoPage() {
             )}
             {!plansLoading && !plansError && <p className={styles.planFootnote}>*Subject to Fair Usage Policy (FUP).</p>}
           </section>
-          )}
 
+     
 
           {member && (
             <section className={styles.section}>
               <div className={styles.sectionHeading}>
                 <span className={styles.step}>04</span>
-                <div><h2>Customer Information</h2><p>Check the details retrieved from your member profile.</p></div>
+                <div><h2>Customer information</h2><p>Check the details retrieved from your member profile.</p></div>
               </div>
               <div className={styles.formCard}>
                 <div className={styles.formGrid}>
@@ -371,8 +383,7 @@ export default function MerdekaPromoPage() {
           <section className={styles.notice}>
             <div className={styles.noticeIcon}>!</div>
             <div><h2>Before you continue</h2><p>Already on a Data Plan? Your current plan will be replaced with this Merdeka Promo plan. Your selected plan will auto-renew every 30 days.</p>
-              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I have read and agree to the Terms &amp; Conditions of this promotion.</span></label>
-              <a className={styles.termsLink} href="https://tonewow.com/merdekapromo2026" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+              <label className={styles.consent}><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I have read and agree to the Terms & Conditions of this promotion.<br /><a style={{ color: 'blue', textDecoration: 'underline' }} href="https://www.tonewow.com/merdekapromo-terms" target="_blank">Terms & Conditions</a></span></label>
             </div>
           </section>
 

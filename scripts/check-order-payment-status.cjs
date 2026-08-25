@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+require.extensions['.ts']=(module,filename)=>module._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,filename);
+const sandboxModule={exports:require('../src/lib/admin/types.ts')};
+const {orderPaymentStatus,orderPaymentMethod,orderPaymentReference,orderGatewayReference}=sandboxModule.exports;
+for(const status of ['PAID','PROCESSING','SHIPPED','DELIVERED']) assert.equal(orderPaymentStatus({status}), 'PAID');
+assert.equal(orderPaymentStatus({status:'SHIPPED',payment:{status:'SHIPPED'}}),'PAID');
+assert.equal(orderPaymentStatus({status:'REFUNDED',payment:{status:'REFUNDED'}}),'REFUNDED');
+assert.equal(orderPaymentStatus({status:'PENDING'}),'PENDING');
+const liveShape={status:'PROCESSING',transactions:[{id:128,status:'PENDING',paymentMethod:'CARD',transactionId:'OLD'},{id:129,status:'COMPLETED',paymentMethod:'BANK_TRANSFER',transactionId:'M161-PO-287231'}]};
+assert.equal(orderPaymentMethod(liveShape),'BANK_TRANSFER');
+assert.equal(orderPaymentReference(liveShape),'M161-PO-287231');
+assert.equal(orderGatewayReference({status:'PAID',cartId:'oss-order-ORD141',transactions:[{status:'COMPLETED',rawResponse:{POID:'TW162538292902999'}}]}),'oss-order-ORD141');
+assert.equal(orderGatewayReference({status:'PAID',transactions:[{status:'COMPLETED',transactionId:'M161-PO-287231',rawResponse:{POID:'TW162538292902999'}}]}),'TW162538292902999');
+assert.equal(orderPaymentMethod({status:'PAID',payment:{method:'FPX'}}),'FPX');
+assert.equal(orderPaymentReference({status:'PAID',payment:{reference:'LEGACY-REF'}}),'LEGACY-REF');
+console.log('order payment status and details mapping check passed');

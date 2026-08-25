@@ -1,0 +1,114 @@
+:host {
+  --assistant-font: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  --assistant-header-bg: linear-gradient(135deg, #0d1b3e 0%, #1a56db 100%) !important;
+  --assistant-header-text: #ffffff !important;
+  --assistant-body-bg: #f8fafc !important;
+  --assistant-user-bubble: #1a56db !important;
+  --assistant-user-text: #ffffff !important;
+  --assistant-assistant-bubble: #eef4ff !important;
+  --assistant-assistant-text: #111827 !important;
+  --assistant-button-color: #1a56db !important;
+  --assistant-input-focus: #fbbf24 !important;
+  --assistant-icon-hover: #fbbf24 !important;
+  --assistant-toggle-bg: #1a56db !important;
+  --assistant-border-radius: 20px !important;
+}
+
+#Assistant-Toggle {
+  background: #1a56db !important;
+  border: 2px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 10px 28px rgba(13, 27, 62, 0.3) !important;
+}
+
+#Assistant-Toggle:hover {
+  background: #1648bd !important;
+  transform: translateY(-2px) scale(1.04) !important;
+}
+
+#Assistant-Toggle > .Assistant-icon {
+  display: none !important;
+}
+
+#Assistant-Toggle::before {
+  content: '';
+  width: 36px;
+  height: 36px;
+  display: block;
+  background: url('/images/balam-tonewow-chat.svg') center / contain no-repeat;
+}
+
+.Assistant-Welcome-Dialog {
+  display: none !important;
+}
+
+#Assistant-Chat {
+  border: 1px solid rgba(26, 86, 219, 0.12) !important;
+  box-shadow: 0 24px 70px rgba(13, 27, 62, 0.24) !important;
+}
+
+#Assistant-Chat-Header {
+  background: linear-gradient(135deg, #0d1b3e 0%, #1a56db 100%) !important;
+}
+
+#Assistant-Chat-Header-Title-Avatar {
+  position: relative;
+  overflow: hidden;
+  background: #1a56db !important;
+  border: 2px solid rgba(255, 255, 255, 0.88) !important;
+}
+
+#Assistant-Chat-Header-Title-Avatar::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 0;
+  pointer-events: none;
+  background: url('/images/balam-tonewow-chat.svg') center / contain no-repeat;
+}
+
+#Assistant-Chat-Header-Title-Avatar .Assistant-profile-image {
+  position: relative !important;
+  z-index: 1;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  opacity: 1 !important;
+}
+
+#Assistant-Chat-Header-Title-Avatar .Assistant-profile-image[data-tonewow-image-error='true'] {
+  opacity: 0 !important;
+}
+
+.Assistant-User-Message .message-content {
+  background: #1a56db !important;
+  color: #ffffff !important;
+  border-radius: 18px 18px 4px 18px !important;
+}
+
+.Assistant-Assistant-Message .message-content {
+  background: #eef4ff !important;
+  color: #111827 !important;
+  border: 1px solid #dbe7ff !important;
+  border-radius: 18px 18px 18px 4px !important;
+}
+
+#Assistant-Chat-Footer-Field:focus-within {
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.22) !important;
+}
+
+@media (max-width: 760px) {
+  #Assistant-Main:has(#Assistant-Toggle[aria-expanded='false']) {
+    bottom: var(--tonewow-balam-closed-bottom) !important;
+  }
+
+  #Assistant-Chat {
+    min-height: min(400px, calc(100dvh - var(--tonewow-balam-closed-bottom) - 12px)) !important;
+    max-height: min(700px, calc(100dvh - var(--tonewow-balam-closed-bottom) - 12px)) !important;
+  }
+
+  #Assistant-Toggle::before {
+    width: 32px;
+    height: 32px;
+  }
+}

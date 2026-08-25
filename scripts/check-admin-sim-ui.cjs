@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const drawer=fs.readFileSync('src/components/admin/OrderDrawer.tsx','utf8');
+const source=fs.readFileSync('src/components/admin/SimRangeAssignment.tsx','utf8');
+const css=fs.readFileSync('src/app/admin/admin.css','utf8');
+assert(drawer.includes('SimRangeAssignment'),'bulk SIM assignment must be mounted in order drawer');
+assert(source.includes('Starting SN')&&source.includes('Ending SN'),'range inputs missing');
+assert(source.includes('Add Range'),'multiple ranges must be supported');
+assert(source.includes('serialQuantity(range)'),'quantity per range missing');
+assert(source.includes('/^\\d{10,11}$/'),'10-digit SIM range input missing');
+assert(source.includes('First 10 digits'),'10-digit input hint missing');
+assert(source.includes("productCode === 'TWP'")||source.includes("'TWP'"),'TWE/TWP selection missing');
+assert(source.includes('BrowserMultiFormatReader'),'camera barcode scanner missing');
+assert(source.includes('barcode.length !== 20'),'20-digit barcode guard missing');
+assert(!source.includes('PUK')&&!source.includes('puk'),'PUK must never appear in browser SIM UI');
+assert(drawer.includes("pendingStatus==='SHIPPED'"),'client SHIPPED guard missing');
+assert(css.includes('.adm-sim-range'),'SIM range layout CSS missing');
+console.log('admin bulk SIM UI regression check passed');

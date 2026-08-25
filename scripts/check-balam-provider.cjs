@@ -1,0 +1,22 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const source = fs.readFileSync('src/components/layout/RouteChrome.tsx', 'utf8');
+const layout = fs.readFileSync('src/app/layout.tsx', 'utf8');
+const watchdog = fs.readFileSync('public/js/tonewow-balam-launcher-watchdog-20260821-v4.js', 'utf8');
+
+assert(source.includes("process.env.NEXT_PUBLIC_CHAT_PROVIDER==='freshworks'?'freshworks':'balam'"), 'production-safe Balam default missing');
+assert(source.includes("CHAT_PROVIDER==='balam'?"), 'exclusive provider selection missing');
+assert(source.includes('Assistant-Shadow-Host'), 'Balam shadow host integration missing');
+assert(source.includes('hostObserver=new MutationObserver(()=>install())'), 'React integration must survive provider host replacement');
+assert(source.includes("main?.style.setProperty('bottom'"), 'mobile cart and checkout offset missing');
+assert(source.includes('data-tonewow-balam-launcher'), 'React launcher marker missing');
+assert(source.includes('/images/balam-tonewow-chat.svg'), 'custom launcher asset missing');
+assert(layout.includes('/js/tonewow-balam-launcher-watchdog-20260821-v4.js'), 'independent launcher watchdog missing');
+assert(layout.includes('#Assistant-Shadow-Host{visibility:hidden!important}'), 'native launcher must remain hidden before branding is ready');
+assert(watchdog.includes("this.id === HOST_ID ? { ...init, mode: 'open' } : init"), 'Balam host shadow must remain accessible for launcher replacement');
+assert(watchdog.includes("shadowObserver.observe(shadow, { childList: true, subtree: true })"), 'watchdog must survive nested toggle rerenders');
+assert(watchdog.includes("nativeIcon.style.setProperty('display', 'none', 'important')"), 'native robot icon must be hidden inline');
+assert(watchdog.includes("launcher.setAttribute(LAUNCHER_ATTR, 'true')"), 'custom launcher must be inserted once');
+assert(watchdog.includes("host.style.setProperty('visibility', 'visible', 'important')"), 'widget must reveal only after custom launcher installation');
+assert(!watchdog.includes("createElement('link')"), 'watchdog must not inject stylesheets rejected by Balam Guard');
+console.log('Balam provider regression check passed');

@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+const compiled=ts.transpileModule(fs.readFileSync('src/store/cartStore.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const m={exports:{}};const localRequire=(id)=>id==='zustand'?{create:()=>()=>({})}:id==='zustand/middleware'?{persist:(config)=>config}:id==='@/data/merchandise'?{getMerchandiseVariantId:()=>1,getMerchandiseVariantInventory:()=>10}:require(id);
+new Function('exports','require','module',compiled)(m.exports,localRequire,m);
+const {cartItemsWithUpdatedQuantity}=m.exports;
+const standard={id:'standard',quantity:1,minimumOrderQuantity:1};
+const minimumTwo={id:'minimum-two',quantity:2,minimumOrderQuantity:2};
+assert.deepEqual(cartItemsWithUpdatedQuantity([standard],'standard',0),[]);
+assert.deepEqual(cartItemsWithUpdatedQuantity([minimumTwo],'minimum-two',1),[]);
+assert.equal(cartItemsWithUpdatedQuantity([minimumTwo],'minimum-two',3)[0].quantity,3);
+assert.equal(cartItemsWithUpdatedQuantity([standard],'standard',2)[0].quantity,2);
+console.log('zero quantity removes cart item check passed');

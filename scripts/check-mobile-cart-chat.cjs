@@ -1,0 +1,14 @@
+const assert = require('node:assert');
+const fs = require('node:fs');
+const css = fs.readFileSync('src/app/globals.css', 'utf8');
+const component = fs.readFileSync('src/components/home/MerchandiseSection.tsx', 'utf8');
+const routeChrome = fs.readFileSync('public/css/tonewow-balam-theme-20260821.css', 'utf8');
+assert(component.includes('className="merch-catalog"'), 'Merchandise DOM scope missing');
+assert(!component.includes("document.body.classList.add('merchandise-active')"), 'Racy body-class lifecycle must be removed');
+assert(!css.includes('body:has(.merch-catalog) #fc_widget'), 'Freshworks widget must remain visible in Merchandise');
+assert(!css.includes('body:has(.merch-catalog) #fc_frame'), 'Freshworks frame must remain visible in Merchandise');
+assert(css.includes('body:has(.merch-catalog) .referral-floating-widget'), 'Refer a Friend must hide while Merchandise DOM exists');
+assert(css.includes('right: 97px;'), 'Cart must sit left of the chat launcher on mobile');
+assert(css.includes('bottom: calc(18px + env(safe-area-inset-bottom));'), 'Cart and chat must share the bottom alignment');
+assert(routeChrome.includes('max-height: min(700px, calc(100dvh - var(--tonewow-balam-closed-bottom) - 12px)) !important;'), 'Open mobile chat must fit above the cart bar so its close header stays visible');
+console.log('mobile cart/chat regression check passed');

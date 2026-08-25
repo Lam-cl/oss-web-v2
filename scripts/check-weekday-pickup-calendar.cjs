@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const pkg=require('../package.json');
+const page=fs.readFileSync('src/app/checkout/page.tsx','utf8');
+const layout=fs.readFileSync('src/app/layout.tsx','utf8');
+const css=fs.readFileSync('src/app/globals.css','utf8');
+assert.match(pkg.dependencies?.['react-day-picker']||'',/^\^?10\.0\.1$/,'react-day-picker 10.0.1 missing');
+assert.equal(layout.includes("import 'react-day-picker/style.css';"),true,'DayPicker base CSS missing');
+assert.equal(page.includes("import { DayPicker } from 'react-day-picker';"),true,'DayPicker import missing');
+assert.equal(page.includes("const [pickupCalendarOpen, setPickupCalendarOpen] = useState(false);"),true,'calendar state missing');
+assert.equal(page.includes('aria-haspopup="dialog"'),true,'calendar trigger accessibility missing');
+assert.equal(page.includes('pickupCalendarOpen && portalReady && createPortal('),true,'calendar must portal above the fixed header');
+assert.equal(page.includes('!isKualaLumpurWorkingDay(localDateToPickupDate(date))'),true,'weekends and KL holidays must be disabled in calendar');
+assert.equal(page.includes('before: pickupMinimumLocalDate'),true,'dates before pickup lead time must be disabled in calendar');
+assert.equal(page.includes('type="date"'),false,'native date input must be replaced');
+assert.equal(css.includes('.merch-pickup-calendar'),true,'calendar styling missing');
+assert.equal(css.includes('.merch-pickup-calendar-backdrop'),true,'calendar backdrop missing');
+assert.equal(css.includes('position:fixed;z-index:13000;top:50%;left:50%'),true,'calendar must be centered above fixed navigation');
+console.log('weekday pickup calendar wiring check passed');

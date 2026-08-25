@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const source = fs.readFileSync('src/lib/shipping.ts', 'utf8');
+const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+const mod = { exports: {} }; new Function('exports', 'require', 'module', output)(mod.exports, require, mod);
+const { calculateCourierCharge, DEFAULT_SHIPPING_SETTINGS } = mod.exports;
+const settings = structuredClone(DEFAULT_SHIPPING_SETTINGS);
+settings.priority = ['bulky', 'shirt', 'small', 'flyers', 'sim'];
+settings.groups.bulky.tiers[0].peninsular = 77;
+assert.equal(calculateCourierCharge([{ name: 'Tone Wow T-shirt', quantity: 1 }, { name: 'Tumbler', quantity: 1 }], 'Johor', settings).amount, 77);
+console.log('shipping settings check passed');

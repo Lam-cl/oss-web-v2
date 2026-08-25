@@ -15,7 +15,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const PAYMENT_ID = '16';
-const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+// const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const GATEWAY_URL = process.env.MERDEKA_PROMO_GATEWAY_URL || 'https://qa.tonegroup.net/gkashwebservice/osspayMerdeka2026.jsp';
 
 function text(value: unknown, max = 160) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -75,35 +76,37 @@ export async function POST(request: NextRequest) {
     confirmationUrl.searchParams.set('refno', paymentRefNo);
     const total = amount.toFixed(2);
     const params = new URLSearchParams({
-      transactionType: 'OSSPayment',
-      documentID: documentId,
-      paymentId: PAYMENT_ID,
-      extraCharges: '0',
-      refNo,
-      prodDesc: 'PromoMerdeka',
-      username: fullName,
-      email,
-      contact: phone,
-      recurringType: String(duration),
-      total,
-      address1,
-      address2,
-      address3,
-      postcode,
-      city,
-      state,
-      planid: '0',
-      subTotal: total,
-      lang: 'EN',
-      amount: total,
-      memberId: member.memberId,
-      shippingFee: '0',
-      selectedMsisdn: msisdn,
-      dataPlanID: plan.id,
-      returnurl: confirmationUrl.toString(),
-      callbackurl: confirmationUrl.toString(),
-      failureurl: confirmationUrl.toString(),
-    });
+  transactionType: '2',              // was: 'OSSPayment'
+  documentID: documentId,
+  paymentId: PAYMENT_ID,
+  extraCharges: '0',
+  refNo,
+  prodDesc: 'PromoMerdeka',
+  username: fullName,
+  email,
+  contact: phone,
+  // recurringType: String(duration),   
+  total,
+  address1,
+  address2,
+  address3,
+  postcode,
+  city,
+  state,
+  planid: plan.id,                  
+  months: String(duration),         
+  program: '1',                     
+  // subTotal: total,                   
+  lang: 'EN',
+  amount: total,
+  memberID: member.memberId,         
+  // shippingFee: '0',                  
+  // selectedMsisdn: msisdn,            
+  // dataPlanID: plan.id,               
+  returnurl: confirmationUrl.toString(),
+  callbackurl: confirmationUrl.toString(),
+  failureurl: confirmationUrl.toString(),
+});
 
     return NextResponse.json({ paymentUrl: `${GATEWAY_URL}?${params.toString()}`, reference: paymentRefNo });
   } catch (error) {

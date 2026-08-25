@@ -20,6 +20,35 @@ type EsimDetails = {
   puk2: string;
 };
 
+const MERCHANDISE_REFERENCE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+function storedMerchandiseReference(refNo: string) {
+  if (!refNo) return '';
+
+  try {
+    const raw = localStorage.getItem('tw_pending_merchandise_order');
+    if (!raw) return '';
+    const stored = JSON.parse(raw) as {
+      referenceNumber?: string;
+      paymentReference?: string;
+      storedAt?: number;
+    };
+    const referenceNumber = String(stored.referenceNumber || '').trim();
+    const paymentReference = String(stored.paymentReference || '').trim();
+    const storedAt = Number(stored.storedAt);
+    if (!referenceNumber || !Number.isFinite(storedAt)
+      || Date.now() - storedAt > MERCHANDISE_REFERENCE_MAX_AGE) return '';
+
+    const normalizedRef = normalizeAdxPaymentRef(refNo);
+    const matchesCallback = paymentReference
+      && normalizeAdxPaymentRef(paymentReference) === normalizedRef;
+    const matchesReference = normalizeAdxPaymentRef(referenceNumber) === normalizedRef;
+    return matchesCallback || matchesReference ? referenceNumber : '';
+  } catch {
+    return '';
+  }
+}
+
 function clearEsimOrderMarker() {
   try { localStorage.removeItem('tw_esim_order'); } catch { /* storage may be disabled */ }
   try { sessionStorage.removeItem('tw_esim_order'); } catch { /* storage may be disabled */ }
@@ -86,6 +115,20 @@ function ThankYouContent() {
   const [status, setStatus] = useState<Status>('loading');
   const [esimPreparing, setEsimPreparing] = useState(false);
   const [paymentCheckKey, setPaymentCheckKey] = useState(0);
+  const [merchandiseReference, setMerchandiseReference] = useState('');
+
+  useEffect(() => {
+    if (isAdx || isEsimReturn) {
+      setMerchandiseReference('');
+      return;
+    }
+    setMerchandiseReference(storedMerchandiseReference(refNo));
+  }, [isAdx, isEsimReturn, refNo]);
+
+  const referencesMatch = Boolean(
+    merchandiseReference
+    && normalizeAdxPaymentRef(merchandiseReference) === normalizeAdxPaymentRef(refNo),
+  );
 
   const checkPaymentAgain = () => {
     setStatus('loading');
@@ -269,17 +312,21 @@ function ThankYouContent() {
           <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 28px' }}>
             Your payment has been received and is being processed.
           </p>
-          {refNo && (
+          {(refNo || merchandiseReference) && (
             <div style={{
               background: '#fff', border: '2px solid #0074be', borderRadius: 14,
               padding: '20px 24px', marginBottom: 28,
             }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>
-                Payment Reference
-              </p>
-              <p style={{ fontSize: 18, fontWeight: 700, color: '#0074be', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
+              {refNo && <><p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>
+                {referencesMatch ? 'Reference Number' : 'Payment Reference'}
+              </p><p style={{ fontSize: 18, fontWeight: 700, color: '#0074be', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
                 {refNo}
-              </p>
+              </p></>}
+              {merchandiseReference && !referencesMatch && <><p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: refNo ? '16px 0 4px' : '0 0 4px' }}>
+                Reference Number
+              </p><p style={{ fontSize: 18, fontWeight: 700, color: '#0074be', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
+                {merchandiseReference}
+              </p></>}
             </div>
           )}
           <p style={{ fontSize: 14, color: '#94a3b8', marginBottom: 28 }}>
@@ -326,17 +373,21 @@ function ThankYouContent() {
               : 'Your payment could not be verified. Please try again or contact support.'}
           </p>
         )}
-        {refNo && (
+        {(refNo || merchandiseReference) && (
           <div style={{
             background: '#fff', border: '2px solid #e2e8f0', borderRadius: 14,
             padding: '20px 24px', marginBottom: 28,
           }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>
-              Reference
-            </p>
-            <p style={{ fontSize: 18, fontWeight: 700, color: '#64748b', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
+            {refNo && <><p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>
+              {referencesMatch ? 'Reference Number' : 'Payment Reference'}
+            </p><p style={{ fontSize: 18, fontWeight: 700, color: '#64748b', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
               {refNo}
-            </p>
+            </p></>}
+            {merchandiseReference && !referencesMatch && <><p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, margin: refNo ? '16px 0 4px' : '0 0 4px' }}>
+              Reference Number
+            </p><p style={{ fontSize: 18, fontWeight: 700, color: '#64748b', fontFamily: 'monospace', margin: 0, wordBreak: 'break-all' }}>
+              {merchandiseReference}
+            </p></>}
           </div>
         )}
         <button

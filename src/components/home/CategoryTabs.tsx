@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import DeviceSection from './DeviceSection';
 import SIMSection from './SIMSection';
 import MerchandiseSection from './MerchandiseSection';
@@ -65,8 +65,17 @@ export default function CategoryTabs({ settings }: Props) {
   const merchandiseEnabled = isMerchandiseEnabled() && showMerchandise;
   const [activeTab, setActiveTab] = useState<TabKey>('sim');
 
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    if (requestedTab === 'merchandise' && merchandiseEnabled) {
+      setActiveTab('merchandise');
+    } else if (requestedTab === 'devices' && devicesEnabled) {
+      setActiveTab('devices');
+    }
+  }, [devicesEnabled, merchandiseEnabled]);
+
   return (
-    <section className="container" style={{ paddingTop: 32, paddingBottom: 40 }}>
+    <section id="shop" className="container" style={{ paddingTop: 32, paddingBottom: 40 }}>
       <div className="category-tabs">
         <button
           disabled={!devicesEnabled}

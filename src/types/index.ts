@@ -63,12 +63,17 @@ export interface CartItem {
   numberType?: string;
   category?: string;
   productId?: string;
+  bundleProductId?: number;
+  bundleVariantId?: number;
   slug?: string;
   variant?: string;
   size?: string;
   image?: string;
   price: number;
   quantity: number;
+  minimumOrderQuantity?: number;
+  availableQuantity?: number;
+  selectionRequired?: 'Variant selection required';
   simType?: string;
   name: string;
   description?: string;

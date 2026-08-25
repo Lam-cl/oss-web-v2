@@ -1,23 +1,54 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { getMerchandiseProduct } from '@/data/merchandise';
+import { getMerchandiseGalleryIndexForOption, getMerchandiseOptionIndexForImage, getMerchandiseProduct, getMerchandiseVariantId, getMerchandiseVariantInventory, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
+import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
+import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
+import { minimumOrderError } from '@/lib/minimumOrderQuantity';
 import { formatRM } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
 
 export default function MerchandiseDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
-  const product = useMemo(() => getMerchandiseProduct(params.slug), [params.slug]);
+  const { products: stagingProducts, loading } = useMerchandiseProducts();
+  const [catalogueProducts, setCatalogueProducts] = useState<MerchandiseProduct[] | null>(null);
+  const products = catalogueProducts || stagingProducts;
+  const product = useMemo(
+    () => products.find((item) => item.slug === params.slug) || getMerchandiseProduct(params.slug),
+    [params.slug, products],
+  );
   const addItem = useCartStore((state) => state.addItem);
   const [optionIndex, setOptionIndex] = useState(0);
+  const variantChoiceRequired = product?.optionLabel === 'Variant' && Boolean(product?.options.some((option) => option.name === 'Tone Excel' || option.name === 'Tone Plus'));
+  const [optionExplicitlySelected, setOptionExplicitlySelected] = useState(!variantChoiceRequired);
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (loading) return;
+    let active = true;
+    setCatalogueProducts(null);
+    fetchCatalogueStorefrontProducts(stagingProducts).then((nextProducts) => {
+      if (active) setCatalogueProducts(nextProducts);
+    });
+    return () => { active = false; };
+  }, [loading, stagingProducts]);
+
+  useEffect(() => {
+    if (!product) return;
+    setOptionIndex(0);
+    setOptionExplicitlySelected(!(product.optionLabel === 'Variant' && product.options.some((option) => option.name === 'Tone Excel' || option.name === 'Tone Plus')));
+    setSelectedSize('');
+    setQuantity(product.minimumOrderQuantity);
+    setActiveImage('');
+    setError('');
+  }, [product?.id]);
 
   if (!product) {
     return (
@@ -28,16 +59,33 @@ export default function MerchandiseDetailPage() {
     );
   }
 
-  const selectedOption = product.options[optionIndex];
-  const selectedImage = activeImage || selectedOption.image;
+  const selectedOption = product.options[optionIndex] || product.options[0];
   const availableSizes = selectedOption.sizes || product.sizes;
-  const gallery = [selectedOption.image, ...(selectedOption.gallery || product.gallery || [])];
+  const gallery = (product.gallery?.length
+    ? product.gallery
+    : product.options.map((option) => option.image)).filter(Boolean);
+  const selectedImage = activeImage || gallery[0] || selectedOption.image;
+  const bundleVariantId = getMerchandiseVariantId(product, selectedOption.name, selectedSize || undefined);
+  const variantPrice = product.variantPrices?.[merchandiseVariantKey(selectedOption.name, selectedSize || undefined)] ?? product.price;
+  const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
 
   const handleOptionChange = (index: number) => {
     setOptionIndex(index);
+    setOptionExplicitlySelected(true);
     setSelectedSize('');
-    setActiveImage('');
+    const galleryIndex = getMerchandiseGalleryIndexForOption(product, index);
+    setActiveImage(galleryIndex >= 0 ? gallery[galleryIndex] : product.options[index]?.image || '');
     setError('');
+  };
+
+  const handleImageChange = (image: string) => {
+    const nextOption = getMerchandiseOptionIndexForImage(product, image);
+    if (nextOption >= 0 && nextOption !== optionIndex) {
+      setOptionIndex(nextOption);
+      setSelectedSize('');
+      setError('');
+    }
+    setActiveImage(image);
   };
 
   const handleAddToCart = () => {
@@ -45,8 +93,24 @@ export default function MerchandiseDetailPage() {
       setError('This item is currently unavailable.');
       return;
     }
+    if (!optionExplicitlySelected) {
+      setError('Please select Tone Excel or Tone Plus.');
+      return;
+    }
     if (availableSizes && !selectedSize) {
       setError('Please select a size.');
+      return;
+    }
+    if (!product.apiProductId || !bundleVariantId) {
+      setError('This option is not available for checkout yet. Please refresh and try again.');
+      return;
+    }
+    if (quantity < product.minimumOrderQuantity) {
+      setError(minimumOrderError(product.minimumOrderQuantity));
+      return;
+    }
+    if (quantity > availableQuantity) {
+      setError(availableQuantity > 0 ? 'The selected quantity exceeds the current stock limit.' : 'This variation is out of stock.');
       return;
     }
 
@@ -55,14 +119,18 @@ export default function MerchandiseDetailPage() {
       id: `merch:${product.id}:${selectedOption.name}:${selectedSize || 'standard'}`,
       type: 'merchandise',
       productId: product.id,
+      bundleProductId: product.apiProductId,
+      bundleVariantId,
       slug: product.slug,
       name: product.name,
       description: product.unitLabel || product.description,
       variant: product.options.length > 1 ? selectedOption.name : undefined,
       size: selectedSize || undefined,
       image: selectedOption.image,
-      price: product.price,
+      price: variantPrice,
       quantity,
+      minimumOrderQuantity: product.minimumOrderQuantity,
+      availableQuantity,
     });
     router.push('/cart');
   };
@@ -85,7 +153,7 @@ export default function MerchandiseDetailPage() {
                   key={`${image}-${index}`}
                   type="button"
                   className={selectedImage === image ? 'active' : ''}
-                  onClick={() => setActiveImage(image)}
+                  onClick={() => handleImageChange(image)}
                   aria-label={`View image ${index + 1}`}
                 >
                   <Image src={image} alt="" fill sizes="88px" />
@@ -105,7 +173,7 @@ export default function MerchandiseDetailPage() {
                 <span>{product.optionLabel || 'Option'}</span>
                 <strong>{selectedOption.name}</strong>
               </div>
-              <div className={`merch-option-list${product.optionLabel === 'Colour' ? ' merch-colour-list' : ''}`}>
+              <div className={`merch-option-list${/^colou?r$/i.test(product.optionLabel || '') ? ' merch-colour-list' : ''}`}>
                 {product.options.map((option, index) => (
                   <button
                     type="button"
@@ -115,12 +183,15 @@ export default function MerchandiseDetailPage() {
                     aria-label={`Select ${option.name}`}
                     title={option.name}
                   >
-                    {product.optionLabel === 'Colour' ? (
-                      <span
+                    {/^colou?r$/i.test(product.optionLabel || '') ? (
+                      <>
+                        <span
                         className="merch-colour-swatch"
                         style={{ background: option.swatch || '#e2e8f0' }}
                         aria-hidden="true"
                       />
+                      <span className="merch-colour-name">{option.name}</span>
+                    </>
                     ) : option.name}
                   </button>
                 ))}
@@ -146,7 +217,7 @@ export default function MerchandiseDetailPage() {
             </div>
           )}
 
-          <div className="merch-detail-price">{formatRM(product.price)}</div>
+          <div className="merch-detail-price">{formatRM(variantPrice)}</div>
           {product.soldOut && <div className="merch-stock-status">Sold out</div>}
           {product.soldOut ? (
             <div className="merch-purchase-row merch-purchase-row--unavailable">
@@ -161,12 +232,12 @@ export default function MerchandiseDetailPage() {
           ) : (
             <div className="merch-purchase-row">
               <div className="merch-quantity" aria-label="Quantity">
-                <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
+                <button type="button" onClick={() => setQuantity((value) => Math.max(product.minimumOrderQuantity, value - 1))}>−</button>
                 <span>{quantity}</span>
-                <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
+                <button type="button" onClick={() => setQuantity((value) => Math.min(availableQuantity, value + 1))}>+</button>
               </div>
               <button type="button" className="btn btn-primary merch-add-button" onClick={handleAddToCart}>
-                Add to Cart · {formatRM(product.price * quantity)}
+                Add to Cart · {formatRM(variantPrice * quantity)}
               </button>
             </div>
           )}

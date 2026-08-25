@@ -1,0 +1,13 @@
+const fs=require('fs');const assert=require('assert');
+const source=fs.readFileSync('src/app/checkout/page.tsx','utf8');
+assert(source.includes("{pickupOption === 'self' ? 'Billing Address' : 'Shipping Address'}"),'shared address heading must identify pickup billing address');
+assert(!source.includes("{pickupOption === 'delivery' && (\n                <>\n              <p style={{ ...sec, marginBottom: 14 }}>Shipping Address</p>"),'address fields must not be delivery-only');
+assert(source.includes("address1: pickupAddress(form.pickupDate)"),'pickup shipping marker must remain separate');
+assert(source.includes("setError('Please enter a complete billing address')"),'billing validation must remain server-boundary aligned');
+const route=fs.readFileSync('src/app/api/bundle/checkout/route.ts','utf8');
+const admin=fs.readFileSync('src/components/admin/OrderDrawer.tsx','utf8');
+const chrome=fs.readFileSync('src/components/layout/RouteChrome.tsx','utf8');
+assert(route.includes('await saveBillingAddress(numericOrderId, billingAddress);'),'created order must persist billing metadata');
+assert(admin.includes("metadata?.billingAddress?.fullName")&&admin.includes('formatAddress(metadata?.billingAddress)'),'admin must render saved billing metadata');
+assert(chrome.includes("pathname.startsWith('/checkout')||document.querySelector('[aria-modal=\"true\"]')"),'checkout must hide the floating chat from transactional fields');
+console.log('Self pick-up billing address check passed');

@@ -3,15 +3,82 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@/types';
+import { getMerchandiseVariantId, getMerchandiseVariantInventory, type MerchandiseProduct } from '@/data/merchandise';
+
+function clampQuantity(item: { minimumOrderQuantity?: number; availableQuantity?: number }, requested: number) {
+  const minimum = Math.max(1, item.minimumOrderQuantity || 1);
+  const normalized = Math.max(minimum, Math.floor(Number(requested) || minimum));
+  if (item.availableQuantity === undefined) return normalized;
+  return Math.min(Math.max(0, item.availableQuantity), normalized);
+}
+
+export function cartItemsWithUpdatedQuantity(items: CartItem[], id: string, requested: number) {
+  return items.flatMap((item) => {
+    if (item.id !== id) return [item];
+    const minimum = Math.max(1, item.minimumOrderQuantity || 1);
+    return requested < minimum ? [] : [{ ...item, quantity: clampQuantity(item, requested) }];
+  });
+}
 
 interface CartState {
   items: CartItem[];
   addItem: (item: Omit<CartItem, 'id' | 'addedAt'> & { id?: string }) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
+  updateMerchandiseItem: (
+    id: string,
+    updates: Pick<CartItem, 'variant' | 'size' | 'image' | 'quantity' | 'bundleVariantId' | 'availableQuantity'>,
+  ) => void;
+  reconcileMerchandiseCatalog: (products: MerchandiseProduct[]) => void;
   clear: () => void;
   getTotal: () => number;
   getCount: () => number;
+}
+
+export function reconcileMerchandiseCartItems(items: CartItem[], products: MerchandiseProduct[]) {
+  return items.map((item) => {
+    if (item.type !== 'merchandise') return item;
+    const product = products.find((candidate) => (
+      candidate.apiProductId === item.bundleProductId
+      || candidate.id === item.productId
+      || candidate.slug === item.slug
+      || candidate.name === item.name
+    ));
+    if (!product || !product.apiProductId) return item;
+    const option = product.options.find((candidate) => candidate.name === item.variant);
+    const bundleVariantId = option
+      ? getMerchandiseVariantId(product, option.name, item.size)
+      : undefined;
+    if (!option || !bundleVariantId
+      || product.apiProductId !== item.bundleProductId
+      || bundleVariantId !== item.bundleVariantId) return {
+      ...item,
+      productId: product.id,
+      bundleProductId: product.apiProductId,
+      bundleVariantId: undefined,
+      variant: undefined,
+      size: undefined,
+      availableQuantity: undefined,
+      selectionRequired: 'Variant selection required' as const,
+    };
+    const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
+    const { selectionRequired: _selectionRequired, ...current } = item;
+    return {
+      ...current,
+      productId: product.id,
+      bundleProductId: product.apiProductId,
+      bundleVariantId,
+      slug: product.slug,
+      name: product.name,
+      description: product.unitLabel || product.description,
+      variant: option.name,
+      image: option.image,
+      price: product.price,
+      minimumOrderQuantity: product.minimumOrderQuantity,
+      availableQuantity,
+      quantity: clampQuantity({ minimumOrderQuantity: product.minimumOrderQuantity, availableQuantity }, item.quantity),
+    };
+  });
 }
 
 export const useCartStore = create<CartState>()(
@@ -21,10 +88,13 @@ export const useCartStore = create<CartState>()(
 
       addItem: (item) => {
         set((state) => {
+          const minimumOrderQuantity = Math.max(1, item.minimumOrderQuantity || 1);
+          const availableQuantity = item.availableQuantity;
           const existing = state.items.find(
             (i) => item.type === 'merchandise'
               ? i.type === 'merchandise'
                 && i.productId === item.productId
+                && i.bundleVariantId === item.bundleVariantId
                 && i.variant === item.variant
                 && i.size === item.size
               : i.type === item.type && i.plan === item.plan && i.number === item.number,
@@ -33,7 +103,15 @@ export const useCartStore = create<CartState>()(
             return {
               items: state.items.map((i) =>
                 i.id === existing.id
-                  ? { ...i, quantity: i.quantity + (item.quantity || 1) }
+                  ? {
+                      ...i,
+                      minimumOrderQuantity,
+                      availableQuantity,
+                      quantity: clampQuantity(
+                        { minimumOrderQuantity, availableQuantity },
+                        i.quantity + Math.max(minimumOrderQuantity, item.quantity || 1),
+                      ),
+                    }
                   : i,
               ),
             };
@@ -44,7 +122,9 @@ export const useCartStore = create<CartState>()(
               {
                 ...item,
                 id: item.id || Date.now().toString(),
-                quantity: item.quantity || 1,
+                minimumOrderQuantity,
+                availableQuantity,
+                quantity: clampQuantity({ minimumOrderQuantity, availableQuantity }, item.quantity || 1),
                 addedAt: new Date().toISOString(),
               } as CartItem,
             ],
@@ -59,11 +139,66 @@ export const useCartStore = create<CartState>()(
       },
 
       updateQuantity: (id, quantity) => {
-        set((state) => ({
-          items: state.items.map((i) =>
-            i.id === id ? { ...i, quantity: Math.max(1, quantity) } : i,
-          ),
-        }));
+        set((state) => ({ items: cartItemsWithUpdatedQuantity(state.items, id, quantity) }));
+      },
+
+      updateMerchandiseItem: (id, updates) => {
+        set((state) => {
+          const current = state.items.find((item) => item.id === id);
+          if (!current || current.type !== 'merchandise') return state;
+          const minimumOrderQuantity = Math.max(1, current.minimumOrderQuantity || 1);
+
+          const duplicate = state.items.find(
+            (item) => item.id !== id
+              && item.type === 'merchandise'
+              && item.productId === current.productId
+              && item.bundleVariantId === updates.bundleVariantId
+              && item.variant === updates.variant
+              && item.size === updates.size,
+          );
+
+          if (duplicate) {
+            return {
+              items: state.items
+                .filter((item) => item.id !== id)
+                .map((item) => item.id === duplicate.id
+                  ? {
+                      ...item,
+                      image: updates.image,
+                      bundleVariantId: updates.bundleVariantId,
+                      availableQuantity: updates.availableQuantity,
+                      minimumOrderQuantity,
+                      quantity: clampQuantity(
+                        { minimumOrderQuantity, availableQuantity: updates.availableQuantity },
+                        item.quantity + Math.max(minimumOrderQuantity, updates.quantity),
+                      ),
+                    }
+                  : item),
+            };
+          }
+
+          return {
+            items: state.items.map((item) => item.id === id
+              ? {
+                  ...item,
+                  variant: updates.variant,
+                  size: updates.size,
+                  image: updates.image,
+                  bundleVariantId: updates.bundleVariantId,
+                  availableQuantity: updates.availableQuantity,
+                  minimumOrderQuantity,
+                  quantity: clampQuantity(
+                    { minimumOrderQuantity, availableQuantity: updates.availableQuantity },
+                    updates.quantity,
+                  ),
+                }
+              : item),
+          };
+        });
+      },
+
+      reconcileMerchandiseCatalog: (products) => {
+        set((state) => ({ items: reconcileMerchandiseCartItems(state.items, products) }));
       },
 
       clear: () => set({ items: [] }),

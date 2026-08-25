@@ -72,7 +72,7 @@ export function isMerdekaDuration(value: unknown): value is MerdekaDuration {
 }
 
 export function calculateMerdekaPrice(monthlyPrice: number, duration: MerdekaDuration) {
-  const multiplier = duration === 6 ? 5 : 10;
+  const multiplier = duration === 6 ? 5.5 : 11;
   return Math.round(monthlyPrice * multiplier * 100) / 100;
 }
 
@@ -144,7 +144,7 @@ export async function fetchMerdekaMember(value: unknown): Promise<MerdekaMember>
     postcode: clean(data.addressInfo?.addPostCode),
     city: clean(data.addressInfo?.addCity),
     state: clean(data.addressInfo?.addState),
-    currentPlan: null,
+    currentPlan: clean(data.mainPlanName) || null,
   };
 }
 

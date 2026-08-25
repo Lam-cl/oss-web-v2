@@ -12,6 +12,7 @@ import { CatalogueBundleAdapterError, createCatalogueBundleAdapter } from '@/lib
 import { archiveCatalogueProduct, CatalogueArchiveError } from '@/lib/admin/catalogueArchive.server';
 import { enrichCatalogueProductWithAdoption, readCatalogueAdoptionByBundle, rollbackCatalogueAdoption, supersedeCatalogueAdoption } from '@/lib/admin/catalogueAdoption.server';
 import { saveProductHiddenOptionValues } from '@/lib/productImageColors.server';
+import { evaluatePublicationChangeState, type PublicationProviderProduct } from '@/lib/admin/cataloguePublicationChangeState.server';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_RECORDS = 1000;
@@ -63,9 +64,28 @@ async function filenames(directory:string, pattern:RegExp){
   if(entries.length>MAX_RECORDS)throw new CatalogueAdminRouteError('Catalogue record limit was exceeded.',503);
   return entries.filter(entry=>entry.isFile()&&pattern.test(entry.name)).map(entry=>entry.name);
 }
+type PublicationJobIndex={byCatalogue:Map<string,CataloguePublicationJob[]>;uncertain:boolean};
+async function publicationJobIndex():Promise<PublicationJobIndex>{
+  const byCatalogue=new Map<string,CataloguePublicationJob[]>();let uncertain=false;let names:string[]=[];
+  try{names=await filenames(PUBLICATION_DIRECTORY,/^[a-f0-9]{64}\.json$/);}catch{uncertain=true;}
+  for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;try{const job=await readPublicationJob(operationId);if(!job)continue;const jobs=byCatalogue.get(job.catalogueId)??[];jobs.push(job);byCatalogue.set(job.catalogueId,jobs);}catch{uncertain=true;}}
+  return {byCatalogue,uncertain};
+}
+async function providerProductIndex():Promise<Map<number,PublicationProviderProduct>|null>{
+  try{const response=await fetch(`${BUNDLE_API}/products?type=MERCHANDISE&limit=1000`,{headers:{accept:'application/json'},cache:'no-store'});if(!response.ok)return null;const payload=await response.json();const rows=object(payload)&&Array.isArray(payload.data)?payload.data:[];const products=rows.filter((item):item is PublicationProviderProduct=>object(item)&&revision(item.id));return new Map(products.map(product=>[product.id,product]));}catch{return null;}
+}
+async function publicationChange(product:CatalogueProductRecord,jobs:PublicationJobIndex,providers:Map<number,PublicationProviderProduct>|null){
+  const active=product.bundleVersions.filter(version=>version.retiredAt===null);
+  const productJobs=jobs.byCatalogue.get(product.catalogueId)??[];
+  const matching=active.length===1?productJobs.filter(job=>job.phase==='complete'&&job.draftBundleProductId===active[0].bundleProductId&&job.resultFingerprint64===active[0].fingerprint):[];
+  let snapshot=null,media:Awaited<ReturnType<typeof listCatalogueMedia>>=[];let storageUncertain=jobs.uncertain;
+  if(matching.length===1){try{snapshot=await readCataloguePublishedSnapshot(matching[0].operationId);}catch{storageUncertain=true;}}
+  try{media=await listCatalogueMedia(product.catalogueId);}catch{storageUncertain=true;}
+  return evaluatePublicationChangeState({product,jobs:productJobs,snapshot,media,providerProduct:product.currentBundleProductId===null?null:providers?.get(product.currentBundleProductId)??null,storageUncertain});
+}
 async function listProducts(){
-  const names=await filenames(PRODUCT_DIRECTORY,/^[0-9a-f-]{36}\.json$/);const products:Array<CatalogueProductRecord&Row>=[];
-  for(const name of names){const id=name.slice(0,-5);if(!UUID.test(id))continue;const product=await readCatalogueProduct(id);if(product)products.push(await enrichAdminProduct(product));}
+  const [names,jobs,providers]=await Promise.all([filenames(PRODUCT_DIRECTORY,/^[0-9a-f-]{36}\.json$/),publicationJobIndex(),providerProductIndex()]);const products:Array<CatalogueProductRecord&Row>=[];
+  for(const name of names){const id=name.slice(0,-5);if(!UUID.test(id))continue;const product=await readCatalogueProduct(id);if(product)products.push({...await enrichAdminProduct(product),...await publicationChange(product,jobs,providers)});}
   return products.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||String(a.catalogueId).localeCompare(String(b.catalogueId)));
 }
 async function latestPublication(catalogueId:string){

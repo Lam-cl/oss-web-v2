@@ -79,3 +79,19 @@ export function catalogueHazardReason(model: VariantModel, providerOperationUnre
 export function unresolvedPublication(publication: { phase: string } | null | undefined) {
   return publication === undefined || publication !== null && publication.phase !== 'complete';
 }
+
+export function publicationActionPresentation(input: {
+  state: 'clean' | 'dirty' | 'unknown';
+  localDraft: boolean;
+  simManaged: boolean;
+  unknownReason?: string;
+}) {
+  if (input.simManaged || input.state === 'clean' && !input.localDraft) return { visible: false } as const;
+  return {
+    visible: true,
+    label: input.localDraft ? 'Publish' : 'Publish changes',
+    disabledReason: input.state === 'unknown'
+      ? input.unknownReason || 'Publication evidence is incomplete. Reload or repair the evidence before publishing.'
+      : null,
+  } as const;
+}

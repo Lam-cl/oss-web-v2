@@ -4,6 +4,7 @@ import {
   hasValidCatalogueVariants,
   isSystemCatalogueProduct,
   productSearchText,
+  publicationActionPresentation,
   sanitizeProviderDescription,
   sanitizeProviderTitle,
   unresolvedPublication,
@@ -62,4 +63,15 @@ test('unknown or incomplete provider publication state is unresolved', () => {
   assert.equal(unresolvedPublication(null), false);
   assert.equal(unresolvedPublication({ phase: 'building' }), true);
   assert.equal(unresolvedPublication({ phase: 'complete' }), false);
+});
+
+test('publication actions follow evidence state and keep SIM on its dedicated workflow', () => {
+  assert.deepEqual(publicationActionPresentation({ state: 'clean', localDraft: false, simManaged: false }), { visible: false });
+  assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: false }), {
+    visible: true, label: 'Publish changes', disabledReason: null,
+  });
+  const unresolved = publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false, unknownReason: 'Snapshot missing.' });
+  assert.equal(unresolved.visible, true);
+  assert.equal(unresolved.disabledReason, 'Snapshot missing.');
+  assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: false });
 });

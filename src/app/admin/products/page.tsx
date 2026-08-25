@@ -22,6 +22,7 @@ import {
   hasValidCatalogueVariants,
   isSystemCatalogueProduct,
   productSearchText,
+  publicationActionPresentation,
   sanitizeProviderDescription,
   sanitizeProviderTitle,
   unresolvedPublication,
@@ -41,6 +42,8 @@ type CatalogueProductRecord = {
   lockedFields?: string[];
   providerFingerprint?: string;
   capabilities?: { saveSimChanges?: boolean };
+  publicationChangeState: 'clean' | 'dirty' | 'unknown';
+  publicationChangeReason?: string;
 };
 
 
@@ -74,17 +77,9 @@ async function catalogueRequest<T>(path = '', init: RequestInit = {}): Promise<T
   return payload as T;
 }
 
-function isAdoptedProductWithChanges(product: CatalogueProductRecord) {
-  const hasProviderIdentity = product.model.choices.some((choice) => choice.optionId !== undefined
-    || choice.values.some((value) => value.valueId !== undefined))
-    || product.model.combinations.some((combination) => combination.variantId !== undefined);
-  return product.status === 'published' && product.currentBundleProductId !== null
-    && product.revision > 1 && hasProviderIdentity;
-}
-
 function canPublishCatalogueProduct(product: CatalogueProductRecord, media: CatalogueMediaSummary[] | undefined) {
   const newDraft = product.status === 'draft' && product.currentBundleProductId === null;
-  if ((!newDraft && !isAdoptedProductWithChanges(product)) || !media?.length) return false;
+  if ((!newDraft && product.publicationChangeState !== 'dirty') || !media?.length) return false;
   const { model } = product;
   if (!model.details.title.trim() || !hasValidCatalogueVariants(model)) return false;
   const activeChoices = model.choices.map((choice) => choice.values.filter((value) => !value.retired));
@@ -284,7 +279,7 @@ function ProductsContent() {
       const localDrafts = catalogueResponse.products.filter((product) => product.status === 'draft' && product.currentBundleProductId === null);
       const [mediaEntries, publicationEntries] = await Promise.all([
         Promise.all(catalogueResponse.products
-          .filter((product) => product.status === 'draft' && product.currentBundleProductId === null || isAdoptedProductWithChanges(product))
+          .filter((product) => product.status === 'draft' && product.currentBundleProductId === null || product.publicationChangeState === 'dirty')
           .map(async (product) => {
           try {
             const response = await catalogueRequest<{ media: CatalogueMediaSummary[] }>(`/${encodeURIComponent(product.catalogueId)}/media`);
@@ -430,14 +425,22 @@ function ProductsContent() {
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
       const providerOperationUnresolved = localDraft && unresolvedPublication(cataloguePublications[row.catalogue.catalogueId]);
+      const activeSimAdoption = row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM';
+      const publicationAction = row.kind === 'catalogue' ? publicationActionPresentation({
+        state: row.catalogue.publicationChangeState,
+        localDraft,
+        simManaged: activeSimAdoption,
+        unknownReason: row.catalogue.publicationChangeReason,
+      }) : { visible: false } as const;
       const hazardousActionReason = row.kind === 'catalogue'
-        ? catalogueHazardReason(row.catalogue.model, providerOperationUnresolved)
+        ? publicationAction.visible && publicationAction.disabledReason
+          ? publicationAction.disabledReason
+          : catalogueHazardReason(row.catalogue.model, providerOperationUnresolved)
         : null;
       const hazardousActionReasonId = row.kind === 'catalogue' ? `catalogue-action-reason-${row.catalogue.catalogueId}` : undefined;
       const canPublish = row.kind === 'catalogue' && canPublishCatalogueProduct(row.catalogue, catalogueMedia[row.catalogue.catalogueId]);
-      const publishAvailable = row.kind === 'catalogue' && (localDraft || isAdoptedProductWithChanges(row.catalogue));
-      const publishLabel = row.kind === 'catalogue' && isAdoptedProductWithChanges(row.catalogue) ? 'Publish changes' : 'Publish';
-      const activeSimAdoption = row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM';
+      const publishAvailable = publicationAction.visible;
+      const publishLabel = publicationAction.visible ? publicationAction.label : 'Publish';
       const hazardousActionDisabled = hazardousActionReason !== null;
       return <tr key={key}>
         <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM' && <small>Managed by SIM workflow</small>}</div></div></td>

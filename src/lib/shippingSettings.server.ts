@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import path from 'path';
 import { COURIER_GROUPS, DEFAULT_SHIPPING_SETTINGS, type CourierGroup, type ShippingSettings } from './shipping';
+import { dataApiEnabled, mutateRemoteSingleton, readRemoteSingleton } from './dataApiClient.server';
 const file = path.join(process.cwd(), '.data', 'shipping-settings.json');
 const clone = () => JSON.parse(JSON.stringify(DEFAULT_SHIPPING_SETTINGS)) as ShippingSettings;
 export function validateShippingSettings(value: unknown): ShippingSettings {
@@ -11,5 +12,5 @@ export function validateShippingSettings(value: unknown): ShippingSettings {
   const productGroups: Record<string, CourierGroup> = {}; for (const [slug, group] of Object.entries(input.productGroups || {})) { const key = slug.trim().toLowerCase(); if (!key || !COURIER_GROUPS.includes(group)) throw new Error('Each product mapping needs a valid product slug and category.'); productGroups[key] = group; }
   return { priority: input.priority as CourierGroup[], groups, productGroups };
 }
-export async function readShippingSettings() { try { return validateShippingSettings(JSON.parse(await readFile(file, 'utf8'))); } catch { return clone(); } }
-export async function saveShippingSettings(value: unknown) { const settings = validateShippingSettings(value); await mkdir(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8'); await rename(temp, file); return settings; }
+export async function readShippingSettings() { if (dataApiEnabled()) return validateShippingSettings(await readRemoteSingleton('shipping-settings', clone)); try { return validateShippingSettings(JSON.parse(await readFile(file, 'utf8'))); } catch { return clone(); } }
+export async function saveShippingSettings(value: unknown) { const settings = validateShippingSettings(value); if (dataApiEnabled()) return mutateRemoteSingleton('shipping-settings', clone, () => settings); await mkdir(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8'); await rename(temp, file); return settings; }

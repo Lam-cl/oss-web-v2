@@ -240,7 +240,7 @@ export async function updateCatalogueProduct(
 
 export async function listCatalogueProducts(directory = CATALOGUE_PRODUCT_DIRECTORY): Promise<CatalogueProductRecord[]> {
   if (directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled()) {
-    return (await remoteDocuments<CatalogueProductRecord>('catalogue-products')).map((item) => validateRecord(item.value, item.key));
+    return (await remoteDocuments<CatalogueProductRecord>('catalogue-products')).map((item) => validateRecord(item.value, item.key)).sort((left, right) => left.catalogueId.localeCompare(right.catalogueId));
   }
   let entries;
   try { entries = await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true }); }
@@ -249,5 +249,5 @@ export async function listCatalogueProducts(directory = CATALOGUE_PRODUCT_DIRECT
   for (const entry of entries) if (entry.isFile() && /^[0-9a-f-]{36}\.json$/.test(entry.name)) {
     const product = await readCatalogueProduct(entry.name.slice(0, -5), directory); if (product) products.push(product);
   }
-  return products;
+  return products.sort((left, right) => left.catalogueId.localeCompare(right.catalogueId));
 }

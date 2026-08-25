@@ -40,6 +40,7 @@ const auditFiles = [
   const rel='src/lib/admin/catalogueAdoption.server.ts';
   assert(fs.existsSync(path.join(root,rel)),`${rel} missing`);
   const adoption=compile(rel,{
+    '../dataApiClient.server':{dataApiEnabled:()=>false},
     './productEditor':compile('src/lib/admin/productEditor.ts'),
     './productBundleState':compile('src/lib/admin/productBundleState.ts'),
   });
@@ -112,7 +113,7 @@ const auditFiles = [
   const rolledAgain=await adoption.rollbackCatalogueAdoption(23,{dataDirectory:rollbackRoot});assert.equal(rolledAgain.idempotent,true);assert.equal(rolledAgain.archiveDirectory,rolled.archiveDirectory);
   // Every adoption, activation, product, supersession and rollback rename is followed by file/directory fsyncs.
   const durabilityEvents=[],instrumentedFs={...fsp,open:async(target,...args)=>{const handle=await fsp.open(target,...args);return new Proxy(handle,{get(object,key){if(key==='sync')return async()=>{durabilityEvents.push(`sync:${target}`);return object.sync()};const value=object[key];return typeof value==='function'?value.bind(object):value}})},rename:async(sourcePath,destinationPath)=>{await fsp.rename(sourcePath,destinationPath);durabilityEvents.push(`rename:${sourcePath}->${destinationPath}`)}};
-  const durableAdoption=compile(rel,{'node:fs/promises':instrumentedFs,'./productEditor':compile('src/lib/admin/productEditor.ts'),'./productBundleState':compile('src/lib/admin/productBundleState.ts')});
+  const durableAdoption=compile(rel,{'node:fs/promises':instrumentedFs,'../dataApiClient.server':{dataApiEnabled:()=>false},'./productEditor':compile('src/lib/admin/productEditor.ts'),'./productBundleState':compile('src/lib/admin/productBundleState.ts')});
   const durableRoot=await fsp.mkdtemp(path.join(os.tmpdir(),'catalogue-adopt-durable-'));await durableAdoption.adoptLegacyBundleProduct(spec,deps,{dataDirectory:durableRoot});await durableAdoption.rollbackCatalogueAdoption(23,{dataDirectory:durableRoot,now:()=>new Date('2026-08-24T03:00:00.000Z')});
   const supersedeRoot=await fsp.mkdtemp(path.join(os.tmpdir(),'catalogue-adopt-durable-super-'));await durableAdoption.adoptLegacyBundleProduct(spec,deps,{dataDirectory:supersedeRoot});await durableAdoption.supersedeCatalogueAdoption(23,501,{dataDirectory:supersedeRoot});
   const renameIndexes=durabilityEvents.flatMap((event,index)=>event.startsWith('rename:')?[index]:[]);assert(renameIndexes.length>=12,'all durable state transitions must exercise rename durability');

@@ -86,7 +86,9 @@ const oversizedStream = () => {
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'tw-catalogue-routes-'));
   const productId = randomUUID();
   const missingProductId = randomUUID();
-  const mediaModule = compile(path.join(root, 'src/lib/admin/catalogueMedia.server.ts'));
+  const mediaModule = compile(path.join(root, 'src/lib/admin/catalogueMedia.server.ts'), {
+    '@/lib/dataApiClient.server': { dataApiEnabled: () => false },
+  });
   const realStore = mediaModule.createCatalogueMediaStore(directory);
   let productReads = 0;
   let simActive = false;

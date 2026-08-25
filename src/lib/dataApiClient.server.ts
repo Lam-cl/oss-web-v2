@@ -64,3 +64,24 @@ export const replaceRemoteDocument = <T>(namespace: string, key: string, expecte
     body: JSON.stringify({ revision: document.revision, value, createdAt: document.createdAt, updatedAt: document.updatedAt }),
   }));
 };
+
+export async function readRemoteSingleton<T>(namespace: string, fallback: () => T): Promise<T> {
+  const document = await remoteDocument<T>(namespace, 'singleton');
+  return document ? document.value : fallback();
+}
+
+export async function mutateRemoteSingleton<T>(namespace: string, fallback: () => T, mutate: (value: T) => T | Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const current = await remoteDocument<T>(namespace, 'singleton');
+    const value = await mutate(structuredClone(current?.value ?? fallback()));
+    const now = new Date().toISOString();
+    try {
+      if (!current) await createRemoteDocument(namespace, 'singleton', value, { revision: 1, createdAt: now, updatedAt: now });
+      else await replaceRemoteDocument(namespace, 'singleton', current.revision, value, { revision: current.revision + 1, createdAt: current.createdAt, updatedAt: now });
+      return value;
+    } catch (error) {
+      if (!(error instanceof ToneWowDataApiError) || error.status !== 409 || attempt === 4) throw error;
+    }
+  }
+  throw new ToneWowDataApiError('ToneWow Data API update did not converge.', 409, 'REVISION_CONFLICT');
+}

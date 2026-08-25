@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import path from 'path';
+import { dataApiEnabled, mutateRemoteSingleton, readRemoteSingleton } from './dataApiClient.server';
 
 export type ProductImageColorAssignment = 'all' | number;
 export type ProductImageColorSettings = {
@@ -44,8 +45,18 @@ export function validateHiddenOptionValueIds(value: unknown) {
 }
 
 export async function readProductImageColorSettings(): Promise<ProductImageColorSettings> {
+  if (dataApiEnabled()) return normalizeSettings(await readRemoteSingleton('product-image-colors', emptySettings));
   try {
-    const input = JSON.parse(await readFile(file, 'utf8')) as Partial<ProductImageColorSettings>;
+    return normalizeSettings(JSON.parse(await readFile(file, 'utf8')));
+  } catch {
+    return emptySettings();
+  }
+}
+
+const emptySettings = (): ProductImageColorSettings => ({ products: {}, hiddenOptionValues: {} });
+function normalizeSettings(value: unknown): ProductImageColorSettings {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Product image color storage is corrupt.');
+    const input = value as Partial<ProductImageColorSettings>;
     const products: ProductImageColorSettings['products'] = {};
     for (const [productId, assignments] of Object.entries(input.products || {})) {
       if (!positiveId(productId)) continue;
@@ -57,9 +68,17 @@ export async function readProductImageColorSettings(): Promise<ProductImageColor
       hiddenOptionValues[String(positiveId(productId))] = validateHiddenOptionValueIds(valueIds);
     }
     return { products, hiddenOptionValues };
-  } catch {
-    return { products: {}, hiddenOptionValues: {} };
-  }
+}
+
+async function updateSettings(mutate: (settings: ProductImageColorSettings) => void) {
+  if (dataApiEnabled()) return mutateRemoteSingleton('product-image-colors', emptySettings, value => { const settings = normalizeSettings(value); mutate(settings); return settings; });
+  const settings = await readProductImageColorSettings();
+  mutate(settings);
+  await mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+  await rename(temp, file);
+  return settings;
 }
 
 export async function readProductImageColors(productId: number) {
@@ -77,25 +96,19 @@ export async function readProductHiddenOptionValues(productId: number) {
 export async function saveProductHiddenOptionValues(productId: number, value: unknown) {
   if (!positiveId(productId)) throw new Error('A valid product ID is required.');
   const valueIds = validateHiddenOptionValueIds(value);
-  const settings = await readProductImageColorSettings();
-  if (valueIds.length) settings.hiddenOptionValues[String(productId)] = valueIds;
-  else delete settings.hiddenOptionValues[String(productId)];
-  await mkdir(path.dirname(file), { recursive: true });
-  const temp = `${file}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-  await rename(temp, file);
+  await updateSettings(settings => {
+    if (valueIds.length) settings.hiddenOptionValues[String(productId)] = valueIds;
+    else delete settings.hiddenOptionValues[String(productId)];
+  });
   return valueIds;
 }
 
 export async function saveProductImageColors(productId: number, value: unknown) {
   if (!positiveId(productId)) throw new Error('A valid product ID is required.');
   const assignments = validateProductImageColorAssignments(value);
-  const settings = await readProductImageColorSettings();
-  if (Object.keys(assignments).length) settings.products[String(productId)] = assignments;
-  else delete settings.products[String(productId)];
-  await mkdir(path.dirname(file), { recursive: true });
-  const temp = `${file}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-  await rename(temp, file);
+  await updateSettings(settings => {
+    if (Object.keys(assignments).length) settings.products[String(productId)] = assignments;
+    else delete settings.products[String(productId)];
+  });
   return assignments;
 }

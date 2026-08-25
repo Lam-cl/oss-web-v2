@@ -308,7 +308,7 @@ export async function updatePublicationJob(id: string, expectedRevision: number,
 
 export async function listPublicationJobs(directory = DEFAULT_DIRECTORY): Promise<CataloguePublicationJob[]> {
   if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) {
-    return (await remoteDocuments<CataloguePublicationJob>('catalogue-publications')).map((item) => validateJob(item.value, item.key));
+    return (await remoteDocuments<CataloguePublicationJob>('catalogue-publications')).map((item) => validateJob(item.value, item.key)).sort((left, right) => left.operationId.localeCompare(right.operationId));
   }
   let entries;
   try { entries = await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true }); }
@@ -317,5 +317,5 @@ export async function listPublicationJobs(directory = DEFAULT_DIRECTORY): Promis
   for (const entry of entries) if (entry.isFile() && /^[a-f0-9]{64}\.json$/.test(entry.name)) {
     const job = await readPublicationJob(entry.name.slice(0, -5), directory); if (job) jobs.push(job);
   }
-  return jobs;
+  return jobs.sort((left, right) => left.operationId.localeCompare(right.operationId));
 }

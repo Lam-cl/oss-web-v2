@@ -12,7 +12,9 @@ function load(file) {
   file = path.resolve(root, file); if (cache.has(file)) return cache.get(file).exports;
   const module = { exports: {} }; cache.set(file, module);
   const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  const localRequire = name => name.startsWith('.') ? load(path.relative(root, path.resolve(path.dirname(file), name.endsWith('.ts') ? name : `${name}.ts`))) : require(name);
+  const localRequire = name => name === '@/lib/dataApiClient.server'
+    ? { dataApiEnabled: () => false }
+    : name.startsWith('.') ? load(path.relative(root, path.resolve(path.dirname(file), name.endsWith('.ts') ? name : `${name}.ts`))) : require(name);
   new Function('exports','require','module','__filename','__dirname',output)(module.exports,localRequire,module,file,path.dirname(file)); return module.exports;
 }
 const publisher = load('src/lib/admin/cataloguePublish.server.ts');

@@ -12,7 +12,7 @@ import {
   rm,
 } from "node:fs/promises";
 import path from "node:path";
-import { dataApiEnabled, remoteDocument, replaceRemoteDocument } from '@/lib/dataApiClient.server';
+import { dataApiEnabled, remoteDocument, replaceRemoteDocument } from '../dataApiClient.server';
 import { isDeepStrictEqual } from "node:util";
 import {
   normalizeProductEditorSpec,

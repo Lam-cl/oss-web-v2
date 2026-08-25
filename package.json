@@ -2,11 +2,18 @@
   "name": "tonewow-frontend",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:data-api": "npm run build --workspace @tonewow/data-api",
+    "test:data-api": "npm run test --workspace @tonewow/data-api",
+    "migrate:data-api": "npm run migrate --workspace @tonewow/data-api"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

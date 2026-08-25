@@ -57,13 +57,22 @@ export interface Plan {
 
 export interface CartItem {
   id: string;
-  type: 'sim' | 'device';
+  type: 'sim' | 'device' | 'merchandise';
   plan?: string;
   number?: string;
   numberType?: string;
   category?: string;
+  productId?: string;
+  bundleProductId?: number;
+  bundleVariantId?: number;
+  slug?: string;
+  variant?: string;
+  size?: string;
+  image?: string;
   price: number;
   quantity: number;
+  minimumOrderQuantity?: number;
+  availableQuantity?: number;
   simType?: string;
   name: string;
   description?: string;

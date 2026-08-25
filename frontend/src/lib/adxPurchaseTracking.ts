@@ -1,10 +1,6 @@
 'use client';
 
-import {
-  ADX_PURCHASE_COOKIE_KEY,
-  normalizeAdxPaymentRef,
-  serializeAdxPurchaseMarker,
-} from '@/lib/adxPurchaseMarker';
+import { normalizeAdxPaymentRef } from '@/lib/adxPurchaseMarker';
 
 const ADX_PURCHASE_STORAGE_KEY = 'tw_adx_purchase';
 const ADX_TRACKED_PREFIX = 'tw_adx_purchase_tracked:';
@@ -32,14 +28,11 @@ declare global {
 }
 
 export function rememberAdxPurchase(metadata: AdxPurchaseMetadata) {
-  localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
-  const marker = serializeAdxPurchaseMarker({
-    refNo: metadata.refNo,
-    paymentRefNo: metadata.paymentRefNo,
-    simType: metadata.simType,
-  });
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${ADX_PURCHASE_COOKIE_KEY}=${marker}; Path=/; Max-Age=7200; SameSite=Lax${secure}`;
+  try {
+    localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
+  } catch {
+    // Payment routing uses signed callback context; browser storage is optional.
+  }
 }
 
 export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | null {
@@ -70,7 +63,11 @@ export function trackAdxPurchase(refNo: string): TrackingResult {
   if (!normalizedRef) return 'not-ready';
 
   const trackedKey = `${ADX_TRACKED_PREFIX}${normalizedRef}`;
-  if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  try {
+    if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  } catch {
+    return 'not-ready';
+  }
   if (typeof window.gtag !== 'function') return 'not-ready';
 
   const metadata = getMatchingAdxPurchase(refNo);
@@ -90,8 +87,12 @@ export function trackAdxPurchase(refNo: string): TrackingResult {
     }],
   });
 
-  localStorage.setItem(trackedKey, '1');
-  localStorage.removeItem(ADX_PURCHASE_STORAGE_KEY);
+  try {
+    localStorage.setItem(trackedKey, '1');
+    localStorage.removeItem(ADX_PURCHASE_STORAGE_KEY);
+  } catch {
+    // Tracking was sent; unavailable storage only prevents client-side deduplication.
+  }
   return 'tracked';
 }
 
@@ -100,7 +101,11 @@ export function trackAdxPaymentOutcome(refNo: string, outcome: AdxPaymentOutcome
   if (!normalizedRef) return 'not-ready';
 
   const trackedKey = `${ADX_OUTCOME_TRACKED_PREFIX}${outcome}:${normalizedRef}`;
-  if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  try {
+    if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  } catch {
+    return 'not-ready';
+  }
   if (typeof window.gtag !== 'function') return 'not-ready';
 
   const metadata = getMatchingAdxPurchase(refNo);
@@ -121,6 +126,6 @@ export function trackAdxPaymentOutcome(refNo: string, outcome: AdxPaymentOutcome
     }],
   });
 
-  localStorage.setItem(trackedKey, '1');
+  try { localStorage.setItem(trackedKey, '1'); } catch { /* tracking was already sent */ }
   return 'tracked';
 }

@@ -64,6 +64,18 @@ function bundleProductToDevice(product: any): BundleDevice {
   };
 }
 
+function optionKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function variantForOption(device: BundleDevice, value?: string) {
+  const variants = device._productVariants || [];
+  if (!value) return variants[0];
+  const key = optionKey(value);
+  const matches = variants.filter((variant) => optionKey(variant.sku || '').includes(key));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /* ─── Icons ──────────────────────────────────────────────────────── */
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -141,6 +153,9 @@ export default function DeviceDetailPage() {
   const mainImage = gallery[selectedColorIdx] || gallery[0];
   const colorOption = bd._options?.find(o => o.name === 'Color');
   const colorValues = colorOption?.values || [];
+  const selectedVariant = variantForOption(bd, colorValues[selectedColorIdx]?.value);
+  const selectedVariantId = selectedVariant?.id ?? (!colorValues.length ? bd._productVariants?.[0]?.id : undefined);
+  const selectedMonthlyPrice = Math.round(Number(selectedVariant?.price ?? device.rrp) / 24);
 
   const rawLines = (bd._description || '').split('\n').map((l: string) => l.trim()).filter(Boolean);
   const specs = rawLines
@@ -292,13 +307,14 @@ export default function DeviceDetailPage() {
               ) : (
                 <button
                   className="dd-buy-btn"
+                  disabled={colorValues.length > 0 && !selectedVariant}
                   onClick={() => {
-                    const selectedVariantId = bd._productVariants?.[selectedColorIdx]?.id ?? bd._productVariants?.[0]?.id;
+                    if (!selectedVariantId) return;
                     const variantParam = selectedVariantId ? `&variantId=${selectedVariantId}` : '';
                     router.push(`/devices/checkout?id=${bd.external_id || device.id}${variantParam}`);
                   }}
                 >
-                  Buy Now — RM{device.monthly_price}/month
+                  {selectedVariantId ? `Buy Now — RM${selectedMonthlyPrice}/month` : 'Variation unavailable'}
                 </button>
               )}
 

@@ -2,6 +2,7 @@ import HeroCarousel from '@/components/home/HeroCarousel';
 import CategoryTabs from '@/components/home/CategoryTabs';
 import ReferralCapture from '@/components/referral/ReferralCapture';
 import { getSettings, type AppSettings } from '@/lib/api';
+import { isDevicesEnabled, isMerchandiseEnabled } from '@/lib/features';
 import type { Banner } from '@/types';
 
 const FALLBACK_BANNERS: Banner[] = [
@@ -12,8 +13,8 @@ const FALLBACK_BANNERS: Banner[] = [
 ];
 
 const FALLBACK_SETTINGS: AppSettings = {
-  showDevices: false,
-  showMerchandise: false,
+  showDevices: isDevicesEnabled(),
+  showMerchandise: isMerchandiseEnabled(),
   simBasePrice: 19.50,
 };
 

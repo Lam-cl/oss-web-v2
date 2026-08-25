@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  ADX_PURCHASE_COOKIE_KEY,
-  matchesAdxPurchaseMarker,
-  normalizeAdxPaymentRef,
-  parseAdxPurchaseMarker,
-} from '@/lib/adxPurchaseMarker';
+import { readAdxPaymentReference } from '@/lib/adxPaymentReferenceStore';
 
 const ESIM_DETAIL_KEYS = ['simserial', 'esimQR', 'puk1', 'pin1', 'puk2', 'pin2'] as const;
 const BIJAKBUATDUIT_RETURN_RESOLVER =
@@ -47,11 +42,6 @@ async function resolveBijakBuatDuitReturn(
   }
 }
 
-// These orders were created before ADX markers were embedded in the gateway callback URL.
-const LEGACY_ADX_ORDERS: Record<string, { simType: 'physical' | 'esim' }> = {
-  twoss847682607301559: { simType: 'esim' },
-};
-
 function publicOriginFor(req: NextRequest): string {
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
   const host = forwardedHost || req.headers.get('host')?.split(',')[0]?.trim();
@@ -74,20 +64,20 @@ export async function handlePaymentConfirmation(
   let status = searchParams.get('status') || '';
   let description = searchParams.get('desc') || searchParams.get('description') || '';
   let referralContext = searchParams.get('refctx') || '';
+  let locale = searchParams.get('locale') || 'en';
   let flow = searchParams.get('flow') || '';
   let prodDesc = searchParams.get('prodDesc')
     || searchParams.get('proddesc')
     || searchParams.get('PRODDESC')
     || '';
   let isEsim = forceEsim || searchParams.get('esim') === '1' || flow === 'esim';
-  const esimDetails: Record<(typeof ESIM_DETAIL_KEYS)[number], string> = {
-    simserial: searchParams.get('simserial') || searchParams.get('simSerial') || '',
-    esimQR: searchParams.get('esimQR') || '',
-    puk1: searchParams.get('puk1') || '',
-    pin1: searchParams.get('pin1') || '',
-    puk2: searchParams.get('puk2') || '',
-    pin2: searchParams.get('pin2') || '',
-  };
+  const esimDetails: Partial<Record<(typeof ESIM_DETAIL_KEYS)[number], string>> = {};
+  for (const key of ESIM_DETAIL_KEYS) {
+    const value = key === 'simserial'
+      ? searchParams.get('simserial') || searchParams.get('simSerial')
+      : searchParams.get(key);
+    if (value) esimDetails[key] = value;
+  }
 
   if (method === 'POST') {
     try {
@@ -100,6 +90,7 @@ export async function handlePaymentConfirmation(
       status = status || body.get('status')?.toString() || '';
       description = description || body.get('desc')?.toString() || body.get('description')?.toString() || '';
       referralContext = referralContext || body.get('refctx')?.toString() || '';
+      locale = searchParams.get('locale') || body.get('locale')?.toString() || 'en';
       flow = flow || body.get('flow')?.toString() || '';
       prodDesc = prodDesc
         || body.get('prodDesc')?.toString()
@@ -109,16 +100,19 @@ export async function handlePaymentConfirmation(
       const bodyEsim = body.get('esim')?.toString() || body.get('isEsim')?.toString() || '';
       isEsim = isEsim || bodyEsim === '1' || bodyEsim.toLowerCase() === 'true';
       for (const key of ESIM_DETAIL_KEYS) {
-        esimDetails[key] = esimDetails[key]
-          || body.get(key)?.toString()
-          || (key === 'simserial' ? body.get('simSerial')?.toString() : '')
-          || '';
+        const value = key === 'simserial'
+          ? body.get('simserial')?.toString() || body.get('simSerial')?.toString()
+          : body.get(key)?.toString();
+        if (!esimDetails[key] && value) esimDetails[key] = value;
       }
-    } catch { /* body parse failed, use query params only */ }
+    } catch {
+      // Use the query parameters when the gateway body is unavailable.
+    }
   }
 
-  // Only exact full payment references created by BijakBuatDuit are routed
-  // back there. All ordinary ToneWow confirmations retain the existing flow.
+  // Physical SIM payments force their return through shop.tonewow.com. Only
+  // exact payment references created by BijakBuatDuit are routed back there;
+  // every other ToneWow order keeps the original confirmation flow below.
   if (refno) {
     const bijakBuatDuitReturn = await resolveBijakBuatDuitReturn(refno, status, description);
     if (bijakBuatDuitReturn) {
@@ -126,44 +120,28 @@ export async function handlePaymentConfirmation(
     }
   }
 
-  const storedAdxMarker = parseAdxPurchaseMarker(req.cookies.get(ADX_PURCHASE_COOKIE_KEY)?.value);
-  const matchedAdxMarker = matchesAdxPurchaseMarker(storedAdxMarker, refno) ? storedAdxMarker : null;
-  const legacyAdxOrder = LEGACY_ADX_ORDERS[normalizeAdxPaymentRef(refno)];
+  const serverAdxMarker = refno ? await readAdxPaymentReference(refno) : null;
   const isAdx = forceAdx
-    || flow.toLowerCase() === 'adx'
-    || prodDesc.toLowerCase() === 'osspaymentadx'
-    || Boolean(matchedAdxMarker)
-    || Boolean(legacyAdxOrder);
-  isEsim = isEsim
-    || matchedAdxMarker?.simType === 'esim'
-    || legacyAdxOrder?.simType === 'esim';
-
-  const redirect = (url: URL) => {
-    const response = NextResponse.redirect(url, method === 'POST' ? 303 : 307);
-    if (matchedAdxMarker) {
-      response.cookies.set(ADX_PURCHASE_COOKIE_KEY, '', { path: '/', maxAge: 0 });
-    }
-    return response;
-  };
-
-  if (ESIM_DETAIL_KEYS.some((key) => esimDetails[key])) {
-    const successUrl = new URL(isAdx ? '/adx/esim-success' : '/sim/esim-success', publicOriginFor(req));
-    if (refno) successUrl.searchParams.set('refno', refno);
-    successUrl.searchParams.set('locale', searchParams.get('locale') || 'en');
-    if (referralContext) successUrl.searchParams.set('refctx', referralContext);
+    || prodDesc === 'OSSPaymentADX'
+    || Boolean(serverAdxMarker);
+  isEsim = isEsim || serverAdxMarker?.simType === 'esim';
+  const hasEsimDetails = ESIM_DETAIL_KEYS.some(key => Boolean(esimDetails[key]));
+  const destination = hasEsimDetails
+    ? isAdx ? '/adx/esim-success' : '/sim/esim-success'
+    : isAdx ? '/adx/thank-you' : '/thank-you';
+  const url = new URL(destination, publicOriginFor(req));
+  if (refno) url.searchParams.set('refno', refno);
+  url.searchParams.set('locale', locale);
+  if (isEsim && !hasEsimDetails) url.searchParams.set('esim', '1');
+  if (referralContext) url.searchParams.set('refctx', referralContext);
+  if (hasEsimDetails) {
     for (const key of ESIM_DETAIL_KEYS) {
-      if (esimDetails[key]) successUrl.searchParams.set(key, esimDetails[key]);
+      if (esimDetails[key]) url.searchParams.set(key, esimDetails[key]);
     }
-    return redirect(successUrl);
+  } else {
+    if (status) url.searchParams.set('status', status);
+    if (description) url.searchParams.set('desc', description);
   }
 
-  const url = new URL(isAdx ? '/adx/thank-you' : '/thank-you', publicOriginFor(req));
-  if (refno) url.searchParams.set('refno', refno);
-  url.searchParams.set('locale', searchParams.get('locale') || 'en');
-  if (isEsim) url.searchParams.set('esim', '1');
-  if (referralContext) url.searchParams.set('refctx', referralContext);
-  if (status) url.searchParams.set('status', status);
-  if (description) url.searchParams.set('desc', description);
-
-  return redirect(url);
+  return NextResponse.redirect(url, method === 'POST' ? 303 : 307);
 }

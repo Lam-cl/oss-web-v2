@@ -1,5 +1,6 @@
 import { getApiBaseUrl, getNestApiBaseUrl, isTgpaymentSameOriginRewrite } from './constants';
 import type { DeviceResponse, Device, Brand, Banner, Plan, NumberResult } from '@/types';
+import { isProductSetupDraft } from './productSetup';
 
 /** tgpayment paths when using `/api-proxy` rewrite (not Nest). */
 async function fetchTgpaymentRewrite<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -135,7 +136,7 @@ const BUNDLE_API = 'https://bundleapi.tonewow.com/api';
 export async function getBundleProducts(limit = 20): Promise<any[]> {
   try {
     const bundleUrl = `${BUNDLE_API}/products?limit=${limit}`;
-    return await proxyGet(bundleUrl).then((data) => data.data || []);
+    return await proxyGet(bundleUrl).then((data) => (data.data || []).filter((product: any) => !isProductSetupDraft(product)));
   } catch {
     return [];
   }
@@ -153,10 +154,42 @@ export async function getBundleProductBySlug(slug: string): Promise<any | null> 
 export async function getBundleProductById(id: number): Promise<any | null> {
   try {
     const bundleUrl = `${BUNDLE_API}/products/${id}`;
-    return await proxyGet(bundleUrl);
+    const product = await proxyGet(bundleUrl);
+    return isProductSetupDraft(product) ? null : product;
   } catch {
     return null;
   }
+}
+
+export interface BundleGuestCheckout {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  description: string;
+  items: Array<{ productId: number; variantId: number; quantity: number }>;
+  billingAddress: Record<string, string>;
+  shippingAddress: Record<string, string>;
+  isGuest: true;
+  deliveryOption: 'DELIVER' | 'PICKUP';
+  agentId?: string;
+}
+
+export async function initiateBundleGuestPayment(data: BundleGuestCheckout): Promise<{
+  success: boolean;
+  orderId?: string;
+  paymentUrl?: string;
+  paymentParams?: Record<string, string>;
+  redirectMethod?: 'GET' | 'POST';
+  error?: string;
+}> {
+  const response = await fetch('/bundle/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Unable to initiate merchandise payment');
+  return result;
 }
 
 // ToneWow GWP API

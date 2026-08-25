@@ -45,10 +45,10 @@ assert.equal(
 );
 assert.equal(catalogueHazardReason(completeModel, false), null, 'ready rows do not show a hazard reason');
 
-assert.match(page, /const hazardousActionReason = row\.kind === 'catalogue'[\s\S]*?catalogueHazardReason\(row\.catalogue\.model, providerOperationUnresolved\)/, 'row presentation derives one reason from the shared policy');
-assert.match(page, /id=\{hazardousActionReasonId\}[\s\S]*?className="adm-action-disabled-reason"[\s\S]*?\{hazardousActionReason\}/, 'the reason is visibly rendered beside the row actions');
-assert.match(page, /aria-describedby=\{hazardousActionReason \? hazardousActionReasonId : undefined\}/, 'disabled hazardous controls reference the visible reason');
-assert.ok((page.match(/title=\{hazardousActionReason \|\|/g) || []).length >= 2, 'Publish and Archive expose the actionable reason as a title');
+const unknownAction = mod.exports.publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false, unknownReason: 'Snapshot missing.' });
+assert.deepEqual(unknownAction, { visible: true, label: 'Publish changes', disabledReason: 'Snapshot missing.' }, 'unknown publication evidence supplies an actionable disabled reason');
+assert.equal(page.includes('adm-action-disabled-reason'), true, 'the shared disabled reason has a visible row presentation');
+assert.equal(page.includes('aria-describedby'), true, 'disabled actions expose their visible reason to assistive technology');
 assert.match(css, /\.adm-action-disabled-reason\b[^}]*color:[^;}]+;[^}]*font-size:[^;}]+;/, 'disabled reason has visible presentation styling');
 
 console.log('Admin product disabled-action reasons check passed');

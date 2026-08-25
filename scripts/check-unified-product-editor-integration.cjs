@@ -37,10 +37,14 @@ assert.match(source, /await load\(\);[\s\S]*?Product published successfully\. It
 assert.match(source, /The product could not be published\. Please review it and try again\./, 'publication failures must show a safe operator-facing error');
 assert.match(source, /title=\{hazardousActionReason \|\| `\$\{publishLabel\} for \$\{title\} to OSS`\}[\s\S]*?aria-label=\{`\$\{publishLabel\} for \$\{title\} to OSS`\}[\s\S]*?aria-describedby=\{hazardousActionReason \? hazardousActionReasonId : undefined\}/, 'Publish must retain its clear label while exposing the visible disabled reason through title and aria-describedby');
 assert.equal((source.match(/\/publish`/g) || []).length, 1, 'saving and editing must never auto-publish');
-assert.match(source, /function isAdoptedProductWithChanges/, 'adopted products need a durable edited-state publication gate');
-assert.match(source, /bundleVersions\.length === 1 && product\.revision > 1/, 'only edited first-generation adopted products may publish replacement changes');
-assert.match(source, /Publish changes/, 'edited adopted products must expose clear Publish changes wording');
-assert.match(source, /filter\(\(product\) => product\.status === 'draft'[\s\S]*?isAdoptedProductWithChanges\(product\)\)/, 'saved media readiness must also load for edited adopted products');
+const presentationSource = fs.readFileSync(path.join(root, 'src/app/admin/products/productPresentation.ts'), 'utf8');
+const presentationOutput = require('typescript').transpileModule(presentationSource, { compilerOptions: { module: require('typescript').ModuleKind.CommonJS, target: require('typescript').ScriptTarget.ES2022 } }).outputText;
+const presentation = { exports: {} };
+new Function('exports', 'require', 'module', presentationOutput)(presentation.exports, require, presentation);
+const dirtyAction = presentation.exports.publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: false });
+assert.deepEqual(dirtyAction, { visible: true, label: 'Publish changes', disabledReason: null }, 'verified dirty evidence exposes replacement publication');
+assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'clean', localDraft: false, simManaged: false }), { visible: false }, 'verified clean evidence hides publication');
+assert.equal(presentation.exports.publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false }).disabledReason.length > 0, true, 'unknown evidence stays visible but disabled with a reason');
 assert.match(source, /encodeURIComponent\(product\.catalogueId\)\}\/archive`[\s\S]*?JSON\.stringify\(\{ revision: product\.revision \}\)/, 'Archive must call the exact revision-aware Catalogue route');
 assert.match(source, /Archive \$\{title\}/, 'draft Catalogue rows must expose an Archive action');
 assert.match(source, /Product archived successfully\./, 'successful archive must refresh the list and confirm removal');

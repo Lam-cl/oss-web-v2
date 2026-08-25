@@ -10,6 +10,10 @@ const products = fs.readFileSync(path.join(root, 'src/app/admin/products/page.ts
 const publishRoute = fs.readFileSync(path.join(root, 'src/app/api/admin/sim-products/[productId]/publish/route.ts'), 'utf8');
 const publishAlias = fs.readFileSync(path.join(root, 'src/app/admin-api/sim-products/[productId]/publish/route.ts'), 'utf8');
 const adoption = fs.readFileSync(path.join(root, 'src/lib/admin/catalogueAdoption.server.ts'), 'utf8');
+const presentationSource = fs.readFileSync(path.join(root, 'src/app/admin/products/productPresentation.ts'), 'utf8');
+const presentationOutput = ts.transpileModule(presentationSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const presentation = { exports: {} };
+new Function('exports', 'require', 'module', presentationOutput)(presentation.exports, require, presentation);
 
 function loadUnifiedProductEditor() {
   const file = path.join(root, 'src/components/admin/UnifiedProductEditor.tsx');
@@ -76,7 +80,7 @@ assert.match(products, /lockedFields\?:\s*string\[\]/, 'catalogue record accepts
 assert.match(products, /capabilities\?:\s*\{\s*saveSimChanges\?:\s*boolean\s*\}/, 'catalogue record accepts explicit SIM-save capability');
 assert.match(products, /saveMode=\{catalogueProduct\.managementDomain === 'SIM'[\s\S]*?saveSimChanges/, 'existing editor derives save mode from backend capability');
 assert.match(products, /managementDomain\s*===\s*'SIM'/, 'products page identifies active SIM adoptions from backend enrichment');
-assert.match(products, /!activeSimAdoption\s*&&\s*publishAvailable/, 'active SIM rows do not expose generic Publish changes');
+assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: false }, 'active SIM rows do not expose generic Publish changes');
 assert.match(products, /!activeSimAdoption\s*&&\s*row\.catalogue\.status === 'published'/, 'active SIM rows do not expose Unpublish');
 assert.match(products, /!activeSimAdoption\s*&&\s*localDraft/, 'SIM guard applies to Archive controls');
 assert.match(products, /Managed by SIM workflow/, 'SIM ownership is visible in the products list');

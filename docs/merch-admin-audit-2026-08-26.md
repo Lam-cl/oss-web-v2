@@ -56,6 +56,7 @@ Twelve publication jobs were loaded once and indexed for sixteen catalogue recor
 - Publication lifecycle and evidence tests: 13/13 passed, covering generations 1, 2, 5 and 8; clean → save → dirty → republish → clean → save → dirty; model, slug, SKU, inventory, choices and media changes; missing/corrupt/duplicate evidence.
 - Focused catalogue, gallery, inventory, cart, checkout, shipping, order and SIM regression set: passed.
 - Before-rollout public response fingerprints were captured for `/bundle/merchandise` and `/catalogue-products-api` for post-rollout parity comparison.
+- Full historical `check-*.cjs/js` sweep: 90 passed, 11 baseline failures. The failures are the four old admin source-literal checks (`courier`, expected-delivery, fulfilment fields and SIM UI), fulfilment SKU source matching, two dated 19-August data/campaign checks, payment-page source matching, the pre-existing cross-catalogue SIM variant assertion, staging-export report-path handling, and voucher/payment allowlist source matching.
 
 The repository also contains historical source-string checks and dated 19-August campaign/catalogue checks. Failures in those baseline checks are tracked separately from this change when they assert obsolete literal formatting or superseded provider data; production behavior was not changed merely to satisfy them.
 

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  genericCatalogueLifecycleAllowed,
   hasValidCatalogueVariants,
+  isSimCatalogueCategory,
   isSystemCatalogueProduct,
   productSearchText,
   publicationActionPresentation,
@@ -66,6 +68,11 @@ test('unknown or incomplete provider publication state is unresolved', () => {
 });
 
 test('publication actions follow evidence state and keep SIM on its dedicated workflow', () => {
+  assert.equal(isSimCatalogueCategory('SIM'), true);
+  assert.equal(isSimCatalogueCategory('SIM Card'), true);
+  assert.equal(isSimCatalogueCategory('Accessories'), false);
+  assert.equal(genericCatalogueLifecycleAllowed(true), false);
+  assert.equal(genericCatalogueLifecycleAllowed(false), true);
   assert.deepEqual(publicationActionPresentation({ state: 'clean', localDraft: false, simManaged: false }), { visible: false });
   assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: false }), {
     visible: true, label: 'Publish changes', disabledReason: null,

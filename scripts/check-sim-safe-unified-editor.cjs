@@ -81,8 +81,8 @@ assert.match(products, /capabilities\?:\s*\{\s*saveSimChanges\?:\s*boolean\s*\}/
 assert.match(products, /saveMode=\{catalogueProduct\.managementDomain === 'SIM'[\s\S]*?saveSimChanges/, 'existing editor derives save mode from backend capability');
 assert.match(products, /managementDomain\s*===\s*'SIM'/, 'products page identifies active SIM adoptions from backend enrichment');
 assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: false }, 'active SIM rows do not expose generic Publish changes');
-assert.match(products, /!activeSimAdoption\s*&&\s*row\.catalogue\.status === 'published'/, 'active SIM rows do not expose Unpublish');
-assert.match(products, /!activeSimAdoption\s*&&\s*localDraft/, 'SIM guard applies to Archive controls');
+assert.equal(presentation.exports.genericCatalogueLifecycleAllowed(true), false, 'SIM rows do not expose generic Unpublish or Archive');
+assert.equal(presentation.exports.genericCatalogueLifecycleAllowed(false), true, 'merchandise rows retain generic lifecycle actions');
 assert.match(products, /Managed by SIM workflow/, 'SIM ownership is visible in the products list');
 assert.match(adoption, /providerFingerprint:\s*adoption\.sourceFingerprint/, 'active SIM records expose their provider fingerprint');
 assert.match(adoption, /saveSimChanges:\s*true/, 'active SIM records enable the dedicated save capability');

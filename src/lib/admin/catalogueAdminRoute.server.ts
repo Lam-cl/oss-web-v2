@@ -96,7 +96,8 @@ async function latestPublication(catalogueId:string){
 async function requireProduct(id:string){ensureId(id);const product=await readCatalogueProduct(id);if(!product)throw new CatalogueAdminRouteError('Catalogue product was not found.',404);return product;}
 async function activeAdoption(product:CatalogueProductRecord){if(product.currentBundleProductId===null)return null;const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);return adoption?.status==='active'&&adoption.catalogueId===product.catalogueId?adoption:null;}
 async function enrichAdminProduct(product:CatalogueProductRecord){return enrichCatalogueProductWithAdoption(product,await activeAdoption(product)) as CatalogueProductRecord&Row;}
-async function rejectLockedSimMutation(product:CatalogueProductRecord,operation:string){const adoption=await activeAdoption(product);if(adoption?.managementProfile?.domain==='SIM')throw new CatalogueAdminRouteError(`Active SIM adoption has a locked field policy; generic ${operation} is blocked. Use the explicit verified SIM rollback procedure.`,409);return adoption;}
+function hasSimCategory(product:CatalogueProductRecord){return /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim()??'');}
+async function rejectLockedSimMutation(product:CatalogueProductRecord,operation:string){const adoption=await activeAdoption(product);if(adoption?.managementProfile?.domain==='SIM'||hasSimCategory(product))throw new CatalogueAdminRouteError(`SIM catalogue products cannot use generic ${operation}. Use the dedicated verified SIM workflow.`,409);return adoption;}
 function simLockedState(model:CatalogueProductRecord['model'],slug:string){return {slug,model};}
 function bundleRow(value:unknown):Row|null {const unwrapped=object(value)&&'data' in value?value.data:value;return object(unwrapped)?unwrapped:null;}
 function bundleProductIsDeleted(value:unknown,id:number){const row=bundleRow(value);return Boolean(row&&row.id===id&&(row.deleted===true||row.deletedAt!==null&&row.deletedAt!==undefined)&&row.published===false);}
@@ -120,14 +121,14 @@ export const catalogueAdminRoute={
   async archive(id:string,body:unknown){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
-    const adoption=await activeAdoption(product);
-    if(adoption?.managementProfile?.domain==='SIM')throw new CatalogueAdminRouteError('Active SIM adoption has a locked field policy; generic archive is blocked. Use the explicit verified SIM rollback procedure.',409);
+    const adoption=await rejectLockedSimMutation(product,'archive');
     if(adoption?.status==='active'&&adoption.catalogueId===id)return {...await rollbackCatalogueAdoption(adoption.bundleProductId),adoptionRollback:true};
     return archiveCatalogueProduct(id,body.revision);
   },
   async unpublish(id:string,body:unknown,token:string){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
+    await rejectLockedSimMutation(product,'unpublish');
     if(product.currentBundleProductId!==null){const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);if(adoption?.status==='active'&&adoption.catalogueId===id)throw new CatalogueAdminRouteError('Active legacy adoption is provider-read-only; use archive to perform its local rollback.',409);}
     const deletedBundleProductIds=new Set<number>();
     const local={

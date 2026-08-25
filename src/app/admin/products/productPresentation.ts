@@ -80,6 +80,14 @@ export function unresolvedPublication(publication: { phase: string } | null | un
   return publication === undefined || publication !== null && publication.phase !== 'complete';
 }
 
+export function isSimCatalogueCategory(category: string | undefined) {
+  return /^sim(?:\s+card)?$/i.test(category?.trim() || '');
+}
+
+export function genericCatalogueLifecycleAllowed(simManaged: boolean) {
+  return !simManaged;
+}
+
 export function publicationActionPresentation(input: {
   state: 'clean' | 'dirty' | 'unknown';
   localDraft: boolean;

@@ -19,7 +19,9 @@ import { liveCombinationInventory, productInventory } from '@/lib/admin/productS
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
 import {
   catalogueHazardReason,
+  genericCatalogueLifecycleAllowed,
   hasValidCatalogueVariants,
+  isSimCatalogueCategory,
   isSystemCatalogueProduct,
   productSearchText,
   publicationActionPresentation,
@@ -425,11 +427,13 @@ function ProductsContent() {
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
       const providerOperationUnresolved = localDraft && unresolvedPublication(cataloguePublications[row.catalogue.catalogueId]);
-      const activeSimAdoption = row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM';
+      const simManagedCatalogue = row.kind === 'catalogue' && (row.catalogue.managementDomain === 'SIM'
+        || isSimCatalogueCategory(row.catalogue.model.details.category));
+      const genericLifecycleAllowed = genericCatalogueLifecycleAllowed(simManagedCatalogue);
       const publicationAction = row.kind === 'catalogue' ? publicationActionPresentation({
         state: row.catalogue.publicationChangeState,
         localDraft,
-        simManaged: activeSimAdoption,
+        simManaged: simManagedCatalogue,
         unknownReason: row.catalogue.publicationChangeReason,
       }) : { visible: false } as const;
       const hazardousActionReason = row.kind === 'catalogue'
@@ -443,14 +447,14 @@ function ProductsContent() {
       const publishLabel = publicationAction.visible ? publicationAction.label : 'Publish';
       const hazardousActionDisabled = hazardousActionReason !== null;
       return <tr key={key}>
-        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM' && <small>Managed by SIM workflow</small>}</div></div></td>
+        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{simManagedCatalogue && <small>Managed by SIM workflow</small>}</div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Variants">{variants}</td>
         <td data-label="Inventory">{stock}</td>
         <td data-label="Status"><StatusBadge status={row.kind === 'catalogue' && row.catalogue.status === 'draft' ? 'DRAFT' : stock === 0 ? 'OUT' : 'ACTIVE'} /></td>
         <td><div className="adm-actions">{row.kind === 'catalogue' ? <>
           <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue, liveProduct: product })}><Icon name="edit" /></button>
-          {!activeSimAdoption && publishAvailable && <button
+          {genericLifecycleAllowed && publishAvailable && <button
             className="adm-button secondary"
             title={hazardousActionReason || `${publishLabel} for ${title} to OSS`}
             aria-label={`${publishLabel} for ${title} to OSS`}
@@ -458,8 +462,8 @@ function ProductsContent() {
             disabled={!canPublish || hazardousActionDisabled || publishingCatalogueId !== null || archivingCatalogueId !== null}
             onClick={() => void publish(row.catalogue)}
           >{publishingCatalogueId === row.catalogue.catalogueId ? 'Publishing…' : publishLabel}</button>}
-          {!activeSimAdoption && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
-          {!activeSimAdoption && localDraft && <button
+          {genericLifecycleAllowed && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
+          {genericLifecycleAllowed && localDraft && <button
             className="adm-button secondary"
             title={hazardousActionReason || `Archive ${title}`}
             aria-label={`Archive ${title}`}
@@ -467,7 +471,7 @@ function ProductsContent() {
             disabled={hazardousActionDisabled || archivingCatalogueId !== null || publishingCatalogueId !== null}
             onClick={() => void archive(row.catalogue)}
           >{archivingCatalogueId === row.catalogue.catalogueId ? 'Archiving…' : 'Archive'}</button>}
-          {!activeSimAdoption && hazardousActionReason && publishAvailable && <small id={hazardousActionReasonId} className="adm-action-disabled-reason">{hazardousActionReason}</small>}
+          {genericLifecycleAllowed && hazardousActionReason && publishAvailable && <small id={hazardousActionReasonId} className="adm-action-disabled-reason">{hazardousActionReason}</small>}
         </> : <button className="adm-icon-btn" title="View legacy product" onClick={() => setLegacyViewer(product!)}><Icon name="arrow" /></button>}</div></td>
       </tr>;
     })}</tbody></table></div><div className="adm-pagination"><span>{(data.meta?.total || data.data.length) + (page === 1 && type === 'MERCHANDISE' ? catalogue.filter((product) => product.currentBundleProductId === null).length : 0)} products · page {page}</span><div><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>←</button><button disabled={page >= (data.meta?.totalPages || 1)} onClick={() => setPage((current) => current + 1)}>→</button></div></div></>}</section>

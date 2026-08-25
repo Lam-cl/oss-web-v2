@@ -12,6 +12,7 @@ import {
   rm,
 } from "node:fs/promises";
 import path from "node:path";
+import { dataApiEnabled, remoteDocument, replaceRemoteDocument } from '@/lib/dataApiClient.server';
 import { isDeepStrictEqual } from "node:util";
 import {
   normalizeProductEditorSpec,
@@ -1177,6 +1178,10 @@ export async function readCatalogueAdoptionByBundle(
       "A positive Bundle product ID is required.",
       400,
     );
+  if (options.dataDirectory === undefined && dataApiEnabled()) {
+    const document = await remoteDocument<CatalogueAdoptionRecord>('catalogue-adoptions', String(bundleProductId));
+    return document ? structuredClone(validateRecord(document.value, bundleProductId)) : null;
+  }
   const root = rootOf(options);
   if (!(await ensureSafeRoot(root, false))) return null;
   const value = await readJson(adoptionFile(root, bundleProductId));
@@ -1909,6 +1914,19 @@ export async function supersedeCatalogueAdoption(
       "A distinct positive replacement Bundle product ID is required.",
       400,
     );
+  if (options.dataDirectory === undefined && dataApiEnabled()) {
+    const document = await remoteDocument<CatalogueAdoptionRecord>('catalogue-adoptions', String(bundleProductId));
+    if (!document) throw new CatalogueAdoptionError('Catalogue adoption was not found.', 404);
+    const current = validateRecord(document.value, bundleProductId);
+    if (current.managementProfile?.domain === 'SIM' && current.status === 'active') throw new CatalogueAdoptionError('Active SIM adoption has a locked field policy and cannot be replaced by the generic publication workflow.');
+    if (current.status === 'superseded') {
+      if (current.replacementBundleProductId !== replacementBundleProductId) throw new CatalogueAdoptionError('Adoption is already superseded by a different replacement.');
+      return current;
+    }
+    const now = (options.now || (() => new Date()))().toISOString();
+    const next = validateRecord({...current,status:'superseded',supersededAt:now,replacementBundleProductId},bundleProductId);
+    return validateRecord((await replaceRemoteDocument('catalogue-adoptions',String(bundleProductId),document.revision,next,{revision:document.revision+1,createdAt:current.activatedAt,updatedAt:now})).value,bundleProductId);
+  }
   const root = rootOf(options);
   return enqueue(`${root}\0${bundleProductId}`, async () => {
     await ensureSafeRoot(root);

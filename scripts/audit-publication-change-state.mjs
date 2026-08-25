@@ -47,3 +47,10 @@ for (const file of productFiles) {
 results.sort((left, right) => left.title.localeCompare(right.title));
 console.table(results);
 console.log(JSON.stringify({ products: results.length, publicationJobsRead: jobs.length }, null, 2));
+if (process.argv.includes('--require-clean')) {
+  const blocked = results.filter((item) => item.publicationChangeState !== 'clean');
+  if (blocked.length) {
+    console.error(`Production readiness blocked by ${blocked.length} catalogue product(s): ${blocked.map((item) => item.title).join(', ')}`);
+    process.exitCode = 2;
+  }
+}

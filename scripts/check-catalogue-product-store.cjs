@@ -19,6 +19,7 @@ function load(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
   const localRequire = (request) => {
+    if (request === '@/lib/dataApiClient.server') return { dataApiEnabled:()=>false };
     if (request === 'fs/promises') return {
       ...fsp,
       open: async (...args) => {
@@ -66,7 +67,7 @@ const version = (bundleProductId, overrides = {}) => ({
   const originalFetch = global.fetch;
   global.fetch = async () => { fetchCalls++; throw new Error('network forbidden'); };
   try {
-    assert.deepEqual(Object.keys(store).sort(), ['createCatalogueProduct', 'readCatalogueProduct', 'updateCatalogueProduct']);
+    assert.deepEqual(Object.keys(store).sort(), ['createCatalogueProduct', 'listCatalogueProducts', 'readCatalogueProduct', 'updateCatalogueProduct']);
 
     const created = await store.createCatalogueProduct(model(), '  Travel MUG  ', directory);
     assert.match(created.catalogueId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

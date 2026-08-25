@@ -11,7 +11,8 @@ function compile(rel) {
   const file = path.resolve(rel);
   const out = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
-  new Function('exports', 'require', 'module', '__filename', '__dirname', out)(module.exports, require, module, file, path.dirname(file));
+  const localRequire = request => request === '@/lib/dataApiClient.server' ? { dataApiEnabled:()=>false } : require(request);
+  new Function('exports', 'require', 'module', '__filename', '__dirname', out)(module.exports, localRequire, module, file, path.dirname(file));
   return module.exports;
 }
 const sha256 = body => crypto.createHash('sha256').update(body).digest('hex');

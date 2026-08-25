@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { readCatalogueProduct, type CatalogueProductRecord } from '@/lib/admin/catalogueProduct.server';
-import { readPublicationJob, type CataloguePublicationJob } from '@/lib/admin/cataloguePublication.server';
+import { listCatalogueProducts, readCatalogueProduct, type CatalogueProductRecord } from '@/lib/admin/catalogueProduct.server';
+import { listPublicationJobs, readPublicationJob, type CataloguePublicationJob } from '@/lib/admin/cataloguePublication.server';
 import { readCatalogueAdoptionByBundle } from '@/lib/admin/catalogueAdoption.server';
 import { readVerifiedCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
 import { readCataloguePublishedSnapshot, readCataloguePublishedSnapshotMedia, type CataloguePublishedProduct, type CataloguePublishedSnapshotManifest } from '@/lib/cataloguePublishedSnapshot.server';
@@ -14,6 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const OPERATION = /^[a-f0-9]{64}$/;
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const ACTIVATED_PHASES = new Set<CataloguePublicationJob['phase']>(['activated', 'retirement-uncertain', 'previous-retired', 'complete']);
+const REMOTE_DATA = Boolean(process.env.TONEWOW_DATA_API_URL?.trim() && process.env.TONEWOW_DATA_API_TOKEN?.trim());
 
 async function names(directory: string, pattern: RegExp) {
   let entries;
@@ -23,6 +24,7 @@ async function names(directory: string, pattern: RegExp) {
   return entries.filter((entry) => entry.isFile() && pattern.test(entry.name)).map((entry) => entry.name.slice(0, -5)).sort();
 }
 async function publicationJobs() {
+  if (REMOTE_DATA) return listPublicationJobs();
   const operationIds = await names(PUBLICATION_DIRECTORY, new RegExp(`^${OPERATION.source.slice(1, -1)}\\.json$`));
   const jobs: CataloguePublicationJob[] = [];
   for (const operationId of operationIds) { const job = await readPublicationJob(operationId); if (job) jobs.push(job); }
@@ -47,12 +49,12 @@ async function ordinarySnapshot(product: CatalogueProductRecord, jobs: Catalogue
 }
 
 export async function readCataloguePublicProjection(): Promise<{ products: CataloguePublishedProduct[] }> {
-  const [productIds, jobs] = await Promise.all([
-    names(PRODUCT_DIRECTORY, new RegExp(`^${UUID.source.slice(1, -1)}\\.json$`)), publicationJobs(),
+  const [records, jobs] = await Promise.all([
+    REMOTE_DATA ? listCatalogueProducts() : names(PRODUCT_DIRECTORY, new RegExp(`^${UUID.source.slice(1, -1)}\\.json$`)).then(async ids => { const rows: CatalogueProductRecord[] = []; for (const id of ids) { const product = await readCatalogueProduct(id); if (product) rows.push(product); } return rows; }), publicationJobs(),
   ]);
   const products: CataloguePublishedProduct[] = [];
-  for (const catalogueId of productIds) {
-    const product = await readCatalogueProduct(catalogueId);
+  for (const product of records) {
+    const catalogueId = product.catalogueId;
     if (!product || product.status !== 'published') continue;
     const adoption = positive(product.currentBundleProductId) ? await readCatalogueAdoptionByBundle(product.currentBundleProductId) : null;
     if (adoption?.status === 'active') {

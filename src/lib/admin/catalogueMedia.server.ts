@@ -3,6 +3,7 @@ import { constants } from 'fs';
 import { chmod, lstat, mkdir, open, readdir, realpath, rename, unlink } from 'fs/promises';
 import path from 'path';
 import { isDeepStrictEqual } from 'util';
+import { dataApiBinary, dataApiEnabled, dataApiRequest, ToneWowDataApiError } from '@/lib/dataApiClient.server';
 
 export type CatalogueMediaMetadata = {
   mediaId: string;
@@ -654,10 +655,23 @@ export function createCatalogueMediaStore(directory: string): CatalogueMediaStor
 }
 
 const defaultStore = createCatalogueMediaStore(DEFAULT_DIRECTORY);
-export const addCatalogueMedia = defaultStore.addCatalogueMedia;
-export const listCatalogueMedia = defaultStore.listCatalogueMedia;
-export const readVerifiedCatalogueMedia = defaultStore.readVerifiedCatalogueMedia;
-export const updateCatalogueMedia = defaultStore.updateCatalogueMedia;
-export const removeCatalogueMedia = defaultStore.removeCatalogueMedia;
-export const finalizeCatalogueMediaRemoval = defaultStore.finalizeCatalogueMediaRemoval;
-export const getCatalogueMediaRemoval = defaultStore.getCatalogueMediaRemoval;
+type RemoteMediaRow = {media_id:string;catalogue_id:string;original_name:string;content_type:CatalogueMediaMetadata['contentType'];bytes:number;sha256:string;display_order:number;assignment:string;created_at:string};
+const fromRemote=(row:RemoteMediaRow):CatalogueMediaMetadata=>({mediaId:row.media_id,catalogueId:row.catalogue_id,originalName:row.original_name,contentType:row.content_type,bytes:row.bytes,sha256:row.sha256,order:row.display_order,assignment:row.assignment,createdAt:new Date(row.created_at).toISOString()});
+const removalFromRemote=(row:any):CatalogueMediaRemoval=>({operationId:row.operation_id,catalogueId:row.catalogue_id,status:row.status,removed:(row.removed||[]).map(fromRemote),createdAt:new Date(row.created_at).toISOString(),updatedAt:new Date(row.updated_at).toISOString()});
+const remoteStore:CatalogueMediaStore={
+  async addCatalogueMedia(catalogueId,input){assertCatalogueId(catalogueId);if(!object(input)||!exactKeys(input,INPUT_KEYS))throw new Error('Catalogue media input must contain the exact known keys; unknown keys are rejected.');const body=await normalizeBody(input.body),contentType=normalizeContentType(input.type),metadata={originalName:normalizeName(input.name),order:normalizeOrder(input.order),assignment:normalizeAssignment(input.assignment),createdAt:new Date().toISOString(),visibility:'draft'},mediaId=randomUUID(),sha256=createHash('sha256').update(body).digest('hex');assertSignature(contentType,body);return fromRemote(await dataApiRequest<RemoteMediaRow>(`/v1/media/${catalogueId}/${mediaId}`,{method:'POST',headers:{'content-type':contentType,'x-content-sha256':sha256,'x-media-metadata':Buffer.from(JSON.stringify(metadata)).toString('base64url')},body:new Uint8Array(body)}));},
+  async listCatalogueMedia(catalogueId){assertCatalogueId(catalogueId);return (await dataApiRequest<RemoteMediaRow[]>(`/v1/media/${catalogueId}`)).map(fromRemote);},
+  async readVerifiedCatalogueMedia(catalogueId,mediaId){assertCatalogueId(catalogueId);assertMediaId(mediaId);const metadata=(await remoteStore.listCatalogueMedia(catalogueId)).find(item=>item.mediaId===mediaId);if(!metadata)throw new Error(`Catalogue media ${mediaId} was not found.`);const body=await dataApiBinary(`/v1/media/${catalogueId}/${mediaId}`);if(body.length!==metadata.bytes||createHash('sha256').update(body).digest('hex')!==metadata.sha256||!hasSignature(metadata.contentType,body))throw corrupt(catalogueId);return {...metadata,body};},
+  async updateCatalogueMedia(catalogueId,mediaId,patch){assertCatalogueId(catalogueId);assertMediaId(mediaId);return fromRemote(await dataApiRequest<RemoteMediaRow>(`/v1/media/${catalogueId}/${mediaId}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(patch)}));},
+  async removeCatalogueMedia(catalogueId,mediaId){assertCatalogueId(catalogueId);assertMediaId(mediaId);return fromRemote(await dataApiRequest<RemoteMediaRow>(`/v1/media/${catalogueId}/${mediaId}`,{method:'DELETE'}));},
+  async finalizeCatalogueMediaRemoval(catalogueId,operationId,mediaIds){assertCatalogueId(catalogueId);assertOperationId(operationId);return removalFromRemote(await dataApiRequest(`/v1/media/${catalogueId}/removals/${operationId}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mediaIds})}));},
+  async getCatalogueMediaRemoval(catalogueId,operationId){assertCatalogueId(catalogueId);assertOperationId(operationId);try{return removalFromRemote(await dataApiRequest(`/v1/media/${catalogueId}/removals/${operationId}`));}catch(error){if(error instanceof ToneWowDataApiError&&error.status===404)return null;throw error;}},
+};
+const activeStore=()=>dataApiEnabled()?remoteStore:defaultStore;
+export const addCatalogueMedia:CatalogueMediaStore['addCatalogueMedia']=(...args)=>activeStore().addCatalogueMedia(...args);
+export const listCatalogueMedia:CatalogueMediaStore['listCatalogueMedia']=(...args)=>activeStore().listCatalogueMedia(...args);
+export const readVerifiedCatalogueMedia:CatalogueMediaStore['readVerifiedCatalogueMedia']=(...args)=>activeStore().readVerifiedCatalogueMedia(...args);
+export const updateCatalogueMedia:CatalogueMediaStore['updateCatalogueMedia']=(...args)=>activeStore().updateCatalogueMedia(...args);
+export const removeCatalogueMedia:CatalogueMediaStore['removeCatalogueMedia']=(...args)=>activeStore().removeCatalogueMedia(...args);
+export const finalizeCatalogueMediaRemoval:CatalogueMediaStore['finalizeCatalogueMediaRemoval']=(...args)=>activeStore().finalizeCatalogueMediaRemoval(...args);
+export const getCatalogueMediaRemoval:CatalogueMediaStore['getCatalogueMediaRemoval']=(...args)=>activeStore().getCatalogueMediaRemoval(...args);

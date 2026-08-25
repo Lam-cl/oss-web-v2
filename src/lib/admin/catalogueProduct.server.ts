@@ -3,6 +3,7 @@ import { chmod, mkdir, open, readFile, rename, unlink } from 'fs/promises';
 import path from 'path';
 import { isDeepStrictEqual } from 'util';
 import { normalizeProductEditorSpec, type ProductEditorSpec } from './productEditor';
+import { createRemoteDocument, dataApiEnabled, remoteDocument, remoteDocuments, replaceRemoteDocument } from '@/lib/dataApiClient.server';
 
 export type CatalogueBundleVersion = {
   bundleProductId: number;
@@ -145,6 +146,10 @@ function withCatalogueProductLock<T>(catalogueId: string, action: () => Promise<
 
 export async function readCatalogueProduct(catalogueId: string, directory = CATALOGUE_PRODUCT_DIRECTORY): Promise<CatalogueProductRecord | null> {
   assertCatalogueId(catalogueId);
+  if (directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled()) {
+    const document = await remoteDocument<CatalogueProductRecord>('catalogue-products', catalogueId);
+    return document ? validateRecord(document.value, catalogueId) : null;
+  }
   try {
     await secureDirectory(directory);
     const file = fileFor(catalogueId, directory);
@@ -171,7 +176,7 @@ export async function createCatalogueProduct(model: unknown, slug: unknown, dire
   const normalizedModel = normalizeProductEditorSpec(model);
   const normalizedSlug = normalizeSlug(slug);
   const catalogueId = randomUUID();
-  return withCatalogueProductLock(catalogueId, async () => {
+  const create = async () => {
     const now = new Date().toISOString();
     const record: CatalogueProductRecord = {
       version: 1,
@@ -185,8 +190,12 @@ export async function createCatalogueProduct(model: unknown, slug: unknown, dire
       createdAt: now,
       updatedAt: now,
     };
+    if (directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled()) {
+      return validateRecord((await createRemoteDocument('catalogue-products', catalogueId, record)).value, catalogueId);
+    }
     return writeCatalogueProductUnlocked(record, directory);
-  }, directory);
+  };
+  return directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled() ? create() : withCatalogueProductLock(catalogueId, create, directory);
 }
 
 export async function updateCatalogueProduct(
@@ -198,6 +207,16 @@ export async function updateCatalogueProduct(
   assertCatalogueId(catalogueId);
   if (!positiveInteger(expectedRevision)) throw new Error('A valid expected revision is required.');
   if (typeof updater !== 'function') throw new Error('A catalogue product updater is required.');
+  if (directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled()) {
+    const current = await readCatalogueProduct(catalogueId, directory);
+    if (!current) throw new Error(`Catalogue product ${catalogueId} was not found.`);
+    if (current.revision !== expectedRevision) throw new Error(`Catalogue product revision conflict: expected ${expectedRevision}, found ${current.revision}.`);
+    const proposed = await updater(structuredClone(current));
+    const next = validateRecord({ ...proposed, catalogueId: current.catalogueId, revision: current.revision + 1,
+      slug: normalizeSlug(proposed.slug), model: normalizeProductEditorSpec(proposed.model), createdAt: current.createdAt,
+      updatedAt: new Date().toISOString() }, catalogueId);
+    return validateRecord((await replaceRemoteDocument('catalogue-products', catalogueId, expectedRevision, next)).value, catalogueId);
+  }
   return withCatalogueProductLock(catalogueId, async () => {
     const current = await readCatalogueProduct(catalogueId, directory);
     if (!current) throw new Error(`Catalogue product ${catalogueId} was not found.`);
@@ -217,4 +236,18 @@ export async function updateCatalogueProduct(
     }, catalogueId);
     return writeCatalogueProductUnlocked(next, directory);
   }, directory);
+}
+
+export async function listCatalogueProducts(directory = CATALOGUE_PRODUCT_DIRECTORY): Promise<CatalogueProductRecord[]> {
+  if (directory === CATALOGUE_PRODUCT_DIRECTORY && dataApiEnabled()) {
+    return (await remoteDocuments<CatalogueProductRecord>('catalogue-products')).map((item) => validateRecord(item.value, item.key));
+  }
+  let entries;
+  try { entries = await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true }); }
+  catch (error: any) { if (error?.code === 'ENOENT') return []; throw error; }
+  const products: CatalogueProductRecord[] = [];
+  for (const entry of entries) if (entry.isFile() && /^[0-9a-f-]{36}\.json$/.test(entry.name)) {
+    const product = await readCatalogueProduct(entry.name.slice(0, -5), directory); if (product) products.push(product);
+  }
+  return products;
 }

@@ -21,6 +21,7 @@ function load(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
   const localRequire = (request) => {
+    if (request === '@/lib/dataApiClient.server') return { dataApiEnabled:()=>false };
     if (request === 'fs/promises') return {
       ...fsp,
       open: async (...args) => {

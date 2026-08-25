@@ -10,7 +10,7 @@ const moduleFile = path.resolve('src/lib/admin/cataloguePublication.server.ts');
 let durabilityLog = null;
 function load() {
   const output = ts.transpileModule(fs.readFileSync(moduleFile, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  const localRequire = request => request === 'node:fs/promises' ? {
+  const localRequire = request => request === '@/lib/dataApiClient.server' ? {dataApiEnabled:()=>false} : request === 'node:fs/promises' ? {
     ...fsp,
     mkdir: async (...args) => { const result = await fsp.mkdir(...args); durabilityLog?.push(`mkdir:${args[0]}`); return result; },
     open: async (...args) => {
@@ -29,7 +29,7 @@ const input = (overrides = {}) => ({ operationId: operationId(), catalogueId: ra
 const step = (name, at) => ({ name, completedAt: at });
 (async () => {
   const store = load();
-  assert.deepEqual(Object.keys(store).sort(), ['createPublicationJob','readPublicationJob','updatePublicationJob']);
+  assert.deepEqual(Object.keys(store).sort(), ['createPublicationJob','listPublicationJobs','readPublicationJob','updatePublicationJob']);
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'tw-pub-store-'));
   try {
     const firstUseRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'tw-pub-first-use-'));

@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { createRemoteDocument, dataApiBinary, dataApiEnabled, dataApiRequest, remoteDocument } from '@/lib/dataApiClient.server';
 
 export type CataloguePublishedProduct = {
   catalogueId: string;
@@ -139,7 +140,14 @@ async function readUnlocked(operationId: string, root: string) {
 }
 function enqueue<T>(key: string, action: () => Promise<T>) { const prior=queues.get(key)??Promise.resolve(); const run=prior.then(action,action); const tail=run.then(()=>undefined,()=>undefined); queues.set(key,tail); return run.finally(()=>{if(queues.get(key)===tail)queues.delete(key);}); }
 
-export async function readCataloguePublishedSnapshot(operationId: string, root = DEFAULT_ROOT) { assertOperationId(operationId); return readUnlocked(operationId,root); }
+export async function readCataloguePublishedSnapshot(operationId: string, root = DEFAULT_ROOT) {
+  assertOperationId(operationId);
+  if (root === DEFAULT_ROOT && dataApiEnabled()) {
+    const document = await remoteDocument<CataloguePublishedSnapshotManifest>('catalogue-published', operationId);
+    return document ? validateManifest(document.value, operationId) : null;
+  }
+  return readUnlocked(operationId,root);
+}
 export async function createCataloguePublishedSnapshot(input: CreateCataloguePublishedSnapshotInput, root = DEFAULT_ROOT): Promise<CataloguePublishedSnapshotResult> {
   if (!object(input) || !exact(input,['bundleProductId','catalogueId','media','operationId','product','resultFingerprint64'])) throw new Error('An exact published snapshot input is required.');
   assertOperationId(input.operationId); if (typeof input.catalogueId !== 'string' || !UUID.test(input.catalogueId) || !positive(input.bundleProductId) || typeof input.resultFingerprint64 !== 'string' || !HASH.test(input.resultFingerprint64)) throw new Error('Published snapshot identity is invalid.');
@@ -152,6 +160,17 @@ export async function createCataloguePublishedSnapshot(input: CreateCataloguePub
     return { body, metadata:{...metadata,file:`${item.mediaId}.bin`} as CataloguePublishedSnapshotMedia };
   });
   validateMedia(bodies.map(item=>item.metadata),input.catalogueId,product);
+  if (root === DEFAULT_ROOT && dataApiEnabled()) {
+    const existing = await readCataloguePublishedSnapshot(input.operationId, root);
+    const identity={operationId:input.operationId,catalogueId:input.catalogueId,bundleProductId:input.bundleProductId,resultFingerprint64:input.resultFingerprint64,product,media:bodies.map(item=>item.metadata)};
+    if (existing) { const {version:_,createdAt:__,...stored}=existing; if (!isDeepStrictEqual(stored,identity)) throw new Error(`Catalogue published snapshot ${input.operationId} conflict.`); return {manifest:existing,idempotent:true}; }
+    for (const item of bodies) await dataApiRequest(`/v1/media/${input.catalogueId}/${item.metadata.mediaId}`, {
+      method:'POST', headers:{'content-type':item.metadata.contentType,'x-content-sha256':item.metadata.sha256,
+        'x-media-metadata':Buffer.from(JSON.stringify({...item.metadata,visibility:'published'})).toString('base64url')}, body:item.body,
+    });
+    const manifest:CataloguePublishedSnapshotManifest={version:1,...identity,createdAt:new Date().toISOString()};
+    return {manifest:validateManifest((await createRemoteDocument('catalogue-published',input.operationId,manifest,{revision:1,createdAt:manifest.createdAt,updatedAt:manifest.createdAt})).value,input.operationId),idempotent:false};
+  }
   const key=`${path.resolve(root)}\0${input.operationId}`;
   return enqueue(key,async()=>{
     root=await secureRoot(root); const existing=await readUnlocked(input.operationId,root);
@@ -172,6 +191,11 @@ export async function createCataloguePublishedSnapshot(input: CreateCataloguePub
 }
 export async function readCataloguePublishedSnapshotMedia(operationId: string, mediaId: string, root = DEFAULT_ROOT) {
   assertOperationId(operationId); if (!UUID.test(mediaId)) throw new Error('A valid snapshot media ID is required.');
+  if (root === DEFAULT_ROOT && dataApiEnabled()) {
+    const manifest=await readCataloguePublishedSnapshot(operationId,root);if(!manifest)return null;const metadata=manifest.media.find(item=>item.mediaId===mediaId);if(!metadata)return null;
+    const body=await dataApiBinary(`/v1/media/${manifest.catalogueId}/${mediaId}`);if(body.length!==metadata.bytes||hash(body)!==metadata.sha256||!signature(metadata.contentType,body))throw corrupt(operationId);
+    return {...metadata,body};
+  }
   const manifest=await readUnlocked(operationId,root); if(!manifest) return null; const metadata=manifest.media.find(item=>item.mediaId===mediaId); if(!metadata)return null;
   const body=await readFileSafe(path.join(path.resolve(root),operationId,metadata.file),MAX_ITEM_BYTES); if(body.length!==metadata.bytes||hash(body)!==metadata.sha256||!signature(metadata.contentType,body))throw corrupt(operationId);
   return {...metadata,body};

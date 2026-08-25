@@ -3,6 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { chmod, lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { createRemoteDocument, dataApiEnabled, remoteDocument, remoteDocuments, replaceRemoteDocument } from '@/lib/dataApiClient.server';
 
 export type CataloguePublicationPhase = 'building' | 'bundle-published' | 'activation-uncertain' | 'activated' | 'retirement-uncertain' | 'previous-retired' | 'complete';
 export type CataloguePublicationStepName = 'draft-created' | 'images-resolved' | 'options-resolved' | 'variants-resolved' | 'variants-normalized' | 'bundle-published' | 'activated' | 'previous-retired' | 'complete';
@@ -262,20 +263,59 @@ async function updateUnlocked(id: string, expectedRevision: number, updater: Upd
 export async function createPublicationJob(input: CreatePublicationJobInput, directory = DEFAULT_DIRECTORY): Promise<CataloguePublicationJob> {
   if (!object(input) || !exactKeys(input, INPUT_KEYS) || !operationId(input.operationId) || !uuid(input.catalogueId)
     || !fingerprint(input.modelFingerprint64) || input.previousBundleProductId !== null && !positiveInteger(input.previousBundleProductId)) throw new Error('A valid exact catalogue publication job input is required.');
-  return enqueue(input.operationId, directory, async () => {
-    if (await readUnlocked(input.operationId, directory)) throw new Error(`Catalogue publication job ${input.operationId} already exists.`);
+  const create = async () => {
+    const existing = directory === DEFAULT_DIRECTORY && dataApiEnabled()
+      ? await readPublicationJob(input.operationId, directory)
+      : await readUnlocked(input.operationId, directory);
+    if (existing) throw new Error(`Catalogue publication job ${input.operationId} already exists.`);
     const now = new Date().toISOString();
     const job = validateJob({ version: 1, operationId: input.operationId, catalogueId: input.catalogueId, revision: 1, phase: 'building',
       modelFingerprint64: input.modelFingerprint64, previousBundleProductId: input.previousBundleProductId, draftBundleProductId: null,
       completedSteps: [], resolved: { options: {}, values: {}, images: {}, variants: {} }, bindings: [], resultFingerprint64: null,
       createdAt: now, updatedAt: now }, input.operationId);
+    if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) return validateJob((await createRemoteDocument('catalogue-publications', input.operationId, job)).value, input.operationId);
     await durableWrite(job, directory, true); return structuredClone(job);
-  });
+  };
+  return directory === DEFAULT_DIRECTORY && dataApiEnabled() ? create() : enqueue(input.operationId, directory, create);
 }
 export async function readPublicationJob(id: string, directory = DEFAULT_DIRECTORY): Promise<CataloguePublicationJob | null> {
-  assertOperationId(id); return readUnlocked(id, directory);
+  assertOperationId(id);
+  if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) {
+    const document = await remoteDocument<CataloguePublicationJob>('catalogue-publications', id);
+    return document ? validateJob(document.value, id) : null;
+  }
+  return readUnlocked(id, directory);
 }
 export async function updatePublicationJob(id: string, expectedRevision: number, updater: Updater, directory = DEFAULT_DIRECTORY): Promise<CataloguePublicationJob> {
   assertOperationId(id); assertRevision(expectedRevision); if (typeof updater !== 'function') throw new Error('A catalogue publication updater is required.');
+  if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) {
+    const current = await readPublicationJob(id, directory); if (!current) throw new Error(`Catalogue publication job ${id} was not found.`);
+    if (current.revision !== expectedRevision) throw new Error(`Catalogue publication revision conflict: expected ${expectedRevision}, found ${current.revision}.`);
+    const proposed = structuredClone(await updater(structuredClone(current)));
+    if (current.phase === 'complete') {
+      if (!isDeepStrictEqual(proposed, current)) throw new Error('Completed catalogue publication jobs are immutable.');
+      return current;
+    }
+    const now = new Date().toISOString();
+    const next = validateJob({ ...proposed, version: 1, operationId: current.operationId, catalogueId: current.catalogueId,
+      revision: current.revision + 1, modelFingerprint64: current.modelFingerprint64, previousBundleProductId: current.previousBundleProductId,
+      createdAt: current.createdAt, updatedAt: now < current.updatedAt ? current.updatedAt : now }, id);
+    assertMonotonic(current, next);
+    return validateJob((await replaceRemoteDocument('catalogue-publications', id, expectedRevision, next)).value, id);
+  }
   return enqueue(id, directory, () => updateUnlocked(id, expectedRevision, updater, directory));
+}
+
+export async function listPublicationJobs(directory = DEFAULT_DIRECTORY): Promise<CataloguePublicationJob[]> {
+  if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) {
+    return (await remoteDocuments<CataloguePublicationJob>('catalogue-publications')).map((item) => validateJob(item.value, item.key));
+  }
+  let entries;
+  try { entries = await (await import('node:fs/promises')).readdir(directory, { withFileTypes: true }); }
+  catch (error: any) { if (error?.code === 'ENOENT') return []; throw error; }
+  const jobs: CataloguePublicationJob[] = [];
+  for (const entry of entries) if (entry.isFile() && /^[a-f0-9]{64}\.json$/.test(entry.name)) {
+    const job = await readPublicationJob(entry.name.slice(0, -5), directory); if (job) jobs.push(job);
+  }
+  return jobs;
 }

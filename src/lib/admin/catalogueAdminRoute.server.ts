@@ -3,9 +3,9 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { NextRequest } from 'next/server';
 import { BUNDLE_API, getAdminSession, requestIsSameOrigin, safeError } from '@/lib/admin/server';
-import { createCatalogueProduct, readCatalogueProduct, updateCatalogueProduct, type CatalogueProductRecord } from '@/lib/admin/catalogueProduct.server';
+import { createCatalogueProduct, listCatalogueProducts, readCatalogueProduct, updateCatalogueProduct, type CatalogueProductRecord } from '@/lib/admin/catalogueProduct.server';
 import { listCatalogueMedia, readVerifiedCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
-import { readPublicationJob, type CataloguePublicationJob } from '@/lib/admin/cataloguePublication.server';
+import { listPublicationJobs, readPublicationJob, type CataloguePublicationJob } from '@/lib/admin/cataloguePublication.server';
 import { CataloguePublishError, cataloguePublicationOperationId, publishCatalogueProductVersion, type CataloguePreparedImageUpload, type CatalogueVariantBinding } from '@/lib/admin/cataloguePublish.server';
 import { createCataloguePublishedSnapshot, readCataloguePublishedSnapshot, type CataloguePublishedProduct } from '@/lib/cataloguePublishedSnapshot.server';
 import { CatalogueBundleAdapterError, createCatalogueBundleAdapter } from '@/lib/admin/catalogueBundleAdapter.server';
@@ -16,6 +16,7 @@ import { evaluatePublicationChangeState, type PublicationProviderProduct } from 
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_RECORDS = 1000;
+const REMOTE_DATA = Boolean(process.env.TONEWOW_DATA_API_URL?.trim() && process.env.TONEWOW_DATA_API_TOKEN?.trim());
 const PRODUCT_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-products');
 const PUBLICATION_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-publications');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -67,6 +68,7 @@ async function filenames(directory:string, pattern:RegExp){
 type PublicationJobIndex={byCatalogue:Map<string,CataloguePublicationJob[]>;uncertain:boolean};
 async function publicationJobIndex():Promise<PublicationJobIndex>{
   const byCatalogue=new Map<string,CataloguePublicationJob[]>();let uncertain=false;let names:string[]=[];
+  if(REMOTE_DATA){try{for(const job of await listPublicationJobs()){const jobs=byCatalogue.get(job.catalogueId)??[];jobs.push(job);byCatalogue.set(job.catalogueId,jobs);}return {byCatalogue,uncertain};}catch{return {byCatalogue,uncertain:true};}}
   try{names=await filenames(PUBLICATION_DIRECTORY,/^[a-f0-9]{64}\.json$/);}catch{uncertain=true;}
   for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;try{const job=await readPublicationJob(operationId);if(!job)continue;const jobs=byCatalogue.get(job.catalogueId)??[];jobs.push(job);byCatalogue.set(job.catalogueId,jobs);}catch{uncertain=true;}}
   return {byCatalogue,uncertain};
@@ -84,8 +86,8 @@ async function publicationChange(product:CatalogueProductRecord,jobs:Publication
   return evaluatePublicationChangeState({product,jobs:productJobs,snapshot,media,providerProduct:product.currentBundleProductId===null?null:providers?.get(product.currentBundleProductId)??null,storageUncertain});
 }
 async function listProducts(){
-  const [names,jobs,providers]=await Promise.all([filenames(PRODUCT_DIRECTORY,/^[0-9a-f-]{36}\.json$/),publicationJobIndex(),providerProductIndex()]);const products:Array<CatalogueProductRecord&Row>=[];
-  for(const name of names){const id=name.slice(0,-5);if(!UUID.test(id))continue;const product=await readCatalogueProduct(id);if(product)products.push({...await enrichAdminProduct(product),...await publicationChange(product,jobs,providers)});}
+  const [records,jobs,providers]=await Promise.all([REMOTE_DATA?listCatalogueProducts():filenames(PRODUCT_DIRECTORY,/^[0-9a-f-]{36}\.json$/).then(async names=>{const rows:CatalogueProductRecord[]=[];for(const name of names){const id=name.slice(0,-5);if(!UUID.test(id))continue;const product=await readCatalogueProduct(id);if(product)rows.push(product);}return rows;}),publicationJobIndex(),providerProductIndex()]);const products:Array<CatalogueProductRecord&Row>=[];
+  for(const product of records)products.push({...await enrichAdminProduct(product),...await publicationChange(product,jobs,providers)});
   return products.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||String(a.catalogueId).localeCompare(String(b.catalogueId)));
 }
 async function latestPublication(catalogueId:string){

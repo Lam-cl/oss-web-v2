@@ -16,15 +16,15 @@ export async function adminFetch<T = any>(path: string, init?: RequestInit): Pro
     });
   } catch (problem) {
     if (problem instanceof Error && problem.name === 'TimeoutError') {
-      throw new AdminApiError('Permintaan mengambil masa terlalu lama. Sila cuba lagi.', 504, {});
+      throw new AdminApiError('The request timed out. Please try again.', 504, {});
     }
     throw problem;
   }
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
     window.location.assign(`/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-    throw new Error('Sesi anda telah tamat.');
+    throw new Error('Your session has expired.');
   }
-  if (!response.ok) throw new AdminApiError(payload.message || 'Permintaan tidak berjaya.', response.status, payload);
+  if (!response.ok) throw new AdminApiError(payload.message || 'The request failed.', response.status, payload);
   return payload as T;
 }

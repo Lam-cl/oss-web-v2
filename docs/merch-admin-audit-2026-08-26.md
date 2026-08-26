@@ -51,6 +51,8 @@ Publication evidence was then reconciled on staging. The current admin readiness
 
 ## Verification
 
+The supplied shipping rate card (`6a8e3866e6c79_1787705446.xlsx`, SHA-256 `38c85fa13484d3bb5ffbe926587d953514a3bc9af9d7a9574a7cf90d3130424f`) was compared against staging. All five stored rate groups and tiers already match it exactly, so no rate mutation was required. Checkout now loads those persisted settings server-side and includes the Bundle product ID, preventing republished products such as Topi (ID 103) from being rejected despite an explicit mapping.
+
 - TypeScript: passed (`tsc --noEmit`).
 - Production Next.js build: passed (56 static pages generated).
 - Publication lifecycle and evidence tests: 13/13 passed, covering generations 1, 2, 5 and 8; clean → save → dirty → republish → clean → save → dirty; model, slug, SKU, inventory, choices and media changes; missing/corrupt/duplicate evidence.

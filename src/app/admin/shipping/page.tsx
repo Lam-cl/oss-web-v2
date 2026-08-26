@@ -7,11 +7,11 @@ import { Paged, Product } from '@/lib/admin/types';
 import { COURIER_GROUPS, type CourierGroup, type ShippingSettings } from '@/lib/shipping';
 
 const GROUP_LABELS: Record<CourierGroup, string> = {
-  shirt: 'Baju T',
-  bulky: 'Botol, tumbler atau bunting',
-  small: 'Barang kecil',
+  shirt: 'T-shirt',
+  bulky: 'Water bottle, tumbler or bunting',
+  small: 'Small items',
   flyers: 'Flyers',
-  sim: 'Kad SIM',
+  sim: 'SIM card',
 };
 const SYSTEM_PRODUCT_SLUGS = new Set(['flat-rate-delivery-fee', 'pen-2-0']);
 
@@ -23,12 +23,12 @@ function validateSettings(settings: ShippingSettings) {
   const errors: Record<string, string> = {};
   for (const group of COURIER_GROUPS) {
     const current = settings.groups[group];
-    if (!current.label.trim()) errors[`${group}-label`] = 'Nama kategori diperlukan.';
+    if (!current.label.trim()) errors[`${group}-label`] = 'Category name is required.';
     current.tiers.forEach((tier, index) => {
-      if (!Number.isInteger(tier.minimum) || tier.minimum < 1) errors[`${group}-${index}-minimum`] = 'Masukkan unit minimum dalam nombor bulat, sekurang-kurangnya 1.';
-      if (index && tier.minimum <= current.tiers[index - 1].minimum) errors[`${group}-${index}-minimum`] = 'Unit minimum mesti lebih besar daripada julat sebelumnya.';
-      if (!Number.isFinite(tier.peninsular) || tier.peninsular < 0) errors[`${group}-${index}-peninsular`] = 'Kadar mesti 0 atau lebih.';
-      if (!Number.isFinite(tier.eastMalaysia) || tier.eastMalaysia < 0) errors[`${group}-${index}-east`] = 'Kadar mesti 0 atau lebih.';
+      if (!Number.isInteger(tier.minimum) || tier.minimum < 1) errors[`${group}-${index}-minimum`] = 'Enter a whole-number minimum quantity of at least 1.';
+      if (index && tier.minimum <= current.tiers[index - 1].minimum) errors[`${group}-${index}-minimum`] = 'The minimum quantity must be greater than the previous tier.';
+      if (!Number.isFinite(tier.peninsular) || tier.peninsular < 0) errors[`${group}-${index}-peninsular`] = 'The rate must be 0 or more.';
+      if (!Number.isFinite(tier.eastMalaysia) || tier.eastMalaysia < 0) errors[`${group}-${index}-east`] = 'The rate must be 0 or more.';
     });
   }
   return errors;
@@ -52,7 +52,7 @@ function mergeChangedSettings(baseline: ShippingSettings, current: ShippingSetti
       baseline.productGroups[key],
       current.productGroups[key],
       fresh.productGroups[key],
-      `Konflik kategori produk untuk Product #${key}. Muat semula halaman dan cuba lagi.`,
+      `The shipping category for Product #${key} changed elsewhere. Reload the page and try again.`,
     );
     if (group) merged.productGroups[key] = group;
     else delete merged.productGroups[key];
@@ -64,7 +64,7 @@ function mergeChangedSettings(baseline: ShippingSettings, current: ShippingSetti
     previousPriority,
     draftPriority,
     freshPriority,
-    'Konflik keutamaan pesanan campuran. Muat semula halaman dan cuba lagi.',
+    'The mixed-order priority changed elsewhere. Reload the page and try again.',
   ));
   COURIER_GROUPS.forEach((group) => {
     const previousGroup = baseline.groups[group];
@@ -76,13 +76,13 @@ function mergeChangedSettings(baseline: ShippingSettings, current: ShippingSetti
     const localGroupChanged = previousGroup.label !== draftGroup.label || JSON.stringify(previousGroup.tiers) !== JSON.stringify(draftGroup.tiers);
     const freshGroupChanged = previousGroup.label !== freshGroup.label || JSON.stringify(previousGroup.tiers) !== JSON.stringify(freshGroup.tiers);
     if ((localStructureChanged && freshGroupChanged) || (freshStructureChanged && localGroupChanged)) {
-      throw new Error(`Konflik struktur julat untuk ${GROUP_LABELS[group]}. Muat semula halaman dan cuba lagi.`);
+      throw new Error(`The rate-tier structure for ${GROUP_LABELS[group]} changed elsewhere. Reload the page and try again.`);
     }
     merged.groups[group].label = mergeScalar(
       previousGroup.label,
       draftGroup.label,
       freshGroup.label,
-      `Konflik perubahan untuk ${GROUP_LABELS[group]}. Muat semula halaman dan cuba lagi.`,
+      `The settings for ${GROUP_LABELS[group]} changed elsewhere. Reload the page and try again.`,
     );
     if (localStructureChanged) {
       merged.groups[group].tiers = structuredClone(draftGroup.tiers);
@@ -95,7 +95,7 @@ function mergeChangedSettings(baseline: ShippingSettings, current: ShippingSetti
           previousGroup.tiers[index][field],
           tier[field],
           freshGroup.tiers[index][field],
-          `Konflik perubahan untuk ${GROUP_LABELS[group]}. Muat semula halaman dan cuba lagi.`,
+          `The settings for ${GROUP_LABELS[group]} changed elsewhere. Reload the page and try again.`,
         );
       });
     });
@@ -147,7 +147,7 @@ export default function ShippingSettingsPage() {
       setSavedSettings(structuredClone(loadedSettings));
       setProducts(loadedProducts.filter((product) => !product.deletedAt));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Tetapan penghantaran tidak dapat dimuatkan.');
+      setError(caught instanceof Error ? caught.message : 'Shipping settings could not be loaded.');
     }
   };
   useEffect(() => { load(); }, []);
@@ -177,7 +177,7 @@ export default function ShippingSettingsPage() {
       if (!dirty || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const link = (event.target as Element | null)?.closest('a[href]') as HTMLAnchorElement | null;
       if (!link || link.target === '_blank' || link.href === window.location.href) return;
-      if (!window.confirm('Terdapat perubahan belum disimpan. Tinggalkan halaman ini?')) { event.preventDefault(); event.stopPropagation(); }
+      if (!window.confirm('You have unsaved changes. Leave this page?')) { event.preventDefault(); event.stopPropagation(); }
     };
     const warnHistory = (event: PopStateEvent) => {
       if (!dirty) return;
@@ -185,7 +185,7 @@ export default function ShippingSettingsPage() {
       const nextPosition = Number.isInteger(event.state?.shippingHistoryPosition) ? event.state.shippingHistoryPosition : Number.isInteger(event.state?.idx) ? event.state.idx : navigationIndex;
       if (restoringPosition !== null) { historyPositionRef.current = restoringPosition; restoringPosition = null; return; }
       const currentPosition = historyPositionRef.current;
-      const decision = historyNavigationDecision(currentPosition, nextPosition, window.confirm('Terdapat perubahan belum disimpan. Tinggalkan halaman ini?'));
+      const decision = historyNavigationDecision(currentPosition, nextPosition, window.confirm('You have unsaved changes. Leave this page?'));
       if (decision.type === 'allow') { if (typeof nextPosition === 'number') historyPositionRef.current = nextPosition; return; }
       if (decision.type === 'go') {
         restoringPosition = currentPosition;
@@ -227,14 +227,14 @@ export default function ShippingSettingsPage() {
     if (!savedSettings) return;
     setSettings(structuredClone(savedSettings));
     setError('');
-    setNotice('Perubahan dibatalkan.');
+    setNotice('Changes discarded.');
   }
   async function save() {
     if (!settings || !savedSettings || !dirty) return;
     const errors = validateSettings(settings);
-    if (Object.keys(errors).length) { setError('Betulkan medan yang ditandakan sebelum menyimpan.'); return; }
-    const warning = priorityChanged ? '\n\nAmaran: keutamaan pesanan campuran berubah dan boleh menukar caj penghantaran.' : '';
-    if (!window.confirm(`Simpan ${changes} perubahan tetapan penghantaran?\n\nRingkasan semakan:\nKategori produk: ${summary.products} perubahan\nKadar & label penghantaran: ${summary.rates} perubahan\nKeutamaan pesanan campuran: ${summary.priority ? 'Berubah' : 'Tidak berubah'}${warning}`)) return;
+    if (Object.keys(errors).length) { setError('Correct the highlighted fields before saving.'); return; }
+    const warning = priorityChanged ? '\n\nWarning: the mixed-order priority changed and may alter shipping charges.' : '';
+    if (!window.confirm(`Save ${changes} shipping-setting changes?\n\nReview summary:\nProduct assignments: ${summary.products} changes\nShipping rates and labels: ${summary.rates} changes\nMixed-order priority: ${summary.priority ? 'Changed' : 'Unchanged'}${warning}`)) return;
     setSaving(true); setError(''); setNotice('');
     try {
       const fresh = await adminFetch<ShippingSettings>('shipping-settings');
@@ -242,76 +242,76 @@ export default function ShippingSettingsPage() {
       const saved = await adminFetch<ShippingSettings>('shipping-settings', { method: 'PUT', body: JSON.stringify(merged) });
       setSettings(saved);
       setSavedSettings(structuredClone(saved));
-      setNotice('Tetapan penghantaran berjaya disimpan.');
+      setNotice('Shipping settings saved successfully.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Tetapan tidak dapat disimpan.');
+      setError(caught instanceof Error ? caught.message : 'Shipping settings could not be saved.');
     } finally { setSaving(false); }
   }
 
-  if (!settings) return <AdminShell title="Shipping" eyebrow="Operations"><section className="adm-panel adm-empty"><h3>{error || 'Memuatkan tetapan penghantaran…'}</h3>{error && <button className="adm-button" onClick={load}>Cuba lagi</button>}</section></AdminShell>;
+  if (!settings) return <AdminShell title="Shipping" eyebrow="Operations"><section className="adm-panel adm-empty"><h3>{error || 'Loading shipping settings…'}</h3>{error && <button className="adm-button" onClick={load}>Try again</button>}</section></AdminShell>;
 
   const productRows = (rows: Product[]) => <div className="ship-product-list">{rows.map((product) => {
     const system = isSystemProduct(product);
     const group = productGroup(settings, product);
     return <article className="ship-product-row" key={product.id}>
       <div className="ship-product-copy"><strong>{product.title}</strong><small>Product #{product.id}</small></div>
-      <label><span>Kategori penghantaran</span><select value={system ? 'none' : group} disabled={saving || system} onChange={(event) => setProductGroup(product, event.target.value as CourierGroup | '')}>
-        <option value="">Pilih kategori…</option>
+      <label><span>Shipping category</span><select value={system ? 'none' : group} disabled={saving || system} onChange={(event) => setProductGroup(product, event.target.value as CourierGroup | '')}>
+        <option value="">Select a category…</option>
         {COURIER_GROUPS.map((item) => <option value={item} key={item}>{GROUP_LABELS[item]}</option>)}
-        {system && <option value="none">Tidak perlu penghantaran</option>}
+        {system && <option value="none">No shipping required</option>}
       </select></label>
     </article>;
-  })}{!rows.length && <div className="adm-empty ship-empty"><p>Tiada produk dalam bahagian ini.</p></div>}</div>;
+  })}{!rows.length && <div className="adm-empty ship-empty"><p>No products in this section.</p></div>}</div>;
 
   return <AdminShell title="Shipping" eyebrow="Operations">
     <fieldset className="ship-form" disabled={saving}>
-    <div className="adm-page-head"><div><h1>Tetapan penghantaran</h1><p>Tetapkan kategori produk dan kadar penghantaran pelanggan.</p></div></div>
+    <div className="adm-page-head"><div><h1>Shipping settings</h1><p>Assign products to shipping categories and manage customer shipping rates.</p></div></div>
     {error && <div className="adm-alert is-error" role="alert">{error}</div>}{notice && <div className="adm-alert is-success" role="status">{notice}</div>}
 
     <section className="adm-panel ship-products">
-      <header className="adm-panel-head"><div><h2>Produk & kategori</h2><p>Produk tanpa kategori ditunjukkan dahulu.</p></div></header>
-      <label className="adm-search ship-search"><Icon name="search"/><span className="adm-sr-only">Cari produk atau ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari produk atau ID…"/></label>
-      <div className="ship-list-heading"><h3>Perlu tindakan ({needsAction.length})</h3></div>
+      <header className="adm-panel-head"><div><h2>Products and categories</h2><p>Products without an explicit shipping category appear first.</p></div></header>
+      <label className="adm-search ship-search"><Icon name="search"/><span className="adm-sr-only">Search products or IDs</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products or IDs…"/></label>
+      <div className="ship-list-heading"><h3>Needs assignment ({needsAction.length})</h3></div>
       {productRows(needsAction)}
       <details className="ship-disclosure ship-completed">
-        <summary>Produk sudah ditetapkan ({completed.length})</summary>
+        <summary>Assigned products ({completed.length})</summary>
         {productRows(completed)}
       </details>
     </section>
 
     <section className="adm-panel ship-rates">
-      <header className="adm-panel-head"><div><h2>Kadar penghantaran</h2><p>Contoh julat: 1–5 unit, 21 unit ke atas. Nilai RM0 dipaparkan sebagai Percuma.</p></div></header>
+      <header className="adm-panel-head"><div><h2>Shipping rates</h2><p>Example tiers: 1–5 units and 21+ units. RM0 is displayed as Free.</p></div></header>
       <div className="ship-rate-list">{COURIER_GROUPS.map((group, groupIndex) => <details name="shipping-rates" className="ship-disclosure ship-rate-group" key={group} open={groupIndex === 0 ? true : undefined}>
-        <summary><span>{GROUP_LABELS[group]}</span><small>{settings.groups[group].tiers.length} julat kadar</small></summary>
+        <summary><span>{GROUP_LABELS[group]}</span><small>{settings.groups[group].tiers.length} rate tiers</small></summary>
         <div className="ship-rate-body">
-          <label className="adm-field">Nama kategori<input id={`${group}-label`} value={settings.groups[group].label} aria-invalid={Boolean(validation[`${group}-label`])} aria-describedby={validation[`${group}-label`] ? `${group}-label-error` : undefined} onChange={(event) => update((next) => { next.groups[group].label = event.target.value; })}/>{validation[`${group}-label`] && <span id={`${group}-label-error`} className="ship-field-error" role="alert">{validation[`${group}-label`]}</span>}</label>
+          <label className="adm-field">Category name<input id={`${group}-label`} value={settings.groups[group].label} aria-invalid={Boolean(validation[`${group}-label`])} aria-describedby={validation[`${group}-label`] ? `${group}-label-error` : undefined} onChange={(event) => update((next) => { next.groups[group].label = event.target.value; })}/>{validation[`${group}-label`] && <span id={`${group}-label-error`} className="ship-field-error" role="alert">{validation[`${group}-label`]}</span>}</label>
           <div className="ship-tiers">{settings.groups[group].tiers.map((tier, index, tiers) => {
             const nextMinimum = tiers[index + 1]?.minimum;
-            const range = nextMinimum ? `${tier.minimum}–${nextMinimum - 1} unit` : `${tier.minimum} unit ke atas`;
+            const range = nextMinimum ? `${tier.minimum}–${nextMinimum - 1} units` : `${tier.minimum}+ units`;
             const minimumKey = `${group}-${index}-minimum`;
             const peninsularKey = `${group}-${index}-peninsular`;
             const eastKey = `${group}-${index}-east`;
             return <div className="ship-tier" key={index}>
               <strong className="ship-range">{range}</strong>
-              <label><span>Unit minimum</span><input id={minimumKey} type="number" min="1" step="1" readOnly={index === 0} value={tier.minimum} aria-invalid={Boolean(validation[minimumKey])} aria-describedby={validation[minimumKey] ? `${minimumKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].minimum = Number(event.target.value); })}/>{validation[minimumKey] && <small id={`${minimumKey}-error`} className="ship-field-error" role="alert">{validation[minimumKey]}</small>}</label>
-              <label><span>Semenanjung Malaysia</span><span className="ship-money"><b>RM</b><input id={peninsularKey} type="number" min="0" step="0.01" value={tier.peninsular} aria-invalid={Boolean(validation[peninsularKey])} aria-describedby={validation[peninsularKey] ? `${peninsularKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].peninsular = Number(event.target.value); })}/></span>{tier.peninsular === 0 && <small>Percuma</small>}{validation[peninsularKey] && <small id={`${peninsularKey}-error`} className="ship-field-error" role="alert">{validation[peninsularKey]}</small>}</label>
-              <label><span>Sabah, Sarawak & Labuan</span><span className="ship-money"><b>RM</b><input id={eastKey} type="number" min="0" step="0.01" value={tier.eastMalaysia} aria-invalid={Boolean(validation[eastKey])} aria-describedby={validation[eastKey] ? `${eastKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].eastMalaysia = Number(event.target.value); })}/></span>{tier.eastMalaysia === 0 && <small>Percuma</small>}{validation[eastKey] && <small id={`${eastKey}-error`} className="ship-field-error" role="alert">{validation[eastKey]}</small>}</label>
-              <button type="button" className="adm-icon-btn" disabled={index === 0} aria-label={`Padam julat ${range}`} onClick={() => update((next) => { next.groups[group].tiers.splice(index, 1); })}><Icon name="trash"/></button>
+              <label><span>Minimum quantity</span><input id={minimumKey} type="number" min="1" step="1" readOnly={index === 0} value={tier.minimum} aria-invalid={Boolean(validation[minimumKey])} aria-describedby={validation[minimumKey] ? `${minimumKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].minimum = Number(event.target.value); })}/>{validation[minimumKey] && <small id={`${minimumKey}-error`} className="ship-field-error" role="alert">{validation[minimumKey]}</small>}</label>
+              <label><span>Peninsular Malaysia</span><span className="ship-money"><b>RM</b><input id={peninsularKey} type="number" min="0" step="0.01" value={tier.peninsular} aria-invalid={Boolean(validation[peninsularKey])} aria-describedby={validation[peninsularKey] ? `${peninsularKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].peninsular = Number(event.target.value); })}/></span>{tier.peninsular === 0 && <small>Free</small>}{validation[peninsularKey] && <small id={`${peninsularKey}-error`} className="ship-field-error" role="alert">{validation[peninsularKey]}</small>}</label>
+              <label><span>Sabah, Sarawak and Labuan</span><span className="ship-money"><b>RM</b><input id={eastKey} type="number" min="0" step="0.01" value={tier.eastMalaysia} aria-invalid={Boolean(validation[eastKey])} aria-describedby={validation[eastKey] ? `${eastKey}-error` : undefined} onChange={(event) => update((next) => { next.groups[group].tiers[index].eastMalaysia = Number(event.target.value); })}/></span>{tier.eastMalaysia === 0 && <small>Free</small>}{validation[eastKey] && <small id={`${eastKey}-error`} className="ship-field-error" role="alert">{validation[eastKey]}</small>}</label>
+              <button type="button" className="adm-icon-btn" disabled={index === 0} aria-label={`Delete tier ${range}`} onClick={() => update((next) => { next.groups[group].tiers.splice(index, 1); })}><Icon name="trash"/></button>
             </div>;
           })}</div>
-          <button type="button" className="adm-text-button" onClick={() => update((next) => { const tiers = next.groups[group].tiers; tiers.push({ minimum: (tiers.at(-1)?.minimum || 0) + 1, peninsular: 0, eastMalaysia: 0 }); })}><Icon name="plus"/>Tambah julat</button>
+          <button type="button" className="adm-text-button" onClick={() => update((next) => { const tiers = next.groups[group].tiers; tiers.push({ minimum: (tiers.at(-1)?.minimum || 0) + 1, peninsular: 0, eastMalaysia: 0 }); })}><Icon name="plus"/>Add tier</button>
         </div>
       </details>)}</div>
     </section>
 
     <details className="adm-panel ship-disclosure ship-priority-details">
-      <summary>Peraturan pesanan campuran (Lanjutan)</summary>
-      <div className="ship-priority-body"><p>Kategori pertama yang sepadan menentukan caj untuk seluruh pesanan campuran.</p>{priorityChanged && <div className="adm-alert is-error" role="alert">Keutamaan berubah. Semak kesannya sebelum menyimpan.</div>}
-        <div className="ship-priority">{settings.priority.map((group, index) => <div key={group}><span>{index + 1}</span><strong>{GROUP_LABELS[group]}</strong><button type="button" disabled={!index} aria-label={`Alih ${GROUP_LABELS[group]} ke atas`} onClick={() => update((next) => { [next.priority[index - 1], next.priority[index]] = [next.priority[index], next.priority[index - 1]]; })}>↑</button><button type="button" disabled={index === settings.priority.length - 1} aria-label={`Alih ${GROUP_LABELS[group]} ke bawah`} onClick={() => update((next) => { [next.priority[index + 1], next.priority[index]] = [next.priority[index], next.priority[index + 1]]; })}>↓</button></div>)}</div>
+      <summary>Mixed-order rules (Advanced)</summary>
+      <div className="ship-priority-body"><p>The first matching category determines the charge for the entire mixed order.</p>{priorityChanged && <div className="adm-alert is-error" role="alert">Priority changed. Review the effect before saving.</div>}
+        <div className="ship-priority">{settings.priority.map((group, index) => <div key={group}><span>{index + 1}</span><strong>{GROUP_LABELS[group]}</strong><button type="button" disabled={!index} aria-label={`Move ${GROUP_LABELS[group]} up`} onClick={() => update((next) => { [next.priority[index - 1], next.priority[index]] = [next.priority[index], next.priority[index - 1]]; })}>↑</button><button type="button" disabled={index === settings.priority.length - 1} aria-label={`Move ${GROUP_LABELS[group]} down`} onClick={() => update((next) => { [next.priority[index + 1], next.priority[index]] = [next.priority[index], next.priority[index + 1]]; })}>↓</button></div>)}</div>
       </div>
     </details>
 
-    {dirty && <div className="ship-dirty-bar" role="status"><strong>{changes} perubahan belum disimpan</strong><div><button type="button" className="adm-button secondary" disabled={saving} onClick={cancel}>Batal</button><button type="button" className="adm-button" disabled={saving || Object.keys(validation).length > 0} onClick={save}><Icon name="save"/>{saving ? 'Menyimpan…' : 'Semak & simpan'}</button></div></div>}
+    {dirty && <div className="ship-dirty-bar" role="status"><strong>{changes} unsaved changes</strong><div><button type="button" className="adm-button secondary" disabled={saving} onClick={cancel}>Cancel</button><button type="button" className="adm-button" disabled={saving || Object.keys(validation).length > 0} onClick={save}><Icon name="save"/>{saving ? 'Saving…' : 'Review and save'}</button></div></div>}
     </fieldset>
   </AdminShell>;
 }

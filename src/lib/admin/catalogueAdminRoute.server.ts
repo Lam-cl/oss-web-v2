@@ -56,7 +56,7 @@ export function catalogueAdminError(reason:unknown){
   if(/not found/i.test(message))return safeError(404);
   if(/revision.*conflict/i.test(message))return safeError(409);
   if(/valid|required|invalid|must|duplicate/i.test(message))return safeError(400,{message});
-  return safeError(500,{message:'Produk katalog tidak dapat diproses. Sila cuba lagi.'});
+  return safeError(500,{message:'The catalogue product could not be processed. Please try again.'});
 }
 
 async function filenames(directory:string, pattern:RegExp){

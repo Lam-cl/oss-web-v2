@@ -26,7 +26,7 @@ export function catalogueMediaError(reason: unknown) {
   if (/^(?:A valid (?:catalogue|media)|A safe media|Media |Catalogue media (?:input|update|may use)|Duplicate catalogue media order)/.test(message)) {
     return safeError(400, { message });
   }
-  return safeError(500, { message: 'Media katalog tidak dapat diproses. Sila cuba lagi.' });
+  return safeError(500, { message: 'The catalogue media could not be processed. Please try again.' });
 }
 
 export async function catalogueMediaAuthError(request: NextRequest, mutation: boolean) {
@@ -44,7 +44,7 @@ export async function readCatalogueMediaProduct(id: string): Promise<
   } catch (reason) {
     const error = /valid catalogue ID/i.test(reason instanceof Error ? reason.message : '')
       ? safeError(400)
-      : safeError(500, { message: 'Produk katalog tidak dapat diproses. Sila cuba lagi.' });
+      : safeError(500, { message: 'The catalogue product could not be processed. Please try again.' });
     return { product: null, error };
   }
 }

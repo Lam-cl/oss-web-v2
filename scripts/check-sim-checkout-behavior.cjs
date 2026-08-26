@@ -12,6 +12,7 @@ const stubs={
   '@/lib/minimumOrderQuantity':{getProductMinimumOrderQuantity:()=>1},
   '@/lib/productSetup':{isProductSetupDraft:()=>false},
   '@/lib/shipping':{calculateCourierCharge:()=>({amount:10,unclassified:[]})},
+  '@/lib/shippingSettings.server':{readShippingSettings:async()=>({})},
   '@/lib/pickup':{isKualaLumpurWorkingDay:()=>true,malaysiaDate:()=>'',minimumPickupDate:()=>'',pickupDateFromAddress:()=>''},
   '@/lib/admin/orderMetadata.server':{saveBillingAddress:async()=>{},savePaymentReference:async()=>{}},
   '@/lib/cataloguePublicProjection.server':{readCataloguePublicProjection:async()=>{if(projection instanceof Error)throw projection;return projection}},

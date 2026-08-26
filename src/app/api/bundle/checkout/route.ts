@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProductMinimumOrderQuantity } from "@/lib/minimumOrderQuantity";
 import { isProductSetupDraft } from "@/lib/productSetup";
 import { calculateCourierCharge, type CourierLine } from "@/lib/shipping";
+import { readShippingSettings } from "@/lib/shippingSettings.server";
 import {
   isKualaLumpurWorkingDay,
   malaysiaDate,
@@ -214,6 +215,7 @@ export async function calculateExpectedAmount(
     }
     subtotalInCents += Math.round(unitPrice * 100) * item.quantity;
     courierLines.push({
+      bundleProductId: product.id,
       slug: product.slug,
       name: product.title || product.name,
       category: product.categories?.[0]?.name || undefined,
@@ -225,7 +227,7 @@ export async function calculateExpectedAmount(
   const upstreamItems = [...normalizedItems];
   let shippingAmount = 0;
   if (deliveryOption === "DELIVER") {
-    const courier = calculateCourierCharge(courierLines, shippingState);
+    const courier = calculateCourierCharge(courierLines, shippingState, await readShippingSettings());
     if (courier.unclassified.length > 0) {
       throw new CheckoutValidationError(
         `Delivery is not configured for: ${courier.unclassified.join(", ")}`,

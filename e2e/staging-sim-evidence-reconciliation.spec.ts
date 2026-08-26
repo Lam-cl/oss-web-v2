@@ -27,7 +27,7 @@ test('SIM Card uses the ordinary create, edit, publish, unpublish and archive li
     await editor.getByLabel('Product name').fill(title);
     await editor.getByLabel('Category').selectOption('SIM Card');
     await editor.getByLabel('Minimum order quantity').fill('2');
-    await editor.getByLabel('Description').fill('Temporary staging lifecycle fixture.');
+    await editor.getByLabel('Description', { exact: true }).fill('Temporary staging lifecycle fixture.');
     await editor.locator('input[type="file"]').setInputFiles(path.resolve('public/images/tonewow-sim-clean-transparent.png'));
     await editor.getByLabel('Price (RM)').fill('1');
     await editor.getByLabel('Stock quantity').fill('2');

@@ -70,10 +70,9 @@ export function isSimOrderItem(value: unknown) {
   const slug = text(product.slug || item.slug).toLowerCase();
   const type = text(item.type || product.type).toLowerCase();
   if (/(delivery|shipping)[\s_-]*fee/i.test(`${slug} ${name}`)) return false;
-  if (["superlite-sim", "biz-sim"].includes(slug) || type === "sim")
-    return true;
   if (categoryNames(item, product).some((category) => category === "sim card" || category === "sim cards")) return true;
-  return /\bsim\b/i.test(name);
+  const productId = Number(product.id || item.productId);
+  return [39, 40].includes(productId) || ["superlite-sim", "biz-sim"].includes(slug) || type === "sim";
 }
 
 export function itemVariantId(value: unknown) {

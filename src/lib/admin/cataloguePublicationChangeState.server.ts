@@ -52,9 +52,7 @@ function currentProjection(product: CatalogueProductRecord) {
   return {
     slug: product.slug,
     details,
-    minimumOrderQuantity: (product.currentBundleProductId === 39 || product.currentBundleProductId === 40)
-      && /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim() || '')
-      ? 2 : product.model.details.minimumOrderQuantity ?? 1,
+    minimumOrderQuantity: product.model.details.minimumOrderQuantity ?? 1,
     choices: product.model.choices.map((choice) => ({
       key: choice.key,
       name: choice.name,
@@ -109,10 +107,7 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   const variants = provider.productVariants || [];
   const providerById = new Map(variants.map((variant) => [variant.id, variant]));
   const expectedIds = new Set(snapshot.product.combinations.map((combination) => combination.variantId));
-  const simManaged = (product.currentBundleProductId === 39 || product.currentBundleProductId === 40)
-    && /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim() || '');
-  if (simManaged ? Array.from(expectedIds).some((id) => !providerById.has(id))
-    : variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
+  if (variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
   const currentByTuple = new Map(product.model.combinations.map((combination, index) => [
     JSON.stringify(combination.valueKeys),
     { combination, index },
@@ -121,8 +116,8 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   for (const published of snapshot.product.combinations) {
     const current = currentByTuple.get(JSON.stringify(published.valueKeys));
     const providerVariant = providerById.get(published.variantId);
-    if (!current || typeof providerVariant?.sku !== 'string' || !simManaged && !suffix.test(providerVariant.sku.toUpperCase())) return null;
-    const providerCanonicalSku = simManaged ? normalizedSku(providerVariant.sku) : providerVariant.sku.toUpperCase().replace(suffix, '');
+    if (!current || typeof providerVariant?.sku !== 'string' || !suffix.test(providerVariant.sku.toUpperCase())) return null;
+    const providerCanonicalSku = providerVariant.sku.toUpperCase().replace(suffix, '');
     if (providerCanonicalSku !== expectedSku(product, current.combination.valueKeys, current.combination.sku, current.index)) return false;
   }
   return true;
@@ -155,13 +150,15 @@ export function evaluatePublicationChangeState(evidence: Evidence): PublicationC
     || Array.from(boundVariantIds).some((variantId) => !snapshotVariantIds.has(variantId))) {
     return unknown('Publication variant bindings do not match the published snapshot.');
   }
+  if (!isDeepStrictEqual(currentProjection(product), snapshotProjection(snapshot))
+    || !isDeepStrictEqual(currentMediaProjection(evidence.media), snapshotMediaProjection(snapshot))) {
+    return { publicationChangeState: 'dirty' };
+  }
   if (!evidence.providerProduct || evidence.providerProduct.id !== active.bundleProductId) {
     return unknown('The active Bundle product could not be verified.');
   }
   const skuMatch = providerSkusMatch(product, snapshot, evidence.providerProduct);
   if (skuMatch === null) return unknown('The active Bundle variant identities or SKU evidence are incomplete.');
-  if (!isDeepStrictEqual(currentProjection(product), snapshotProjection(snapshot))
-    || !isDeepStrictEqual(currentMediaProjection(evidence.media), snapshotMediaProjection(snapshot))
-    || skuMatch === false) return { publicationChangeState: 'dirty' };
+  if (skuMatch === false) return { publicationChangeState: 'dirty' };
   return { publicationChangeState: 'clean' };
 }

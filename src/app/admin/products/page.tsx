@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/AdminShell';
-import UnifiedProductEditor, { publishSimProduct } from '@/components/admin/UnifiedProductEditor';
+import UnifiedProductEditor from '@/components/admin/UnifiedProductEditor';
 import type {
   UnifiedProductEditorExistingPhoto,
   UnifiedProductEditorPendingPhoto,
@@ -38,11 +38,7 @@ type CatalogueProductRecord = {
   currentBundleProductId: number | null;
   bundleVersions: Array<{ bundleProductId: number; retiredAt: string | null }>;
   updatedAt: string;
-  managementDomain?: 'SIM' | string;
   minimumOrderQuantity?: number;
-  lockedFields?: string[];
-  providerFingerprint?: string;
-  capabilities?: { saveSimChanges?: boolean };
   publicationChangeState: 'clean' | 'dirty' | 'unknown';
   publicationChangeReason?: string;
 };
@@ -105,9 +101,6 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
   const [model, setModel] = useState<ProductEditorSpec | null>(null);
   const [existingPhotos, setExistingPhotos] = useState<UnifiedProductEditorExistingPhoto[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<UnifiedProductEditorPendingPhoto[]>([]);
-  const [simSaving, setSimSaving] = useState(false);
-  const [simError, setSimError] = useState<string | null>(null);
-  const [providerFingerprint, setProviderFingerprint] = useState(catalogueProduct.providerFingerprint);
 
   useEffect(() => {
     if (product) setModel(product.model);
@@ -126,12 +119,8 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
   return <UnifiedProductEditor
     editorKey={catalogueId}
     availableCategories={availableCategories}
-    managementDomain={catalogueProduct.managementDomain}
     minimumOrderQuantity={catalogueProduct.minimumOrderQuantity}
-    lockedFields={catalogueProduct.lockedFields}
-    saveMode={catalogueProduct.managementDomain === 'SIM'
-      ? catalogueProduct.capabilities?.saveSimChanges ? 'sim' : 'local-draft'
-      : 'product'}
+    saveMode="product"
     model={model}
     liveInventory={catalogueProduct.status === 'published' && liveProduct?.id === catalogueProduct.currentBundleProductId
       ? liveCombinationInventory(model, liveProduct)
@@ -144,29 +133,13 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
       setPendingPhotos(nextPending);
     }}
     onSave={async (intent) => {
-      if (catalogueProduct.managementDomain === 'SIM') {
-        if (!catalogueProduct.capabilities?.saveSimChanges) throw new Error('Dedicated SIM saving is not available. Reload before saving.');
-        setSimSaving(true);
-        setSimError(null);
-        try {
-          const result = await publishSimProduct({ ...catalogueProduct, providerFingerprint }, intent);
-          setProviderFingerprint(result.fingerprint);
-          onSaved();
-        } catch (problem) {
-          setSimError(problem instanceof Error ? problem.message : 'The SIM product could not be saved.');
-          throw problem;
-        } finally {
-          setSimSaving(false);
-        }
-        return;
-      }
       await save(intent);
       setPendingPhotos([]);
       onSaved();
     }}
     onCancel={onClose}
-    saving={saving || simSaving}
-    error={simError || error}
+    saving={saving}
+    error={error}
   />;
 }
 
@@ -426,8 +399,8 @@ function ProductsContent() {
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
       const providerOperationUnresolved = localDraft && unresolvedPublication(cataloguePublications[row.catalogue.catalogueId]);
-      const simManagedCatalogue = row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM';
-      const genericLifecycleAllowed = genericCatalogueLifecycleAllowed(simManagedCatalogue);
+      const simManagedCatalogue = false;
+      const genericLifecycleAllowed = genericCatalogueLifecycleAllowed(false);
       const publicationAction = row.kind === 'catalogue' ? publicationActionPresentation({
         state: row.catalogue.publicationChangeState,
         localDraft,

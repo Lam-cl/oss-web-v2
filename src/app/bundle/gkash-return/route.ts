@@ -9,8 +9,18 @@ const BUNDLE_RETURN_URL = 'https://bundleapi.tonewow.com/api/payment/gkash/retur
 const MAX_RETURN_BYTES = 64 * 1024;
 const noStore = { 'cache-control': 'private, no-store, max-age=0' };
 
+function publicOrigin(request: NextRequest) {
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const host = forwardedHost || request.headers.get('host')?.split(',')[0]?.trim();
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
+  if (host && !host.startsWith('localhost') && !host.startsWith('127.')) {
+    try { return new URL(`${proto}://${host}`).origin; } catch { /* use request origin */ }
+  }
+  return request.nextUrl.origin;
+}
+
 function processing(request: NextRequest) {
-  return NextResponse.redirect(new URL('/payment/processing', request.url), { status: 303, headers: noStore });
+  return NextResponse.redirect(new URL('/payment/processing', publicOrigin(request)), { status: 303, headers: noStore });
 }
 
 function localResult(request: NextRequest, location: string | null) {
@@ -18,7 +28,7 @@ function localResult(request: NextRequest, location: string | null) {
   try {
     const target = new URL(location, BUNDLE_RETURN_URL);
     if (!['/payment/success', '/payment/failed'].includes(target.pathname)) return null;
-    return new URL(`${target.pathname}${target.search}`, request.nextUrl.origin);
+    return new URL(`${target.pathname}${target.search}`, publicOrigin(request));
   } catch {
     return null;
   }

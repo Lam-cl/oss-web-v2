@@ -8,6 +8,8 @@ assert.match(checkout, /paymentParams\.returnurl = returnUrl\.toString\(\)/, 'br
 assert.match(checkout, /\/bundle\/gkash-return/, 'checkout must issue the same-origin return URL');
 assert.match(bridge, /redirect: 'manual'/, 'upstream response body must never be rendered');
 assert.match(bridge, /NextResponse\.redirect\(new URL\('\/payment\/processing'/, 'uncertain return must redirect to local processing');
+assert.match(bridge, /x-forwarded-host/, 'reverse-proxied returns must use the public host');
+assert.match(bridge, /publicOrigin\(request\)/, 'gateway redirects must not expose the internal Next.js origin');
 assert.match(bridge, /readOrderMetadata\(orderId\)/, 'return query must be bound to stored order metadata');
 assert.match(bridge, /MAX_RETURN_BYTES = 64 \* 1024/, 'gateway body must be bounded');
 assert.match(processing, /PaymentResult status="failed" reason="Payment processing error"/, 'processing page must reuse authoritative polling');

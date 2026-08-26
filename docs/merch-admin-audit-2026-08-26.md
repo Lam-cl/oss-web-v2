@@ -5,7 +5,7 @@
 - Target: `tonewow.xifuhalim.com` (non-v2 staging) only.
 - `shop.tonewow.com` was not accessed or changed.
 - The Zara ZIP was treated as reference only; no archive-wide copy or merge was performed.
-- Pending unpaid checkouts and inventory were not mutated.
+- Pending unpaid checkouts and existing customer inventory were not mutated. A temporary GUI lifecycle fixture changed its own stock from 2 to 3 and was then unpublished and archived.
 - QA SIM Bundle product `90` remains published and visible. Archive/unpublish is intentionally outside this rollout.
 
 ## Architecture finding
@@ -26,7 +26,7 @@ The admin list now derives `publicationChangeState` from one request-scoped inde
 
 Raw `CV-*` values recorded in job bindings are treated as provider-generated metadata, not catalogue choice keys. Variant IDs anchor the job to the snapshot; stable catalogue value keys come from the snapshot/model.
 
-Read-only audit of the current staging `.data` and live Bundle merchandise response:
+Initial read-only audit of the staging source before evidence reconciliation:
 
 | Result | Products |
 | --- | --- |
@@ -34,7 +34,7 @@ Read-only audit of the current staging `.data` and live Bundle merchandise respo
 | Dirty | Topi (81) |
 | Unknown | BIZ SIM (40), SUPERLITE SIM (39), 3-fold flyers (34), Bunting (28), Cap (24), Basics (36), Comix (35), Nonwoven (33), Pen (32), Tumbler (27) |
 
-Twelve publication jobs were loaded once and indexed for sixteen catalogue records. Unknown products are deliberately fail-closed; this rollout does not invent missing history.
+Publication evidence was then reconciled on staging. The current admin readiness check reports zero `unknown` records. Water Bottle 975ml and the two live SIM products are clean; Topi is an unpublished draft ready for ordinary publication, and QA SIM product 90 has a real dirty draft while remaining publicly visible.
 
 ## Flow audit
 
@@ -42,12 +42,12 @@ Twelve publication jobs were loaded once and indexed for sixteen catalogue recor
 | --- | --- |
 | Catalogue and gallery | Public projection remains snapshot/adoption based. Model and media differences are evaluated server-side. |
 | Inventory and variants | Current combination inventory, price, tuple order, provider variant IDs and canonical SKU are compared. |
-| MOQ | Existing staging MOQ structure and SIM minimum-order policy are unchanged. |
+| MOQ | MOQ is an ordinary editable catalogue field. Legacy SIM products start at MOQ 2 when first normalized to `SIM Card`. |
 | Cart | No cart source or payload contract was changed. Colour swatch, explicit selection and zero-removal regressions pass. |
 | Checkout and payment | No checkout/payment source was changed. Bundle JSON and multipart transport regressions pass. ADX token remains isolated. |
 | Voucher and shipping | No live voucher, courier or shipping setting was mutated. |
 | Orders | No order or pending-payment data was mutated. Core order metadata/payment regressions pass. |
-| SIM fulfilment | Generic catalogue publish/unpublish/archive controls stay hidden for SIM-managed products. Product 90 remains on the dedicated workflow. |
+| SIM fulfilment | `SIM Card` uses the same create/edit/publish/unpublish/archive lifecycle as other merchandise. Its only special behavior is order fulfilment: `SIM Card`, legacy `SIM Cards`/`SIM`, known SIM slugs and SIM item types create per-unit SN assignments. Product 90 remains published but now exposes ordinary lifecycle controls. |
 
 ## Verification
 
@@ -57,6 +57,7 @@ Twelve publication jobs were loaded once and indexed for sixteen catalogue recor
 - Focused catalogue, gallery, inventory, cart, checkout, shipping, order and SIM regression set: passed.
 - Before-rollout public response fingerprints were captured for `/bundle/merchandise` and `/catalogue-products-api` for post-rollout parity comparison.
 - Full historical `check-*.cjs/js` sweep: 90 passed, 11 baseline failures. The failures are the four old admin source-literal checks (`courier`, expected-delivery, fulfilment fields and SIM UI), fulfilment SKU source matching, two dated 19-August data/campaign checks, payment-page source matching, the pre-existing cross-catalogue SIM variant assertion, staging-export report-path handling, and voucher/payment allowlist source matching.
+- Authenticated Chromium lifecycle: created a temporary `SIM Card` product, published it, edited stock 2 → 3, observed evidence-backed `Publish changes`, republished, then unpublished and archived it. No QA lifecycle fixture remains.
 
 The repository also contains historical source-string checks and dated 19-August campaign/catalogue checks. Failures in those baseline checks are tracked separately from this change when they assert obsolete literal formatting or superseded provider data; production behavior was not changed merely to satisfy them.
 
@@ -66,4 +67,4 @@ The Git commits are portable and contain no runtime dependency on the deployment
 
 Catalogue products, publication jobs, published snapshots, media, adoption reads/supersession, shipping settings, order metadata, SIM assignments, product image-colour state, product-control checkpoints, SIM migration/update checkpoints and ready-collection email markers have remote adapters. Cross-process leases serialize specialist mutations. Normal catalogue archive is an atomic PostgreSQL operation with a durable restore manifest; referenced MinIO objects are retained. Admin cookies become opaque IDs when the data service is enabled, while Bundle tokens are encrypted at rest in PostgreSQL. The imported PostgreSQL/MinIO projection matches the pre-cutover `.data` source, and an isolated remote-enabled production build succeeds.
 
-Production remains intentionally blocked. Ten records lack exact completed publication evidence and Topi has a real unpublished inventory change, so the `--require-clean` gate exits non-zero for 11 products. Those records must be reconciled on staging, and encrypted offsite backup credentials/target plus a restore drill are still required before a production-readiness decision. No unknown evidence was fabricated and no production DNS or `shop.tonewow.com` deployment was changed.
+Production remains intentionally blocked. Publication evidence no longer has unknown records, but Topi is an unpublished draft, QA SIM product 90 has an unpublished change, and encrypted offsite backup credentials/target plus a restore drill are still required before a production-readiness decision. No unknown evidence was fabricated and no production DNS or `shop.tonewow.com` deployment was changed.

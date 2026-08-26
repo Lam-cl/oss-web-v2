@@ -29,7 +29,7 @@ const input = (overrides = {}) => ({ operationId: operationId(), catalogueId: ra
 const step = (name, at) => ({ name, completedAt: at });
 (async () => {
   const store = load();
-  assert.deepEqual(Object.keys(store).sort(), ['createPublicationJob','listPublicationJobs','readPublicationJob','updatePublicationJob']);
+  assert.deepEqual(Object.keys(store).sort(), ['createCompletedPublicationEvidence','createPublicationJob','listPublicationJobs','readPublicationJob','updatePublicationJob']);
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'tw-pub-store-'));
   try {
     const firstUseRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'tw-pub-first-use-'));

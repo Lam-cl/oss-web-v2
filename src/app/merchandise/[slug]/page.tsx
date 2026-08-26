@@ -23,7 +23,7 @@ export default function MerchandiseDetailPage() {
   );
   const addItem = useCartStore((state) => state.addItem);
   const [optionIndex, setOptionIndex] = useState(0);
-  const variantChoiceRequired = product?.optionLabel === 'Variant' && Boolean(product?.options.some((option) => option.name === 'Tone Excel' || option.name === 'Tone Plus'));
+  const variantChoiceRequired = Boolean(product && /^variant$/i.test(product.optionLabel || '') && product.options.length > 1);
   const [optionExplicitlySelected, setOptionExplicitlySelected] = useState(!variantChoiceRequired);
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -43,7 +43,7 @@ export default function MerchandiseDetailPage() {
   useEffect(() => {
     if (!product) return;
     setOptionIndex(0);
-    setOptionExplicitlySelected(!(product.optionLabel === 'Variant' && product.options.some((option) => option.name === 'Tone Excel' || option.name === 'Tone Plus')));
+    setOptionExplicitlySelected(!(/^variant$/i.test(product.optionLabel || '') && product.options.length > 1));
     setSelectedSize('');
     setQuantity(product.minimumOrderQuantity);
     setActiveImage('');
@@ -94,7 +94,7 @@ export default function MerchandiseDetailPage() {
       return;
     }
     if (!optionExplicitlySelected) {
-      setError('Please select Tone Excel or Tone Plus.');
+      setError('Please select a variant.');
       return;
     }
     if (availableSizes && !selectedSize) {
@@ -124,7 +124,7 @@ export default function MerchandiseDetailPage() {
       slug: product.slug,
       name: product.name,
       description: product.unitLabel || product.description,
-      variant: product.options.length > 1 ? selectedOption.name : undefined,
+      variant: selectedOption.name,
       size: selectedSize || undefined,
       image: selectedOption.image,
       price: variantPrice,

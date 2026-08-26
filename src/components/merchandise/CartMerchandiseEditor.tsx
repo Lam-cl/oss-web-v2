@@ -74,9 +74,9 @@ export default function CartMerchandiseEditor({
   onConfirm,
 }: Props) {
   const [product, setProduct] = useState(initialProduct);
-  const initialOption = product.options.findIndex(
-    (option) => option.name === item.variant,
-  );
+  const initialOption = item.variant
+    ? product.options.findIndex((option) => option.name === item.variant)
+    : product.options.length === 1 && !(product.options[0].sizes || product.sizes)?.length ? 0 : -1;
   const [optionIndex, setOptionIndex] = useState(initialOption);
   const [selectedSize, setSelectedSize] = useState(item.size || "");
   const [quantity, setQuantity] = useState(
@@ -107,9 +107,9 @@ export default function CartMerchandiseEditor({
             candidate.name === item.name,
         ) || initialProduct;
       setProduct(next);
-      setOptionIndex(
-        next.options.findIndex((option) => option.name === item.variant),
-      );
+      setOptionIndex(item.variant
+        ? next.options.findIndex((option) => option.name === item.variant)
+        : next.options.length === 1 && !(next.options[0].sizes || next.sizes)?.length ? 0 : -1);
       setSelectedSize(item.size || "");
       setOptionImageOverride(item.image || "");
     });
@@ -343,7 +343,7 @@ export default function CartMerchandiseEditor({
       return;
     }
     onConfirm({
-      variant: product.options.length > 1 ? selectedOption.name : undefined,
+      variant: selectedOption.name,
       size: selectedSize || undefined,
       image: selectedOption.image,
       quantity,

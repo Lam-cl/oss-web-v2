@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@/types';
-import { getMerchandiseVariantId, getMerchandiseVariantInventory, type MerchandiseProduct } from '@/data/merchandise';
+import { getMerchandiseVariantId, getMerchandiseVariantInventory, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
 
 function clampQuantity(item: { minimumOrderQuantity?: number; availableQuantity?: number }, requested: number) {
   const minimum = Math.max(1, item.minimumOrderQuantity || 1);
@@ -45,13 +45,26 @@ export function reconcileMerchandiseCartItems(items: CartItem[], products: Merch
       || candidate.name === item.name
     ));
     if (!product || !product.apiProductId) return item;
-    const option = product.options.find((candidate) => candidate.name === item.variant);
-    const bundleVariantId = option
+    let option = product.options.find((candidate) => candidate.name === item.variant);
+    let bundleVariantId = option
       ? getMerchandiseVariantId(product, option.name, item.size)
       : undefined;
+    let singleVariantRebind = false;
+    const stableIdentity = product.id === item.productId || product.slug === item.slug;
+    const candidateSingleOption = product.options.length === 1 ? product.options[0] : null;
+    const singleOption = stableIdentity && candidateSingleOption
+      && !(candidateSingleOption.sizes || product.sizes)?.length ? candidateSingleOption : null;
+    if (singleOption) {
+      const singleVariantId = getMerchandiseVariantId(product, singleOption.name);
+      if (singleVariantId) {
+        option = singleOption;
+        bundleVariantId = singleVariantId;
+        singleVariantRebind = true;
+      }
+    }
     if (!option || !bundleVariantId
-      || product.apiProductId !== item.bundleProductId
-      || bundleVariantId !== item.bundleVariantId) return {
+      || !singleVariantRebind && (product.apiProductId !== item.bundleProductId
+        || bundleVariantId !== item.bundleVariantId)) return {
       ...item,
       productId: product.id,
       bundleProductId: product.apiProductId,
@@ -73,7 +86,7 @@ export function reconcileMerchandiseCartItems(items: CartItem[], products: Merch
       description: product.unitLabel || product.description,
       variant: option.name,
       image: option.image,
-      price: product.price,
+      price: product.variantPrices?.[merchandiseVariantKey(option.name)] ?? product.price,
       minimumOrderQuantity: product.minimumOrderQuantity,
       availableQuantity,
       quantity: clampQuantity({ minimumOrderQuantity: product.minimumOrderQuantity, availableQuantity }, item.quantity),

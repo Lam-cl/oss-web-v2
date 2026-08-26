@@ -235,7 +235,7 @@ export default function MerchandiseSection() {
     }
     setSelectedProduct(product);
     setOptionIndex(0);
-    setOptionExplicitlySelected(!(product.optionLabel === 'Variant' && product.options.some((option) => option.name === 'Tone Excel' || option.name === 'Tone Plus')));
+    setOptionExplicitlySelected(!(/^variant$/i.test(product.optionLabel || '') && product.options.length > 1));
     setSelectedSize('');
     setQuantity(product.minimumOrderQuantity);
     setActiveImageIndex(0);
@@ -450,7 +450,7 @@ export default function MerchandiseSection() {
       return;
     }
     if (!optionExplicitlySelected) {
-      setError('Please select Tone Excel or Tone Plus.');
+      setError('Please select a variant.');
       return;
     }
     if (availableSizes && !selectedSize) {
@@ -505,7 +505,7 @@ export default function MerchandiseSection() {
       slug: selectedProduct.slug,
       name: selectedProduct.name,
       description: selectedProduct.unitLabel || selectedProduct.description,
-      variant: selectedProduct.options.length > 1 ? selectedOption.name : undefined,
+      variant: selectedOption.name,
       size: selectedSize || undefined,
       image: selectedOption.image,
       price: selectedVariantPrice,

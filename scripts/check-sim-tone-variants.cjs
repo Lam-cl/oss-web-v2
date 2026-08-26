@@ -152,6 +152,7 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
     '@/data/merchandise': {
       getMerchandiseVariantId: (candidate, option) => candidate.variantIds[option],
       getMerchandiseVariantInventory: (candidate, id) => candidate.variantInventoryById[id] || 0,
+      merchandiseVariantKey: (option, size) => `${option}${size || ''}`,
     },
   });
   const stale = [{ id: 'old', type: 'merchandise', productId: '39', bundleProductId: 39, bundleVariantId: 106, variant: 'Standard', name: 'SUPERLITE SIM', price: 10, quantity: 2, addedAt: '' }];
@@ -169,8 +170,8 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
   const replacedProductCart = [{ id: 'versioned', type: 'merchandise', productId: 'catalogue-lanyard', bundleProductId: 23, bundleVariantId: 39, variant: 'Standard', name: 'Lanyard', price: 3, quantity: 1, addedAt: '' }];
   const replacementProduct = [{ id: 'catalogue-lanyard', apiProductId: 83, slug: 'lanyard', name: 'Lanyard', description: '', price: 3, options: [{ name: 'Standard', image: '/lanyard.png' }], variantIds: { Standard: 213 }, variantInventoryById: { 213: 7 }, minimumOrderQuantity: 1 }];
   const replacedProductResult = cart.reconcileMerchandiseCartItems(replacedProductCart, replacementProduct)[0];
-  assert.equal(replacedProductResult.bundleVariantId, undefined, 'a same-label option on a replacement product version must not remap the stale variant');
-  assert.equal(replacedProductResult.selectionRequired, 'Variant selection required');
+  assert.equal(replacedProductResult.bundleVariantId, 213, 'an unambiguous single variant on the same stable catalogue identity is refreshed');
+  assert.equal(replacedProductResult.selectionRequired, undefined);
   const currentProductResult = cart.reconcileMerchandiseCartItems([{ ...replacedProductCart[0], bundleProductId: 83, bundleVariantId: 213, selectionRequired: 'Variant selection required' }], replacementProduct)[0];
   assert.equal(currentProductResult.bundleVariantId, 213, 'an exact current product and variant binding remains selected');
   assert.equal(currentProductResult.selectionRequired, undefined);
@@ -197,7 +198,8 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
   for (const file of ['src/app/merchandise/[slug]/page.tsx', 'src/components/home/MerchandiseSection.tsx']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     assert(!/networkChoiceRequired|\^network\$/i.test(source), `${file} must not model Tone labels as networks`);
-    assert(source.includes("optionLabel === 'Variant'"), `${file} must require explicit ordinary Variant selection`);
+    assert(source.includes('options.length > 1'), `${file} must require explicit selection only when multiple ordinary Variants exist`);
+    assert(!source.includes('Please select Tone Excel or Tone Plus.'), `${file} must not require a retired Tone Plus choice`);
   }
   const checkout = fs.readFileSync(path.join(root, 'src/app/checkout/page.tsx'), 'utf8');
   assert(checkout.includes('selectionRequired'), 'checkout must block stale Standard carts');

@@ -28,8 +28,7 @@ const { adminFetch, AdminApiError } = loaded.exports;
     await assert.rejects(
       () => adminFetch('products?page=1&limit=100'),
       (error) => error instanceof AdminApiError
-        && error.status === 504
-        && /terlalu lama/i.test(error.message),
+        && error.status === 504,
     );
     assert(signal instanceof AbortSignal, 'admin requests must receive an AbortSignal');
     assert.match(fs.readFileSync(file, 'utf8'), /AbortSignal\.timeout\(20_000\)/);

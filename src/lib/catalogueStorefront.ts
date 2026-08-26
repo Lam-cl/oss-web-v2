@@ -147,12 +147,17 @@ function adaptProduct(value: unknown, fallback: MerchandiseProduct[]): Merchandi
     );
   }
   const inventory = Object.values(variantInventoryById).reduce((total, quantity) => total + quantity, 0);
+  const category = value.managementDomain === 'SIM'
+    ? 'SIM Card'
+    : typeof details.category === 'string' && details.category.trim()
+      ? details.category.trim()
+      : enrichment?.category || 'Other';
   return {
     id: typeof value.catalogueId === 'string' && value.catalogueId ? value.catalogueId : String(bundleProductId),
     apiProductId: bundleProductId,
     slug: value.slug.trim(),
     name: title.trim(),
-    category: typeof details.category === 'string' && details.category.trim() ? details.category.trim() : enrichment?.category || 'Other',
+    category,
     price,
     description,
     optionLabel: primaryChoice?.name,

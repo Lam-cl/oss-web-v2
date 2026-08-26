@@ -68,7 +68,7 @@ export async function publishSimProduct(target: SimPublishTarget, intent: Unifie
   if (!target.providerFingerprint || !/^[a-f0-9]{64}$/.test(target.providerFingerprint)) throw new Error('The current SIM provider fingerprint is unavailable. Reload before saving.');
   const identity = SIM_IDENTITIES[productId], { spec } = intent, choice = spec.choices[0];
   const activeValues = choice?.values.filter((value) => !value.retired) || [];
-  if (spec.details.title !== identity.title || spec.details.category !== 'SIM' || spec.choices.length !== 1
+  if (spec.details.title !== identity.title || !/^SIM(?: Card)?$/i.test(spec.details.category?.trim() || '') || spec.choices.length !== 1
     || choice?.optionId !== identity.optionId || choice.name !== 'Variant'
     || JSON.stringify(activeValues.map((value) => value.label)) !== '["Tone Excel","Tone Plus"]'
     || activeValues.some((value) => !value.valueId)

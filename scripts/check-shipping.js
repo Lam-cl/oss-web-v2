@@ -30,4 +30,9 @@ const staleCatalogueCart = calculateCourierCharge([
 });
 assert.equal(staleCatalogueCart.amount, 10, 'stale cart productId must use the current numeric courier mapping');
 assert.deepEqual(staleCatalogueCart.unclassified, []);
+const canonicalSimCategory = calculateCourierCharge([
+  { name: 'Starter Pack', category: 'SIM Card', quantity: 2 },
+], 'Johor');
+assert.equal(canonicalSimCategory.amount, 10, 'canonical SIM Card category must retain SIM shipping');
+assert.equal(canonicalSimCategory.quantities.sim, 2);
 console.log('shipping hierarchy check passed');

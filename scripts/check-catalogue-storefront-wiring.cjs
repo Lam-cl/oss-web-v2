@@ -91,6 +91,11 @@ assert.deepEqual(reconciledZero.variantInventoryById, { 9001: 0, 9002: 0, 9003: 
 const customCategory = structuredClone(payload);
 customCategory.products[0].details.category = 'Event Kit';
 assert.equal(adapter.adaptCatalogueStorefrontPayload(customCategory, fallback)[0].category, 'Event Kit');
+const legacySimCategory = structuredClone(payload);
+legacySimCategory.products[0].managementDomain = 'SIM';
+legacySimCategory.products[0].details.category = 'SIM';
+legacySimCategory.products[0].minimumOrderQuantity = 2;
+assert.equal(adapter.adaptCatalogueStorefrontPayload(legacySimCategory, fallback)[0].category, 'SIM Card', 'SIM management identity canonicalizes legacy category text');
 
 const invalid = structuredClone(payload);
 invalid.products[0].combinations.pop();

@@ -67,7 +67,11 @@ export async function readCataloguePublicProjection(): Promise<{ products: Catal
         && version?.fingerprint === adoption.sourceFingerprint
         && version?.retiredAt === null
         && projection.catalogueId === product.catalogueId
-        && projection.bundleProductId === adoption.bundleProductId) products.push(structuredClone(projection));
+        && projection.bundleProductId === adoption.bundleProductId) {
+        const publicProjection = structuredClone(projection);
+        if (adoption.managementProfile?.domain === 'SIM') publicProjection.details.category = 'SIM Card';
+        products.push(publicProjection);
+      }
       continue;
     }
     const snapshot = await ordinarySnapshot(product, jobs); if (snapshot) products.push(structuredClone(snapshot.product));

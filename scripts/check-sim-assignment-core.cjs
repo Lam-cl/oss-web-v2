@@ -9,12 +9,13 @@ assert.equal(SIM_PREFIXES, undefined, 'SIM prefixes must come from the live API'
 assert.equal(isValidSimPrefix('896016180'), true);
 const units = deriveSimUnits({ items: [
   { id: 77, quantity: 2, product: { slug: 'biz-sim', title: 'TWE BIZ SIM' } },
-  { id: 78, quantity: 1, product: { categories: [{ name: 'SIM Cards' }], title: 'SUPERLITE SIM' } },
+  { id: 78, quantity: 1, product: { categories: [{ name: 'SIM Card' }], title: 'Starter Pack' } },
   { id: 79, quantity: 1, product: { title: 'tone wow Shirt' } },
   { id: 80, quantity: 1, type: 'sim', name: 'Starter Pack' },
   { id: 81, quantity: 1, product: { title: 'SIM Delivery Fee', slug: 'sim-delivery-fee' } },
 ] });
 assert.equal(units.length, 4);
+assert.equal(units.some(x=>x.productName==='Starter Pack'), true, 'canonical SIM Card category must create fulfilment units without relying on the title');
 assert.deepEqual(units.slice(0,2).map(x=>x.unitKey), ['item-77:1','item-77:2']);
 assert.deepEqual(units.slice(0,2).map(x=>x.label), ['TWE BIZ SIM · Unit 1 of 2','TWE BIZ SIM · Unit 2 of 2']);
 assert.equal(units.some(x=>x.productName==='tone wow Shirt'), false);

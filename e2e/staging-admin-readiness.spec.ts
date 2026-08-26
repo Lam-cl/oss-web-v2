@@ -32,7 +32,7 @@ test('admin uses an opaque session and renders evidence-backed publication actio
   expect(byId.get(91)?.publicationChangeState).toBe('clean');
   expect(byId.get(81)?.publicationChangeState).toBe('dirty');
   expect(byId.get(90)?.publicationChangeState).toBe('clean');
-  expect(catalogue.products.filter((product) => product.publicationChangeState === 'unknown')).toHaveLength(10);
+  expect(catalogue.products.filter((product) => product.publicationChangeState === 'unknown')).toHaveLength(0);
 
   const search = page.getByPlaceholder(/Search title/);
   await search.fill('Water Bottle 975ml');

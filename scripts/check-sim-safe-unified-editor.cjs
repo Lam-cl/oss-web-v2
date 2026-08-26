@@ -48,6 +48,7 @@ function loadPublishRoute(form, counts) {
     '@/lib/admin/simProductBundleAdapter.server': { SimProductBundleAdapterError: SimError, createSimProductBundleAdapter: () => { counts.adapters += 1; return {}; } },
     '@/lib/admin/simProductUpdate.server': { SimProductUpdateError: SimError, updateSimProductInPlace: async request => { counts.updates += 1; return { phase: 'complete', request }; } },
     '@/lib/admin/catalogueMediaRoute.server': { readBoundedCatalogueMediaForm: async () => form, catalogueMediaRequestError: () => Response.json({}, { status: 400 }) },
+    '@/lib/admin/simPublicationEvidence.server': { recordSimPublicationEvidence: async () => ({}) },
   };
   new Function('exports', 'require', 'module', '__filename', '__dirname', output)(mod.exports, id => id in mocks ? mocks[id] : require(id), mod, file, path.dirname(file));
   return mod.exports;
@@ -100,7 +101,7 @@ assert.match(css, /@media \(max-width: 640px\)[\s\S]*?simBanner/, 'SIM state rem
   assert.equal(typeof publishSimProduct, 'function', 'SIM publishing is exposed as executable request behavior');
   const intent = {
     spec: {
-      details: { title: 'SUPERLITE SIM', category: 'SIM', description: 'Useful SIM\n\nProduct details:\n- Ready to use', price: 12.5 },
+      details: { title: 'SUPERLITE SIM', category: 'SIM Card', description: 'Useful SIM\n\nProduct details:\n- Ready to use', price: 12.5 },
       choices: [{ key: 'variant', name: 'Variant', optionId: 36, values: [
         { key: 'tone-excel', label: 'Tone Excel', valueId: 80, retired: false },
         { key: 'tone-plus', label: 'Tone Plus', valueId: 81, retired: false },

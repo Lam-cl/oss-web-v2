@@ -52,7 +52,9 @@ function currentProjection(product: CatalogueProductRecord) {
   return {
     slug: product.slug,
     details,
-    minimumOrderQuantity: product.model.details.minimumOrderQuantity ?? 1,
+    minimumOrderQuantity: (product.currentBundleProductId === 39 || product.currentBundleProductId === 40)
+      && /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim() || '')
+      ? 2 : product.model.details.minimumOrderQuantity ?? 1,
     choices: product.model.choices.map((choice) => ({
       key: choice.key,
       name: choice.name,
@@ -108,7 +110,7 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   const providerById = new Map(variants.map((variant) => [variant.id, variant]));
   const expectedIds = new Set(snapshot.product.combinations.map((combination) => combination.variantId));
   const simManaged = (product.currentBundleProductId === 39 || product.currentBundleProductId === 40)
-    && /^sim$/i.test(product.model.details.category?.trim() || '');
+    && /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim() || '');
   if (simManaged ? Array.from(expectedIds).some((id) => !providerById.has(id))
     : variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
   const currentByTuple = new Map(product.model.combinations.map((combination, index) => [

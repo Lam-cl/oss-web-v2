@@ -33,7 +33,7 @@ export function classifyCourierLine(line: CourierLine, settings: ShippingSetting
   if (settings.productGroups[slug]) return settings.productGroups[slug];
   if (line.type === 'sim') return 'sim';
   const category = normalise(line.category); const name = normalise(line.name);
-  if (category === 'sim cards' || /\bsim\b/.test(name)) return 'sim';
+  if (category === 'sim card' || category === 'sim cards' || /\bsim\b/.test(name)) return 'sim';
   if (/t[ -]?shirt|\bshirt\b/.test(name)) return 'shirt';
   if (/water bottle|\btumbler\b|\bbunting\b/.test(name)) return 'bulky';
   if (/\bflyer/.test(name)) return 'flyers';

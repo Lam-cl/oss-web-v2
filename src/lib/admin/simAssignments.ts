@@ -72,7 +72,7 @@ export function isSimOrderItem(value: unknown) {
   if (/(delivery|shipping)[\s_-]*fee/i.test(`${slug} ${name}`)) return false;
   if (["superlite-sim", "biz-sim"].includes(slug) || type === "sim")
     return true;
-  if (categoryNames(item, product).includes("sim cards")) return true;
+  if (categoryNames(item, product).some((category) => category === "sim card" || category === "sim cards")) return true;
   return /\bsim\b/i.test(name);
 }
 

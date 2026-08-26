@@ -118,7 +118,7 @@ test('same-ID SIM evidence permits its preserved legacy variant but remains exac
   evidence.product.currentBundleProductId = 39;
   evidence.product.bundleVersions[0].bundleProductId = 39;
   evidence.product.slug = 'superlite-sim';
-  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM', minimumOrderQuantity: 2 };
+  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM' };
   evidence.product.model.choices[0].values[0].key = 'tone-excel';
   evidence.product.model.choices[0].values[1].key = 'tone-plus';
   evidence.product.model.combinations = [
@@ -140,6 +140,9 @@ test('same-ID SIM evidence permits its preserved legacy variant but remains exac
   evidence.providerProduct = { id: 39, productVariants: [
     { id: 106, sku: 'SIM-SUPERLITE' }, { id: 209, sku: 'SUPER-TONE EXCEL' }, { id: 210, sku: 'SUPER-TONE PLUS' },
   ] };
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'clean');
+  evidence.product.model.details.category = 'SIM Card';
+  evidence.snapshot.product.details.category = 'SIM Card';
   assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'clean');
   evidence.product.model.combinations[0].inventory = 43;
   assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'dirty');

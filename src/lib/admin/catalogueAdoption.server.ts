@@ -885,7 +885,8 @@ function verifyMapping(spec: LegacyAdoptionSpec, raw: unknown) {
       spec.slug !== identity.slug ||
       spec.model.details.title !== identity.title ||
       spec.model.details.price !== identity.price ||
-      spec.model.details.category !== "SIM" ||
+      typeof spec.model.details.category !== "string" ||
+      !/^SIM(?: Card)?$/i.test(spec.model.details.category.trim()) ||
       spec.model.choices.length !== 1 ||
       choice?.key !== "pack" ||
       choice?.name !== "Pack" ||
@@ -978,8 +979,17 @@ export function enrichCatalogueProductWithAdoption<T extends Row>(
     adoption.managementProfile?.domain !== "SIM"
   )
     return product;
+  const model = object(product.model) ? product.model : {};
+  const details = object(model.details) ? model.details : {};
   return {
     ...product,
+    model: {
+      ...model,
+      details: {
+        ...details,
+        category: "SIM Card",
+      },
+    },
     managementDomain: "SIM" as const,
     minimumOrderQuantity: SIM_ADOPTION_MINIMUM_ORDER_QUANTITY as 2,
     providerFingerprint: adoption.sourceFingerprint,

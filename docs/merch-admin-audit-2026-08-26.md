@@ -44,21 +44,21 @@ Publication evidence was then reconciled on staging. The current admin readiness
 | Inventory and variants | Current combination inventory, price, tuple order, provider variant IDs and canonical SKU are compared. |
 | MOQ | MOQ is an ordinary editable catalogue field. Legacy SIM products start at MOQ 2 when first normalized to `SIM Card`. |
 | Cart | No cart source or payload contract was changed. Colour swatch, explicit selection and zero-removal regressions pass. |
-| Checkout and payment | No checkout/payment source was changed. Bundle JSON and multipart transport regressions pass. ADX token remains isolated. |
-| Voucher and shipping | No live voucher, courier or shipping setting was mutated. |
+| Checkout and payment | Merchandise checkout now replaces only the browser-facing GKash return URL with a same-origin bridge. The bridge never renders the transient upstream error body and falls back to authoritative payment-status polling. Bundle JSON and multipart transport regressions pass. ADX token remains isolated. |
+| Voucher and shipping | Courier rates remain the supplied Excel rates. Product assignment now uses stable catalogue UUID evidence, with active Bundle IDs retained as compatibility aliases. |
 | Orders | No order or pending-payment data was mutated. Core order metadata/payment regressions pass. |
 | SIM fulfilment | `SIM Card` uses the same create/edit/publish/unpublish/archive lifecycle as other merchandise. Its only special behavior is order fulfilment: `SIM Card`, legacy `SIM Cards`/`SIM`, known SIM slugs and SIM item types create per-unit SN assignments. Product 90 remains published but now exposes ordinary lifecycle controls. |
 
 ## Verification
 
-The supplied shipping rate card (`6a8e3866e6c79_1787705446.xlsx`, SHA-256 `38c85fa13484d3bb5ffbe926587d953514a3bc9af9d7a9574a7cf90d3130424f`) was compared against staging. All five stored rate groups and tiers already match it exactly, so no rate mutation was required. Checkout now loads those persisted settings server-side and includes the Bundle product ID, preventing republished products such as Topi (ID 103) from being rejected despite an explicit mapping.
+The supplied shipping rate card (`6a8e3866e6c79_1787705446.xlsx`, SHA-256 `38c85fa13484d3bb5ffbe926587d953514a3bc9af9d7a9574a7cf90d3130424f`) was compared against staging. All five stored rate groups and tiers already match it exactly, so no rate mutation was required. The follow-up audit found that assignments keyed only by Bundle product ID were lost on republish (Topi moved from ID 103 to 105). Checkout and admin now resolve the stable catalogue UUID first, publication inherits the category atomically, and the current Bundle ID remains a compatibility alias. Delivery cannot be submitted while state or classification is unresolved, so an unconfigured item is never presented as free shipping.
 
 - TypeScript: passed (`tsc --noEmit`).
-- Production Next.js build: passed (56 static pages generated).
+- Production Next.js build: passed (57 static pages generated, including the local payment-processing fallback).
 - Publication lifecycle and evidence tests: 13/13 passed, covering generations 1, 2, 5 and 8; clean → save → dirty → republish → clean → save → dirty; model, slug, SKU, inventory, choices and media changes; missing/corrupt/duplicate evidence.
 - Focused catalogue, gallery, inventory, cart, checkout, shipping, order and SIM regression set: passed.
 - Before-rollout public response fingerprints were captured for `/bundle/merchandise` and `/catalogue-products-api` for post-rollout parity comparison.
-- Full historical `check-*.cjs/js` sweep: 90 passed, 11 baseline failures. The failures are the four old admin source-literal checks (`courier`, expected-delivery, fulfilment fields and SIM UI), fulfilment SKU source matching, two dated 19-August data/campaign checks, payment-page source matching, the pre-existing cross-catalogue SIM variant assertion, staging-export report-path handling, and voucher/payment allowlist source matching.
+- Full historical `check-*.cjs` sweep: 92 passed, 11 baseline failures. The failures are the four old admin source-literal checks (`courier`, expected-delivery, fulfilment fields and SIM UI), fulfilment SKU source matching, two dated 19-August data/campaign checks, payment-page source matching, the pre-existing cross-catalogue SIM variant assertion, staging-export report-path handling, and voucher/payment allowlist source matching.
 - Authenticated Chromium lifecycle: created a temporary `SIM Card` product, published it, edited stock 2 → 3, observed evidence-backed `Publish changes`, republished, then unpublished and archived it. No QA lifecycle fixture remains.
 
 The repository also contains historical source-string checks and dated 19-August campaign/catalogue checks. Failures in those baseline checks are tracked separately from this change when they assert obsolete literal formatting or superseded provider data; production behavior was not changed merely to satisfy them.

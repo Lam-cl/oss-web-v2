@@ -34,7 +34,7 @@ Initial read-only audit of the staging source before evidence reconciliation:
 | Dirty | Topi (81) |
 | Unknown | BIZ SIM (40), SUPERLITE SIM (39), 3-fold flyers (34), Bunting (28), Cap (24), Basics (36), Comix (35), Nonwoven (33), Pen (32), Tumbler (27) |
 
-Publication evidence was then reconciled on staging. The current admin readiness check reports zero `unknown` records. Water Bottle 975ml and the two live SIM products are clean; Topi is an unpublished draft ready for ordinary publication, and QA SIM product 90 has a real dirty draft while remaining publicly visible.
+Publication evidence was then reconciled on staging. The current admin readiness check reports zero `unknown` records. Water Bottle 975ml, Topi and the two live SIM products are clean; QA SIM product 90 has a real dirty draft while remaining publicly visible.
 
 ## Flow audit
 
@@ -67,4 +67,4 @@ The Git commits are portable and contain no runtime dependency on the deployment
 
 Catalogue products, publication jobs, published snapshots, media, adoption reads/supersession, shipping settings, order metadata, SIM assignments, product image-colour state, product-control checkpoints, SIM migration/update checkpoints and ready-collection email markers have remote adapters. Cross-process leases serialize specialist mutations. Normal catalogue archive is an atomic PostgreSQL operation with a durable restore manifest; referenced MinIO objects are retained. Admin cookies become opaque IDs when the data service is enabled, while Bundle tokens are encrypted at rest in PostgreSQL. The imported PostgreSQL/MinIO projection matches the pre-cutover `.data` source, and an isolated remote-enabled production build succeeds.
 
-Production remains intentionally blocked. Publication evidence no longer has unknown records, but Topi is an unpublished draft, QA SIM product 90 has an unpublished change, and encrypted offsite backup credentials/target plus a restore drill are still required before a production-readiness decision. No unknown evidence was fabricated and no production DNS or `shop.tonewow.com` deployment was changed.
+Production remains intentionally blocked. Publication evidence no longer has unknown records, but QA SIM product 90 has an unpublished change, and encrypted offsite backup credentials/target plus a restore drill are still required before a production-readiness decision. No unknown evidence was fabricated and no production DNS or `shop.tonewow.com` deployment was changed.

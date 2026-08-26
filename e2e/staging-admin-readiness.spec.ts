@@ -45,7 +45,14 @@ test('admin uses an opaque session and renders evidence-backed publication actio
   await search.fill('Topi');
   const topi = page.getByRole('row', { name: /Topi/i });
   await expect(topi).toBeVisible();
-  await expect(topi.getByRole('button', { name: /^Publish for/i })).toBeEnabled();
+  const topiEvidence = catalogue.products.find((product) => /Topi/i.test(product.model.details.title));
+  if (topiEvidence?.publicationChangeState === 'dirty') {
+    await expect(topi.getByRole('button', { name: /Publish(?: changes)? for/i })).toBeEnabled();
+  } else {
+    expect(topiEvidence?.publicationChangeState).toBe('clean');
+    await expect(topi.getByRole('button', { name: /Publish(?: changes)? for/i })).toHaveCount(0);
+    await expect(topi.getByRole('button', { name: /Unpublish/i })).toBeEnabled();
+  }
 
   await search.fill('90');
   const sim = page.getByRole('row', { name: /QA.*SIM SUPERLITE/i });
@@ -55,7 +62,14 @@ test('admin uses an opaque session and renders evidence-backed publication actio
 
   await search.fill('39');
   const superlite = page.getByRole('row', { name: /SUPERLITE SIM/i });
-  await expect(superlite.getByRole('button', { name: /Edit SUPERLITE SIM/i })).toBeEnabled();
+  await superlite.getByRole('button', { name: /Edit SUPERLITE SIM/i }).click();
+  const simEditor = page.getByRole('form', { name: 'Product editor' });
+  await expect(simEditor.getByLabel('SIM management policy')).toHaveCount(0);
+  await expect(simEditor.getByLabel('Product name')).toBeEnabled();
+  await expect(simEditor.getByLabel('Category')).toHaveValue('SIM Card');
+  await expect(simEditor.getByLabel('Minimum order quantity')).toHaveValue('2');
+  await expect(simEditor.getByRole('button', { name: 'Save product' })).toBeEnabled();
+  await simEditor.getByRole('button', { name: 'Cancel' }).click();
   await expect(superlite.getByRole('button', { name: /Unpublish SUPERLITE SIM/i })).toBeEnabled();
 
   await page.getByRole('banner').getByRole('button', { name: 'Log out' }).click();

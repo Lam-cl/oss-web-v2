@@ -14,3 +14,17 @@ export function validateShippingSettings(value: unknown): ShippingSettings {
 }
 export async function readShippingSettings() { if (dataApiEnabled()) return validateShippingSettings(await readRemoteSingleton('shipping-settings', clone)); try { return validateShippingSettings(JSON.parse(await readFile(file, 'utf8'))); } catch { return clone(); } }
 export async function saveShippingSettings(value: unknown) { const settings = validateShippingSettings(value); if (dataApiEnabled()) return mutateRemoteSingleton('shipping-settings', clone, () => settings); await mkdir(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, 'utf8'); await rename(temp, file); return settings; }
+export async function inheritShippingProductGroup(input: { catalogueId: string; previousBundleProductId: number | null; bundleProductId: number; slug: string }) {
+  const apply = (value: unknown) => {
+    const settings = validateShippingSettings(value);
+    const keys = [input.catalogueId, input.previousBundleProductId === null ? '' : String(input.previousBundleProductId), input.slug.trim().toLowerCase()];
+    const group = keys.flatMap((key) => key && settings.productGroups[key] ? [settings.productGroups[key]] : [])[0];
+    if (!group) return settings;
+    settings.productGroups[input.catalogueId.toLowerCase()] = group;
+    settings.productGroups[String(input.bundleProductId)] = group;
+    if (input.slug.trim()) settings.productGroups[input.slug.trim().toLowerCase()] = group;
+    return settings;
+  };
+  if (dataApiEnabled()) return mutateRemoteSingleton('shipping-settings', clone, apply);
+  return saveShippingSettings(apply(await readShippingSettings()));
+}

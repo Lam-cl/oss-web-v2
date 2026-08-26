@@ -15,8 +15,10 @@ const GROUP_LABELS: Record<CourierGroup, string> = {
 };
 const SYSTEM_PRODUCT_SLUGS = new Set(['flat-rate-delivery-fee', 'pen-2-0']);
 
-function productGroup(settings: ShippingSettings | null, product: Product) {
-  return settings?.productGroups[String(product.id)] || settings?.productGroups[product.slug.trim().toLowerCase()] || '';
+function productGroup(settings: ShippingSettings | null, product: Product, catalogueId?: string) {
+  return catalogueId && settings?.productGroups[catalogueId.toLowerCase()]
+    || settings?.productGroups[String(product.id)]
+    || settings?.productGroups[product.slug.trim().toLowerCase()] || '';
 }
 function isSystemProduct(product: Product) { return SYSTEM_PRODUCT_SLUGS.has(product.slug.trim().toLowerCase()); }
 function validateSettings(settings: ShippingSettings) {
@@ -122,6 +124,7 @@ export default function ShippingSettingsPage() {
   const [settings, setSettings] = useState<ShippingSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<ShippingSettings | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogueIds, setCatalogueIds] = useState<Record<number, string>>({});
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -139,13 +142,19 @@ export default function ShippingSettingsPage() {
   const load = async () => {
     setError('');
     try {
-      const [loadedSettings, loadedProducts] = await Promise.all([
+      const [loadedSettings, loadedProducts, catalogueResponse] = await Promise.all([
         adminFetch<ShippingSettings>('shipping-settings'),
         loadProducts(),
+        fetch('/admin-api/catalogue-products', { cache: 'no-store', credentials: 'same-origin' })
+          .then(async (response) => response.ok ? response.json() : Promise.reject(new Error('Catalogue identities could not be loaded.'))),
       ]);
       setSettings(loadedSettings);
       setSavedSettings(structuredClone(loadedSettings));
       setProducts(loadedProducts.filter((product) => !product.deletedAt));
+      setCatalogueIds(Object.fromEntries((catalogueResponse.products || []).flatMap((product: { catalogueId?: unknown; currentBundleProductId?: unknown }) => (
+        typeof product.catalogueId === 'string' && Number.isSafeInteger(product.currentBundleProductId) && Number(product.currentBundleProductId) > 0
+          ? [[Number(product.currentBundleProductId), product.catalogueId]] : []
+      ))));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Shipping settings could not be loaded.');
     }
@@ -209,8 +218,8 @@ export default function ShippingSettingsPage() {
     const term = query.trim().toLowerCase();
     return products.filter((product) => !term || `${product.title} ${product.id} ${product.slug}`.toLowerCase().includes(term));
   }, [products, query]);
-  const needsAction = useMemo(() => matchingProducts.filter((product) => !isSystemProduct(product) && !productGroup(settings, product)), [matchingProducts, settings]);
-  const completed = useMemo(() => matchingProducts.filter((product) => isSystemProduct(product) || productGroup(settings, product)), [matchingProducts, settings]);
+  const needsAction = useMemo(() => matchingProducts.filter((product) => !isSystemProduct(product) && !productGroup(settings, product, catalogueIds[product.id])), [matchingProducts, settings, catalogueIds]);
+  const completed = useMemo(() => matchingProducts.filter((product) => isSystemProduct(product) || productGroup(settings, product, catalogueIds[product.id])), [matchingProducts, settings, catalogueIds]);
   const validation = settings ? validateSettings(settings) : {};
   const priorityChanged = summary.priority;
 
@@ -218,8 +227,16 @@ export default function ShippingSettingsPage() {
     update((next) => {
       const id = String(product.id);
       const slug = product.slug.trim().toLowerCase();
-      if (group) { next.productGroups[id] = group; delete next.productGroups[slug]; }
-      else { delete next.productGroups[id]; delete next.productGroups[slug]; }
+      const catalogueId = catalogueIds[product.id]?.toLowerCase();
+      if (group) {
+        next.productGroups[id] = group;
+        if (catalogueId) next.productGroups[catalogueId] = group;
+        delete next.productGroups[slug];
+      } else {
+        delete next.productGroups[id];
+        if (catalogueId) delete next.productGroups[catalogueId];
+        delete next.productGroups[slug];
+      }
     });
     setNotice('');
   }
@@ -252,7 +269,7 @@ export default function ShippingSettingsPage() {
 
   const productRows = (rows: Product[]) => <div className="ship-product-list">{rows.map((product) => {
     const system = isSystemProduct(product);
-    const group = productGroup(settings, product);
+    const group = productGroup(settings, product, catalogueIds[product.id]);
     return <article className="ship-product-row" key={product.id}>
       <div className="ship-product-copy"><strong>{product.title}</strong><small>Product #{product.id}</small></div>
       <label><span>Shipping category</span><select value={system ? 'none' : group} disabled={saving || system} onChange={(event) => setProductGroup(product, event.target.value as CourierGroup | '')}>

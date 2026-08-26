@@ -5,7 +5,7 @@ export type CourierZone = 'peninsular' | 'east-malaysia';
 export type CourierTier = { minimum: number; peninsular: number; eastMalaysia: number };
 export type CourierGroupSettings = { label: string; tiers: CourierTier[] };
 export type ShippingSettings = { priority: CourierGroup[]; groups: Record<CourierGroup, CourierGroupSettings>; productGroups: Record<string, CourierGroup> };
-export type CourierLine = { type?: CartItem['type']; bundleProductId?: number; productId?: string; slug?: string; name?: string; category?: string; quantity: number };
+export type CourierLine = { type?: CartItem['type']; catalogueId?: string; bundleProductId?: number; productId?: string; slug?: string; name?: string; category?: string; quantity: number };
 export type CourierCharge = { amount: number; zone: CourierZone; quantities: Record<CourierGroup, number>; unclassified: string[] };
 
 const EAST_MALAYSIA_STATES = new Set(['sabah', 'sarawak', 'labuan', 'w.p. labuan']);
@@ -27,8 +27,9 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
 function normalise(value: unknown) { return String(value || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 export function courierZoneForState(state: string): CourierZone { return EAST_MALAYSIA_STATES.has(normalise(state)) ? 'east-malaysia' : 'peninsular'; }
 export function classifyCourierLine(line: CourierLine, settings: ShippingSettings = DEFAULT_SHIPPING_SETTINGS): CourierGroup | null {
-  const productKey = line.bundleProductId ? String(line.bundleProductId) : normalise(line.productId);
-  if (productKey && settings.productGroups[productKey]) return settings.productGroups[productKey];
+  const productKeys = [line.catalogueId, line.productId, line.bundleProductId ? String(line.bundleProductId) : '']
+    .map(normalise).filter(Boolean);
+  for (const productKey of productKeys) if (settings.productGroups[productKey]) return settings.productGroups[productKey];
   const slug = normalise(line.slug);
   if (settings.productGroups[slug]) return settings.productGroups[slug];
   if (line.type === 'sim') return 'sim';

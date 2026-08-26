@@ -13,6 +13,7 @@ import { archiveCatalogueProduct, CatalogueArchiveError } from '@/lib/admin/cata
 import { enrichCatalogueProductWithAdoption, readCatalogueAdoptionByBundle, rollbackCatalogueAdoption, supersedeCatalogueAdoption } from '@/lib/admin/catalogueAdoption.server';
 import { saveProductHiddenOptionValues } from '@/lib/productImageColors.server';
 import { evaluatePublicationChangeState, type PublicationProviderProduct } from '@/lib/admin/cataloguePublicationChangeState.server';
+import { inheritShippingProductGroup } from '@/lib/shippingSettings.server';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_RECORDS = 1000;
@@ -216,6 +217,7 @@ export const catalogueAdminRoute={
       updated=await updateCatalogueProduct(id,updated.revision,record=>{const now=new Date().toISOString();return {...record,status:'published' as const,currentBundleProductId:publication.bundleProductId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:publication.bundleProductId,fingerprint:publication.fingerprint,publishedAt:now,retiredAt:null}]};});
     }
     if(product.currentBundleProductId!==null){const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);if(adoption?.status==='active'&&adoption.catalogueId===id)await supersedeCatalogueAdoption(product.currentBundleProductId,publication.bundleProductId);}
+    await inheritShippingProductGroup({catalogueId:id,previousBundleProductId:product.currentBundleProductId,bundleProductId:publication.bundleProductId,slug:product.slug});
     return {product:updated,publication};
   },
 };

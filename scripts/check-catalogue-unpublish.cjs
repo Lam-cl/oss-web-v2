@@ -49,6 +49,7 @@ function harness(options = {}) {
     '@/lib/cataloguePublishedSnapshot.server': {createCataloguePublishedSnapshot:async()=>{throw new Error('unused')},readCataloguePublishedSnapshot:async()=>null},
     '@/lib/productImageColors.server': {saveProductHiddenOptionValues:async()=>[]},
     '@/lib/admin/cataloguePublicationChangeState.server': {evaluatePublicationChangeState:()=>({state:'unknown',reason:'list evidence is outside this fixture'})},
+    '@/lib/shippingSettings.server': {inheritShippingProductGroup:async()=>({})},
   });
   return { actual, adapter, events, product:()=>structuredClone(product), updates:()=>updateCount };
 }

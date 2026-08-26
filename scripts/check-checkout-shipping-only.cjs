@@ -9,5 +9,5 @@ assert.equal(page.includes('name="billingAddress"'), true, 'existing primary add
 assert.equal(page.includes("name === 'billingPostcode'"), true, 'postcode lookup must remain');
 assert.equal(page.includes('billingAddress,'), true, 'Bundle billing address payload must remain');
 assert.equal(page.includes('shippingAddress: bundleShippingAddress'), true, 'Bundle shipping address payload must remain');
-assert.equal(page.includes("pickupOption === 'delivery' && ("), false, 'billing fields must remain visible for pickup');
+assert.doesNotMatch(page, /\{pickupOption === 'delivery' && \([\s\S]*?name="billingAddress"/, 'billing fields must remain visible for pickup');
 console.log('checkout shipping-only address regression check passed');

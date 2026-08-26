@@ -104,6 +104,8 @@ export default function CheckoutPage() {
   const shippingState = sameAsBilling ? form.billingState : form.shippingState;
   const courier = calculateMerchandiseCourierCharge(items, shippingState, shippingSettings || undefined);
   const shipping = pickupOption === 'self' ? 0 : courier.amount;
+  const shippingPending = pickupOption === 'delivery' && (!shippingSettings || !shippingState);
+  const shippingUnavailable = pickupOption === 'delivery' && Boolean(shippingSettings && shippingState && courier.unclassified.length);
   const merchandiseSubtotal = getTotal();
   const grandTotal = Math.max(0, merchandiseSubtotal + shipping - (promo?.discount || 0));
   const itemLabel = (item: (typeof items)[number]) => {
@@ -325,12 +327,12 @@ export default function CheckoutPage() {
             ))}
             <div className="sidebar-order-row">
               <span>Shipping</span>
-              <span>{shipping === 0 ? 'FREE' : formatRM(shipping)}</span>
+              <span>{shippingPending ? 'Select state' : shippingUnavailable ? 'Unavailable' : shipping === 0 ? 'FREE' : formatRM(shipping)}</span>
             </div>
             {promo && <div className="sidebar-order-row merch-promo-discount"><span>Promo ({promo.code})</span><span>−{formatRM(promo.discount)}</span></div>}
             <div className="sidebar-order-divider" />
             <div className="sidebar-order-row sidebar-order-total">
-              <span>Total</span>
+              <span>{shippingPending || shippingUnavailable ? 'Total before shipping' : 'Total'}</span>
               <span>{formatRM(grandTotal)}</span>
             </div>
           </div>
@@ -341,7 +343,7 @@ export default function CheckoutPage() {
             {ENABLED_PAYMENT_METHODS.has('2') && <label className={paymentMethodId === '2' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="2" checked={paymentMethodId === '2'} onChange={() => setPaymentMethodId('2')} />Credit / Debit Card</label>}
             {ENABLED_PAYMENT_METHODS.has('3') && <label className={paymentMethodId === '3' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="3" checked={paymentMethodId === '3'} onChange={() => setPaymentMethodId('3')} />eWallet</label>}
             <div className="merch-checkout-payment-terms">By placing an order you agree to our <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>.</div>
-            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0}>
+            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </section>
@@ -449,9 +451,9 @@ export default function CheckoutPage() {
                     <strong>{formatRM(item.price * item.quantity)}</strong>
                   </div>
                 ))}
-                <div className="merch-cart-summary-row"><span>Shipping</span><strong>{shipping === 0 ? 'FREE' : formatRM(shipping)}</strong></div>
+                <div className="merch-cart-summary-row"><span>Shipping</span><strong>{shippingPending ? 'Select state' : shippingUnavailable ? 'Unavailable' : shipping === 0 ? 'FREE' : formatRM(shipping)}</strong></div>
                 {promo && <div className="merch-cart-summary-row merch-promo-discount"><span>Promo ({promo.code})</span><strong>−{formatRM(promo.discount)}</strong></div>}
-                <div className="merch-cart-total"><span>Total</span><strong>{formatRM(grandTotal)}</strong></div>
+                <div className="merch-cart-total"><span>{shippingPending || shippingUnavailable ? 'Total before shipping' : 'Total'}</span><strong>{formatRM(grandTotal)}</strong></div>
                 {renderPromo()}
               </section>
             </div>
@@ -464,7 +466,7 @@ export default function CheckoutPage() {
                 <path d="m18 15-6-6-6 6" />
               </svg>
             </button>
-            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0}>
+            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </div>

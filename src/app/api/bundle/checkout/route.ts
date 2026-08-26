@@ -149,6 +149,9 @@ export async function calculateExpectedAmount(
       .map((product) => [
         product.bundleProductId,
         {
+          catalogueId: product.catalogueId,
+          slug: product.slug,
+          category: product.details?.category,
           variants: new Set(product.combinations.map((combination) => combination.variantId)),
           minimumOrderQuantity: product.minimumOrderQuantity ?? 1,
         },
@@ -215,10 +218,11 @@ export async function calculateExpectedAmount(
     }
     subtotalInCents += Math.round(unitPrice * 100) * item.quantity;
     courierLines.push({
+      catalogueId: projected?.catalogueId,
       bundleProductId: product.id,
-      slug: product.slug,
+      slug: projected?.slug || product.slug,
       name: product.title || product.name,
-      category: product.categories?.[0]?.name || undefined,
+      category: projected?.category || product.categories?.[0]?.name || undefined,
       quantity: item.quantity,
     });
   }
@@ -597,6 +601,13 @@ export async function POST(request: NextRequest) {
     await saveBillingAddress(numericOrderId, billingAddress);
     if (referenceNumber)
       await savePaymentReference(numericOrderId, referenceNumber);
+    if (referenceNumber) {
+      const checkoutOrigin = new URL(String(request.headers.get("origin"))).origin;
+      const returnUrl = new URL("/bundle/gkash-return", checkoutOrigin);
+      returnUrl.searchParams.set("orderId", String(numericOrderId));
+      returnUrl.searchParams.set("referenceNumber", referenceNumber);
+      paymentParams.returnurl = returnUrl.toString();
+    }
 
     return NextResponse.json({
       success: true,

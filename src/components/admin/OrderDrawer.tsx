@@ -314,6 +314,12 @@ export default function OrderDrawer({
         String(order?.status || "").toUpperCase(),
       ),
   );
+  const pickupFacingStatus = order && pickup ? pickupStatus(order.status) : "";
+  const pickupTerminalStatus = Boolean(pickupFacingStatus && ![
+    "PENDING_COLLECTION",
+    "READY_FOR_COLLECTION",
+    "COMPLETED",
+  ].includes(pickupFacingStatus));
 
   return (
     <div className="adm-drawer-wrap">
@@ -546,6 +552,11 @@ export default function OrderDrawer({
                       >
                         {pickup ? (
                           <>
+                            {pickupTerminalStatus && (
+                              <option value={pickupFacingStatus} disabled>
+                                {pickupFacingStatus.replaceAll("_", " ")}
+                              </option>
+                            )}
                             <option value="PENDING_COLLECTION" disabled>
                               Pending collection
                             </option>
@@ -588,6 +599,7 @@ export default function OrderDrawer({
               className="adm-button"
               disabled={
                 busy ||
+                pickupTerminalStatus ||
                 !draftStatus ||
                 draftStatus ===
                   (pickup ? pickupStatus(order.status) : order.status)

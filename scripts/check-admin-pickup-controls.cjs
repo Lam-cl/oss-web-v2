@@ -8,6 +8,7 @@ assert.match(source, /Collection date/, 'collection date label missing');
 assert.match(source, /Pickup status/, 'pickup status control missing');
 assert.match(source, /<option\s+value=["']PENDING_COLLECTION["']\s+disabled>/, 'pending collection display missing');
 assert.match(source, /<option\s+value=["']COMPLETED["']>/, 'completed action missing');
+assert.match(source, /pickupTerminalStatus[\s\S]*?<option value=\{pickupFacingStatus\} disabled>/, 'cancelled/refunded pickup status must be shown read-only');
 assert.match(source, /pickupBundleStatus\(pendingStatus\)/, 'completed must map to Bundle DELIVERED');
 const ordersPage = fs.readFileSync('src/app/admin/orders/page.tsx', 'utf8');
 const dashboard = fs.readFileSync('src/app/admin/page.tsx', 'utf8');

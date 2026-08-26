@@ -11,10 +11,11 @@ export function pickupDateFromAddress(address: unknown) {
 }
 
 export function pickupStatus(orderStatus: string) {
-  const status = orderStatus.toUpperCase();
+  const status = orderStatus.trim().toUpperCase();
   if (status === 'DELIVERED') return 'COMPLETED';
   if (status === 'PROCESSING') return 'READY_FOR_COLLECTION';
-  return 'PENDING_COLLECTION';
+  if (status === 'PAID' || status === 'PENDING') return 'PENDING_COLLECTION';
+  return status || 'UNKNOWN';
 }
 
 export function pickupBundleStatus(status: string) {

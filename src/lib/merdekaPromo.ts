@@ -72,7 +72,7 @@ export function isMerdekaDuration(value: unknown): value is MerdekaDuration {
 }
 
 export function calculateMerdekaPrice(monthlyPrice: number, duration: MerdekaDuration) {
-  const multiplier = duration === 6 ? 5.5 : 11;
+  const multiplier = duration === 6 ? 5 : 10;
   return Math.round(monthlyPrice * multiplier * 100) / 100;
 }
 

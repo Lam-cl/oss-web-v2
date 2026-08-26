@@ -271,7 +271,7 @@ export default function MerdekaPromoPage() {
                     <span className={styles.radio}>{active && <TickIcon />}</span>
                     <span className={styles.durationDetails}>
                       <span className={styles.durationCopy}><strong>{months} months</strong></span>
-                      <span className={styles.saveTag}>Save {months === 6 ? '1 Month' : '2 Months'}</span>
+                      <span className={styles.saveTag}>Free {months === 6 ? '1 Month' : '2 Months'}</span>
                     </span>
                   </button>
                 );

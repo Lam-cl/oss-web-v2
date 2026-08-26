@@ -22,6 +22,11 @@ export type SimVariantBinding = Record<
   number,
   { label: "Tone Excel" | "Tone Plus"; productCode: "TWE" | "TWP" }
 >;
+export type SimCatalogueProduct = {
+  bundleProductId?: number;
+  details?: { category?: string };
+  combinations?: Array<{ variantId?: number }>;
+};
 
 const text = (value: unknown) => String(value ?? "").trim();
 const record = (value: unknown): Record<string, any> =>
@@ -61,7 +66,17 @@ const categoryNames = (
   );
 };
 
-export function isSimOrderItem(value: unknown) {
+function catalogueSimProduct(item: Record<string, any>, products: SimCatalogueProduct[]) {
+  const productId = Number(record(item.product).id || item.productId);
+  const variantId = itemVariantId(item);
+  return products.find((product) => {
+    if (!/^sim cards?$/i.test(text(product.details?.category))) return false;
+    return Number(product.bundleProductId) === productId
+      || Boolean(variantId && product.combinations?.some((combination) => Number(combination.variantId) === variantId));
+  });
+}
+
+export function isSimOrderItem(value: unknown, catalogueProducts: SimCatalogueProduct[] = []) {
   const item = record(value);
   const product = record(item.product);
   const name = text(
@@ -70,6 +85,7 @@ export function isSimOrderItem(value: unknown) {
   const slug = text(product.slug || item.slug).toLowerCase();
   const type = text(item.type || product.type).toLowerCase();
   if (/(delivery|shipping)[\s_-]*fee/i.test(`${slug} ${name}`)) return false;
+  if (catalogueSimProduct(item, catalogueProducts)) return true;
   if (categoryNames(item, product).some((category) => category === "sim card" || category === "sim cards")) return true;
   const productId = Number(product.id || item.productId);
   return [39, 40].includes(productId) || ["superlite-sim", "biz-sim"].includes(slug) || type === "sim";
@@ -86,6 +102,7 @@ export function itemVariantId(value: unknown) {
 export function deriveSimUnits(
   order: Record<string, any>,
   bindings: SimVariantBinding = {},
+  catalogueProducts: SimCatalogueProduct[] = [],
 ): SimUnit[] {
   const items = Array.isArray(order.items)
     ? order.items
@@ -94,7 +111,7 @@ export function deriveSimUnits(
       : [];
   return items.flatMap((value: unknown, index: number) => {
     const item = record(value);
-    if (!isSimOrderItem(item)) return [];
+    if (!isSimOrderItem(item, catalogueProducts)) return [];
     const product = record(item.product);
     const quantity = Math.max(0, Math.floor(Number(item.quantity) || 0));
     if (!quantity) return [];

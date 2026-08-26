@@ -98,7 +98,7 @@ function load(file) {
 (async () => {
   const file = path.resolve('src/lib/cataloguePublicProjection.server.ts');
   const projection = load(file);
-  assert.deepEqual(Object.keys(projection).sort(), ['readCataloguePublicProjection','readCataloguePublicSnapshotMedia'].sort());
+  assert.deepEqual(Object.keys(projection).sort(), ['readCataloguePublicProjection','readCataloguePublicSnapshotMedia','readCatalogueSimFulfilmentProducts'].sort());
   const payload = await projection.readCataloguePublicProjection();
   assert.deepEqual(payload, { products: [snapshotProduct] });
   const serialized = JSON.stringify(payload);

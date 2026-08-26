@@ -36,7 +36,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const fetcher = async (url, init) => {
     const u = new URL(String(url)); calls.push([init.method, u.pathname, u.search, init.body]);
     if (u.pathname.endsWith('/products/upload')) {
-      product = { id:7, title:String(init.body.get('title')), description:String(init.body.get('description')), type:String(init.body.get('type')), price:Number(init.body.get('price')), shippingCost:String(init.body.get('shippingCost')), weight:String(init.body.get('weight')), categories:[], tags:[], images:[], options:[], productVariants:[], deletedAt:null };
+      product = { id:7, title:String(init.body.get('title')), description:String(init.body.get('description')), type:String(init.body.get('type')), price:Number(init.body.get('price')), shippingCost:String(init.body.get('shippingCost')), weight:String(init.body.get('weight')), categories:[], tags:[], images:[], options:[], productVariants:[], deletedAt:null, requiresSimAssignment:init.body.get('requiresSimAssignment')==='true', tracksInventory:init.body.get('tracksInventory')==='true' };
       return json({ data:product }, 201);
     }
     if (u.pathname.endsWith('/products') && init.method === 'GET') return json({ data: product ? [product] : [] });
@@ -60,12 +60,13 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const make = () => createCatalogueBundleAdapter({baseUrl:'https://bundle.test/api',token:'server-token',fetcher,local});
   const adapter = make();
   assert.equal(adapter.draftMarker, 'TW-CATALOGUE-DRAFT');
-  await assert.rejects(()=>adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:3,title:canonicalTitle,description:'Keeps warm',price:10,categories:['Acceptance'],tags:['ignored']}),/revision|publication/i);
-  const draft = await adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:2,title:canonicalTitle,description:'Keeps warm',price:10,categories:['Acceptance'],tags:['ignored']});
+  await assert.rejects(()=>adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:3,title:canonicalTitle,description:'Keeps warm',price:10,categories:['SIM Card'],tags:['ignored']}),/revision|publication/i);
+  const draft = await adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:2,title:canonicalTitle,description:'Keeps warm',price:10,categories:['SIM Card'],tags:['ignored']});
   assert.equal(draft.data.id, 7);
   assert.equal(product.title, `${canonicalTitle.slice(0,200-titleSuffix.length)}${titleSuffix}`);
   assert.equal(product.title.length, 200);
   assert.equal(product.description, `Keeps warm${suffix}`);
+  assert.equal(product.requiresSimAssignment, true); assert.equal(product.tracksInventory, true);
   assert.deepEqual(product.categories, []); assert.deepEqual(product.tags, []);
   const authoritativeDraft = await adapter.findDraftByOperation(op);
   assert.equal(authoritativeDraft.id, 7);

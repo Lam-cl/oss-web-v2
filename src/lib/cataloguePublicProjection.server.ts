@@ -81,6 +81,18 @@ export async function readCataloguePublicProjection(): Promise<{ products: Catal
   return payload;
 }
 
+export async function readCatalogueSimFulfilmentProducts(): Promise<CataloguePublishedProduct[]> {
+  const [current, jobs] = await Promise.all([readCataloguePublicProjection(), publicationJobs()]);
+  const products = new Map<number, CataloguePublishedProduct>();
+  for (const product of current.products) if (/^sim cards?$/i.test(product.details.category?.trim() || '')) products.set(product.bundleProductId, product);
+  for (const job of jobs) {
+    if (!ACTIVATED_PHASES.has(job.phase) || !positive(job.draftBundleProductId)) continue;
+    const snapshot = await readCataloguePublishedSnapshot(job.operationId);
+    if (snapshot && /^sim cards?$/i.test(snapshot.product.details.category?.trim() || '')) products.set(snapshot.bundleProductId, structuredClone(snapshot.product));
+  }
+  return Array.from(products.values());
+}
+
 export async function readCataloguePublicSnapshotMedia(catalogueId: string, mediaId: string) {
   if (!UUID.test(catalogueId) || !UUID.test(mediaId)) return null;
   const product = await readCatalogueProduct(catalogueId); if (!product || product.status !== 'published') return null;

@@ -7,6 +7,9 @@ import { decryptSimAssignmentToken, SimRangeError, validateSimRange } from '@/li
 import { OrderMetadataError, readOrderMetadata, saveCourierMetadata } from '@/lib/admin/orderMetadata.server';
 import { readProductHiddenOptionValues, readProductImageColors, saveProductHiddenOptionValues, saveProductImageColors } from '@/lib/productImageColors.server';
 import { defaultReadyCollectionEmailStore, orchestrateReadyCollectionEmail, ReadyCollectionEmailError } from '@/lib/admin/readyCollectionEmail.server';
+import { deriveSimUnits } from '@/lib/admin/simAssignments';
+import { assertOrderSimAssignmentsComplete, readOrderSimAssignments, saveOrderSimAssignments, SimAssignmentValidationError } from '@/lib/admin/simAssignments.server';
+import { readCatalogueSimFulfilmentProducts } from '@/lib/cataloguePublicProjection.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +118,45 @@ async function deleteProductOption(path: string, headers: Headers) {
     sanitizePayload(optionPayload ?? { success: true }),
     { status: 200, headers: { 'cache-control': 'no-store' } },
   );
+}
+
+const unwrapOrder = (payload: Record<string, any> | null) => (
+  payload?.data && typeof payload.data === 'object' ? payload.data : payload
+);
+
+async function readBundleOrder(orderId: number, headers: Headers) {
+  const response = await fetch(`${BUNDLE_API}/orders/${orderId}`, { headers, cache: 'no-store' });
+  const payload = await readUpstream(response) as Record<string, any> | null;
+  if (!response.ok) throw new SimRangeError('Order could not be verified.', response.status);
+  return unwrapOrder(payload) as Record<string, any>;
+}
+
+async function catalogueSimUnits(order: Record<string, any>) {
+  return deriveSimUnits(order, {}, await readCatalogueSimFulfilmentProducts());
+}
+
+function nativeAssignmentTotal(payload: Record<string, any> | null) {
+  return Math.max(0, Number(payload?.totalUnits) || 0);
+}
+
+function supplementalAssignmentPayload(orderId: number, stored: Awaited<ReturnType<typeof readOrderSimAssignments>>, prefixOptions: unknown[]) {
+  return {
+    orderId,
+    status: stored.complete === stored.total ? 'COMPLETE' : 'PENDING',
+    totalUnits: stored.total,
+    assignedUnits: stored.complete,
+    complete: stored.complete === stored.total,
+    assignments: stored.units.map((unit) => ({
+      orderItemId: Number(unit.orderItemId),
+      unitNumber: unit.unitNumber,
+      productTitle: unit.productName,
+      assigned: unit.locked,
+      simPrefix: unit.prefix,
+      simSerial: unit.serial,
+    })),
+    prefixOptions,
+    source: 'supplemental',
+  };
 }
 
 async function proxy(request: NextRequest, context: { params: { path: string[] } }) {
@@ -253,6 +295,35 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
       const currentResponse = await fetch(`${BUNDLE_API}/orders/${orderId}/sim-assignments`, { headers, cache: 'no-store' });
       const currentPayload = await readUpstream(currentResponse) as Record<string, any> | null;
       if (!currentResponse.ok) return safeError(currentResponse.status, currentPayload);
+      if (nativeAssignmentTotal(currentPayload) === 0) {
+        const order = await readBundleOrder(orderId, headers);
+        const units = await catalogueSimUnits(order);
+        if (!units.length) throw new SimRangeError('This order has no published SIM Card items.', 409);
+        const stored = await readOrderSimAssignments(orderId, units);
+        const replacements = new Map<string, { prefixId:string; prefix:string; serial:string; puk:string }>();
+        for (const orderItemId of Array.from(new Set(payloads.map((payload) => payload.orderItemId)))) {
+          const targets = stored.units
+            .filter((unit) => Number(unit.orderItemId) === orderItemId && !unit.locked)
+            .sort((left, right) => left.unitNumber - right.unitNumber);
+          const ranges = payloads.filter((payload) => payload.orderItemId === orderItemId);
+          const serials = ranges.flatMap((payload) => payload.serials.map((serial) => ({ ...serial, payload })));
+          if (serials.length !== targets.length) throw new SimRangeError(`Validated quantity for order item ${orderItemId} must equal its ${targets.length} unassigned units.`);
+          targets.forEach((target, index) => replacements.set(target.unitKey, {
+            prefixId: serials[index].payload.prefixId,
+            prefix: serials[index].payload.simPrefix,
+            serial: serials[index].simSerial,
+            puk: serials[index].puk,
+          }));
+        }
+        const saved = await saveOrderSimAssignments(orderId, units, stored.units.map((unit) => ({
+          unitKey: unit.unitKey,
+          prefixId: replacements.get(unit.unitKey)?.prefixId || unit.prefixId,
+          prefix: replacements.get(unit.unitKey)?.prefix || unit.prefix,
+          serial: replacements.get(unit.unitKey)?.serial || unit.serial,
+          ...(replacements.get(unit.unitKey)?.puk ? { puk: replacements.get(unit.unitKey)!.puk } : {}),
+        })));
+        return NextResponse.json(supplementalAssignmentPayload(orderId, saved, await getSimPrefixOptions()), { headers: { 'cache-control': 'no-store' } });
+      }
       const currentAssignments = Array.isArray(currentPayload?.assignments) ? currentPayload.assignments : [];
       const assignments: Array<Record<string, unknown>> = [];
       for (const orderItemId of Array.from(new Set(payloads.map((payload) => payload.orderItemId)))) {
@@ -312,8 +383,19 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
     if (request.method === 'PUT') init.body = await request.arrayBuffer();
     let upstream: Response;
     try { upstream = await fetch(`${BUNDLE_API}/${path}${request.nextUrl.search}`, init); } catch { return safeError(502); }
-    const payload = await readUpstream(upstream);
+    const payload = await readUpstream(upstream) as Record<string, any> | null;
     if (!upstream.ok) return safeError(upstream.status, payload);
+    if (request.method === 'GET' && nativeAssignmentTotal(payload) === 0) {
+      try {
+        const orderId = Number(assignmentMatch[1]);
+        const units = await catalogueSimUnits(await readBundleOrder(orderId, headers));
+        const stored = await readOrderSimAssignments(orderId, units);
+        return NextResponse.json(supplementalAssignmentPayload(orderId, stored, prefixOptions), { headers: { 'cache-control': 'no-store' } });
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'SIM assignments could not be loaded.';
+        return NextResponse.json({ message }, { status: reason instanceof SimRangeError ? reason.status : 503, headers: { 'cache-control': 'no-store' } });
+      }
+    }
     const value = sanitizePayload(payload ?? {});
     return NextResponse.json(value && typeof value === 'object' && !Array.isArray(value) ? { ...value, prefixOptions } : { assignments: value, prefixOptions }, { status: upstream.status, headers: { 'cache-control': 'no-store' } });
   }
@@ -368,6 +450,37 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
     } catch {
       return safeError(502);
     }
+  }
+
+  const orderStatusMatch = request.method === 'PUT' ? /^orders\/(\d+)\/status$/.exec(path) : null;
+  if (orderStatusMatch) {
+    const body = await request.arrayBuffer();
+    let requestedStatus = '';
+    try { requestedStatus = String(JSON.parse(Buffer.from(body).toString('utf8'))?.status || '').toUpperCase(); } catch {}
+    if (requestedStatus === 'SHIPPED') {
+      try {
+        const orderId = Number(orderStatusMatch[1]);
+        const units = await catalogueSimUnits(await readBundleOrder(orderId, headers));
+        if (units.length) {
+          const nativeResponse = await fetch(`${BUNDLE_API}/orders/${orderId}/sim-assignments`, { headers, cache: 'no-store' });
+          const nativePayload = await readUpstream(nativeResponse) as Record<string, any> | null;
+          if (!nativeResponse.ok) return safeError(nativeResponse.status, nativePayload);
+          if (nativeAssignmentTotal(nativePayload) > 0) {
+            if (Number(nativePayload?.assignedUnits) !== Number(nativePayload?.totalUnits)) throw new SimAssignmentValidationError(`Complete SIM assignments for all ${nativePayload?.totalUnits} SIM units before shipping.`);
+          } else await assertOrderSimAssignmentsComplete(orderId, units);
+        }
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'SIM assignment status could not be verified.';
+        return NextResponse.json({ message }, { status: reason instanceof SimAssignmentValidationError ? 409 : reason instanceof SimRangeError ? reason.status : 503, headers: { 'cache-control': 'no-store' } });
+      }
+    }
+    const contentType = request.headers.get('content-type');
+    if (contentType) headers.set('content-type', contentType);
+    let upstream: Response;
+    try { upstream = await fetch(`${BUNDLE_API}/${path}${request.nextUrl.search}`, { method:'PUT', headers, body, cache:'no-store' }); } catch { return safeError(502); }
+    const payload = await readUpstream(upstream);
+    if (!upstream.ok) return safeError(upstream.status, payload);
+    return NextResponse.json(sanitizePayload(payload ?? {}), { status: upstream.status, headers: { 'cache-control': 'no-store' } });
   }
 
   const contentType = request.headers.get('content-type');

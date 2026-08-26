@@ -124,9 +124,7 @@ export default function OrderDrawer({
       const [savedMetadata, savedSims, liveCouriers, projection] =
         await Promise.all([
           adminFetch<FulfilmentMetadata>(`orders/${id}/fulfilment-metadata`),
-          deriveSimUnits(value).length
-            ? adminFetch<SimAssignmentResponse>(`orders/${id}/sim-assignments`)
-            : Promise.resolve(null),
+          adminFetch<SimAssignmentResponse>(`orders/${id}/sim-assignments`),
           adminFetch<Courier[]>("couriers"),
           fetch(CATALOGUE_STOREFRONT_ENDPOINT, { cache: "no-store" }).then(
             (response) => (response.ok ? response.json() : { products: [] }),
@@ -136,7 +134,7 @@ export default function OrderDrawer({
       setSimVariantBindings(indexLegacySimVariantBindings(projection));
       setMetadata(savedMetadata);
       setSimData(
-        savedSims
+        savedSims.totalUnits > 0
           ? {
               ...savedSims,
               assignments: savedSims.assignments.map((unit) => ({

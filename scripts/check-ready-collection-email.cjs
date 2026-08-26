@@ -242,6 +242,9 @@ const pickup = (status = 'PAID') => ({ id: 42, status, deliveryOption: 'PICKUP' 
       '@/lib/admin/simRange.server': { SimRangeError: class extends Error {} },
       '@/lib/admin/orderMetadata.server': { OrderMetadataError: class extends Error {} },
       '@/lib/productImageColors.server': {},
+      '@/lib/admin/simAssignments': { deriveSimUnits: () => [] },
+      '@/lib/admin/simAssignments.server': { SimAssignmentValidationError: class extends Error {} },
+      '@/lib/cataloguePublicProjection.server': { readCatalogueSimFulfilmentProducts: async () => [] },
     });
     const request = () => { const value = new Request('https://admin.test/admin-api/orders/42/ready-for-collection-email', { method: 'POST', headers: { origin: 'https://admin.test', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'READY_FOR_COLLECTION' }) }); Object.defineProperty(value, 'nextUrl', { value: new URL(value.url) }); return value; };
     const context = { params: { path: ['orders', '42', 'ready-for-collection-email'] } };

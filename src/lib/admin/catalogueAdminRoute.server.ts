@@ -99,9 +99,6 @@ async function latestPublication(catalogueId:string){
 async function requireProduct(id:string){ensureId(id);const product=await readCatalogueProduct(id);if(!product)throw new CatalogueAdminRouteError('Catalogue product was not found.',404);return product;}
 async function activeAdoption(product:CatalogueProductRecord){if(product.currentBundleProductId===null)return null;const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);return adoption?.status==='active'&&adoption.catalogueId===product.catalogueId?adoption:null;}
 async function enrichAdminProduct(product:CatalogueProductRecord){return enrichCatalogueProductWithAdoption(product,await activeAdoption(product)) as CatalogueProductRecord&Row;}
-function hasSimCategory(product:CatalogueProductRecord){return /^sim(?:\s+card)?$/i.test(product.model.details.category?.trim()??'');}
-async function rejectLockedSimMutation(product:CatalogueProductRecord,operation:string){const adoption=await activeAdoption(product);if(adoption?.managementProfile?.domain==='SIM'||hasSimCategory(product))throw new CatalogueAdminRouteError(`SIM catalogue products cannot use generic ${operation}. Use the dedicated verified SIM workflow.`,409);return adoption;}
-function simLockedState(model:CatalogueProductRecord['model'],slug:string){return {slug,model};}
 function bundleRow(value:unknown):Row|null {const unwrapped=object(value)&&'data' in value?value.data:value;return object(unwrapped)?unwrapped:null;}
 function bundleProductIsDeleted(value:unknown,id:number){const row=bundleRow(value);return Boolean(row&&row.id===id&&(row.deleted===true||row.deletedAt!==null&&row.deletedAt!==undefined)&&row.published===false);}
 function bundleProductIsPublished(value:unknown,id:number){const row=bundleRow(value);return Boolean(row&&row.id===id&&row.deleted!==true&&(row.deletedAt===null||row.deletedAt===undefined)&&row.published===true);}
@@ -120,19 +117,17 @@ export const catalogueAdminRoute={
   async list(){return {products:await listProducts()};},
   async get(id:string){return {product:await enrichAdminProduct(await requireProduct(id))};},
   async create(body:unknown){if(!object(body)||!exact(body,['model','slug']))invalid('Exact model and slug fields are required.');return {product:await createCatalogueProduct(body.model,body.slug)};},
-  async update(id:string,body:unknown){ensureId(id);if(!object(body)||!exact(body,['model','revision','slug'])||!revision(body.revision))invalid('Exact positive revision, model and slug fields are required.');const existing=await requireProduct(id);if(existing.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);const model=body.model as CatalogueProductRecord['model'],slug=body.slug as string,adoption=await activeAdoption(existing);if(adoption?.managementProfile?.domain==='SIM'&&!isDeepStrictEqual(simLockedState(existing.model,existing.slug),simLockedState(model,slug)))throw new CatalogueAdminRouteError('Active SIM adoption locked fields cannot be changed through the generic editor.',409);return {product:await updateCatalogueProduct(id,body.revision,record=>({...record,model,slug}))};},
+  async update(id:string,body:unknown){ensureId(id);if(!object(body)||!exact(body,['model','revision','slug'])||!revision(body.revision))invalid('Exact positive revision, model and slug fields are required.');const existing=await requireProduct(id);if(existing.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);const model=body.model as CatalogueProductRecord['model'],slug=body.slug as string;return {product:await updateCatalogueProduct(id,body.revision,record=>({...record,model,slug}))};},
   async archive(id:string,body:unknown){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
-    const adoption=await rejectLockedSimMutation(product,'archive');
+    const adoption=await activeAdoption(product);
     if(adoption?.status==='active'&&adoption.catalogueId===id)return {...await rollbackCatalogueAdoption(adoption.bundleProductId),adoptionRollback:true};
     return archiveCatalogueProduct(id,body.revision);
   },
   async unpublish(id:string,body:unknown,token:string){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
-    await rejectLockedSimMutation(product,'unpublish');
-    if(product.currentBundleProductId!==null){const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);if(adoption?.status==='active'&&adoption.catalogueId===id)throw new CatalogueAdminRouteError('Active legacy adoption is provider-read-only; use archive to perform its local rollback.',409);}
     const deletedBundleProductIds=new Set<number>();
     const local={
       readPublication:(operationId:string)=>readPublicationJob(operationId),
@@ -182,7 +177,7 @@ export const catalogueAdminRoute={
   async publication(id:string){await requireProduct(id);return {publication:await latestPublication(id)};},
   async publish(id:string,body:unknown,token:string){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
-    const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);await rejectLockedSimMutation(product,'replacement publish');if(product.currentBundleProductId===39||product.currentBundleProductId===40)throw new CatalogueAdminRouteError('SIM products 39/40 require the dedicated same-ID SIM publish endpoint.',409);
+    const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
     const metadata=await listCatalogueMedia(id);const uploads:Array<CataloguePreparedImageUpload&{body:Uint8Array}>=[];
     for(const item of metadata.sort((a,b)=>a.order-b.order)){const media=await readVerifiedCatalogueMedia(id,item.mediaId);uploads.push({key:media.mediaId,name:media.originalName,contentType:media.contentType,order:media.order,body:media.body,sha256:media.sha256});}
     const publishRequest={catalogueId:id,spec:product.model,uploads,previousBundleProductId:product.currentBundleProductId,versionOrdinal:product.bundleVersions.length+1};

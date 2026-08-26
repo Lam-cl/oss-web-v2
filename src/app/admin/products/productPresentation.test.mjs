@@ -67,11 +67,11 @@ test('unknown or incomplete provider publication state is unresolved', () => {
   assert.equal(unresolvedPublication({ phase: 'complete' }), false);
 });
 
-test('publication actions follow evidence state and keep SIM on its dedicated workflow', () => {
+test('publication actions follow evidence state and keep SIM Card on the ordinary workflow', () => {
   assert.equal(isSimCatalogueCategory('SIM'), true);
   assert.equal(isSimCatalogueCategory('SIM Card'), true);
   assert.equal(isSimCatalogueCategory('Accessories'), false);
-  assert.equal(genericCatalogueLifecycleAllowed(true), false);
+  assert.equal(genericCatalogueLifecycleAllowed(true), true);
   assert.equal(genericCatalogueLifecycleAllowed(false), true);
   assert.deepEqual(publicationActionPresentation({ state: 'clean', localDraft: false, simManaged: false }), { visible: false });
   assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: false }), {
@@ -80,5 +80,7 @@ test('publication actions follow evidence state and keep SIM on its dedicated wo
   const unresolved = publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false, unknownReason: 'Snapshot missing.' });
   assert.equal(unresolved.visible, true);
   assert.equal(unresolved.disabledReason, 'Snapshot missing.');
-  assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: false });
+  assert.deepEqual(publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), {
+    visible: true, label: 'Publish changes', disabledReason: null,
+  });
 });

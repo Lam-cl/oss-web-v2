@@ -988,13 +988,11 @@ export function enrichCatalogueProductWithAdoption<T extends Row>(
       details: {
         ...details,
         category: "SIM Card",
+        minimumOrderQuantity: positive(details.minimumOrderQuantity)
+          ? details.minimumOrderQuantity
+          : SIM_ADOPTION_MINIMUM_ORDER_QUANTITY,
       },
     },
-    managementDomain: "SIM" as const,
-    minimumOrderQuantity: SIM_ADOPTION_MINIMUM_ORDER_QUANTITY as 2,
-    providerFingerprint: adoption.sourceFingerprint,
-    lockedFields: [...SIM_ADOPTION_LOCKED_FIELDS],
-    capabilities: { saveSimChanges: true },
   };
 }
 async function verifyAudits(spec: LegacyAdoptionSpec) {
@@ -2008,7 +2006,6 @@ export async function supersedeCatalogueAdoption(
     const document = await remoteDocument<CatalogueAdoptionRecord>('catalogue-adoptions', String(bundleProductId));
     if (!document) throw new CatalogueAdoptionError('Catalogue adoption was not found.', 404);
     const current = validateRecord(document.value, bundleProductId);
-    if (current.managementProfile?.domain === 'SIM' && current.status === 'active') throw new CatalogueAdoptionError('Active SIM adoption has a locked field policy and cannot be replaced by the generic publication workflow.');
     if (current.status === 'superseded') {
       if (current.replacementBundleProductId !== replacementBundleProductId) throw new CatalogueAdoptionError('Adoption is already superseded by a different replacement.');
       return current;
@@ -2027,13 +2024,6 @@ export async function supersedeCatalogueAdoption(
       throw new CatalogueAdoptionError(
         "Catalogue adoption was not found.",
         404,
-      );
-    if (
-      current.managementProfile?.domain === "SIM" &&
-      current.status === "active"
-    )
-      throw new CatalogueAdoptionError(
-        "Active SIM adoption has a locked field policy and cannot be replaced by the generic publication workflow.",
       );
     if (current.status === "superseded") {
       if (current.replacementBundleProductId !== replacementBundleProductId)

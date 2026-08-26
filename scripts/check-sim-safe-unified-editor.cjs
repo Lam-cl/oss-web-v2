@@ -79,14 +79,11 @@ assert.match(products, /managementDomain\?:\s*'SIM'\s*\|\s*string/, 'catalogue r
 assert.match(products, /minimumOrderQuantity\?:\s*number/, 'catalogue record accepts MOQ metadata');
 assert.match(products, /lockedFields\?:\s*string\[\]/, 'catalogue record accepts locked fields metadata');
 assert.match(products, /capabilities\?:\s*\{\s*saveSimChanges\?:\s*boolean\s*\}/, 'catalogue record accepts explicit SIM-save capability');
-assert.match(products, /saveMode=\{catalogueProduct\.managementDomain === 'SIM'[\s\S]*?saveSimChanges/, 'existing editor derives save mode from backend capability');
-assert.match(products, /managementDomain\s*===\s*'SIM'/, 'products page identifies active SIM adoptions from backend enrichment');
-assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: false }, 'active SIM rows do not expose generic Publish changes');
-assert.equal(presentation.exports.genericCatalogueLifecycleAllowed(true), false, 'SIM rows do not expose generic Unpublish or Archive');
+assert.match(products, /saveMode=\{catalogueProduct\.managementDomain === 'SIM'[\s\S]*?saveSimChanges/, 'legacy dedicated capability remains backward-compatible');
+assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'dirty', localDraft: false, simManaged: true }), { visible: true, label: 'Publish changes', disabledReason: null }, 'SIM Card rows expose the ordinary publish action');
+assert.equal(presentation.exports.genericCatalogueLifecycleAllowed(true), true, 'SIM Card rows expose ordinary Unpublish and Archive actions');
 assert.equal(presentation.exports.genericCatalogueLifecycleAllowed(false), true, 'merchandise rows retain generic lifecycle actions');
-assert.match(products, /Managed by SIM workflow/, 'SIM ownership is visible in the products list');
-assert.match(adoption, /providerFingerprint:\s*adoption\.sourceFingerprint/, 'active SIM records expose their provider fingerprint');
-assert.match(adoption, /saveSimChanges:\s*true/, 'active SIM records enable the dedicated save capability');
+assert.doesNotMatch(products, /<small>Managed by SIM workflow<\/small>/, 'SIM Card rows are presented as ordinary catalogue products');
 assert.match(publishRoute, /keys\.includes\('image'\)[\s\S]*?locked read-only[\s\S]*?uploads are not allowed/i, 'dedicated route rejects image fields clearly');
 assert.match(publishRoute, /const allowed=new Set\(\['expectedFingerprint','description','productDetails','price','variants'\]\)/, 'dedicated route accepts metadata plus the exact variant matrix only');
 assert.doesNotMatch(publishRoute, /form\.get\('image'\)|file\.arrayBuffer|image:\s*\{/, 'dedicated route never reads or forwards an image');

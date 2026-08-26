@@ -84,8 +84,8 @@ export function isSimCatalogueCategory(category: string | undefined) {
   return /^sim(?:\s+card)?$/i.test(category?.trim() || '');
 }
 
-export function genericCatalogueLifecycleAllowed(simManaged: boolean) {
-  return !simManaged;
+export function genericCatalogueLifecycleAllowed(_simManaged: boolean) {
+  return true;
 }
 
 export function publicationActionPresentation(input: {
@@ -94,7 +94,7 @@ export function publicationActionPresentation(input: {
   simManaged: boolean;
   unknownReason?: string;
 }) {
-  if (input.simManaged || input.state === 'clean' && !input.localDraft) return { visible: false } as const;
+  if (input.state === 'clean' && !input.localDraft) return { visible: false } as const;
   return {
     visible: true,
     label: input.localDraft ? 'Publish' : 'Publish changes',

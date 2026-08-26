@@ -21,7 +21,6 @@ import {
   catalogueHazardReason,
   genericCatalogueLifecycleAllowed,
   hasValidCatalogueVariants,
-  isSimCatalogueCategory,
   isSystemCatalogueProduct,
   productSearchText,
   publicationActionPresentation,
@@ -427,8 +426,7 @@ function ProductsContent() {
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
       const providerOperationUnresolved = localDraft && unresolvedPublication(cataloguePublications[row.catalogue.catalogueId]);
-      const simManagedCatalogue = row.kind === 'catalogue' && (row.catalogue.managementDomain === 'SIM'
-        || isSimCatalogueCategory(row.catalogue.model.details.category));
+      const simManagedCatalogue = row.kind === 'catalogue' && row.catalogue.managementDomain === 'SIM';
       const genericLifecycleAllowed = genericCatalogueLifecycleAllowed(simManagedCatalogue);
       const publicationAction = row.kind === 'catalogue' ? publicationActionPresentation({
         state: row.catalogue.publicationChangeState,
@@ -447,7 +445,7 @@ function ProductsContent() {
       const publishLabel = publicationAction.visible ? publicationAction.label : 'Publish';
       const hazardousActionDisabled = hazardousActionReason !== null;
       return <tr key={key}>
-        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{simManagedCatalogue && <small>Managed by SIM workflow</small>}</div></div></td>
+        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Variants">{variants}</td>
         <td data-label="Inventory">{stock}</td>

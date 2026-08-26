@@ -56,9 +56,11 @@ assert.equal(model.combinations[0].inventory, 1, 'live reconciliation never muta
 
 const page = fs.readFileSync('src/app/admin/products/page.tsx', 'utf8');
 assert.match(page, /productInventory\(/, 'row display and filter share authoritative inventory helper');
-assert.match(page, /liveCombinationInventory\(/, 'editor receives provider inventory bound to local combinations');
+assert.match(page, /catalogue-products.*inventory|inventory.*catalogue-products/s, 'editor loads authoritative inventory through its catalogue binding');
+assert.match(page, /expectedInventory/, 'stock writes retain the exact live value seen when the editor opened');
 const editor = fs.readFileSync('src/components/admin/UnifiedProductEditor.tsx', 'utf8');
-assert.match(editor, /Live stock/, 'editor labels authoritative provider stock');
-assert.match(editor, /Stock to publish/, 'editor labels editable local publication intent');
+assert.match(editor, /shownInventory/, 'stock inputs display authoritative provider stock directly');
+assert.match(editor, /touchedInventory/, 'only explicitly edited stock fields may become inventory changes');
+assert.doesNotMatch(editor, />Live stock:|>Stock to publish/, 'stale draft stock is not rendered as the editable value beside live stock');
 
 console.log('Admin product live stock reconciliation check passed');

@@ -71,6 +71,12 @@ function harness(mode='success'){
     assert.equal(h.finalizeCalls(),1,`${mode}: one whole-set finalization call`);
     assert.equal(h.calls.some(call=>call.method==='DELETE'&&(call.url.endsWith(ids.b)||call.url.endsWith(ids.c))),false,'old media are never deleted individually');
   }
+  {
+    const h=harness(),sameIntent={spec:clone(model),inventoryChanges:[],existingMedia:originalMedia.map(item=>({mediaId:item.mediaId,url:item.url,order:item.order,assignment:item.assignment,remove:false})),pendingPhotos:[]};
+    const saved=await loaded.exports.createCatalogueProductEditorClient(h.fetcher).save(originalProduct,sameIntent);
+    assert.equal(saved.product.revision,originalProduct.revision,'an inventory-only/no-op content save does not create a false catalogue revision');
+    assert.equal(h.calls.some(call=>call.method==='PATCH'),false,'unchanged catalogue content is not PATCHed');
+  }
   const uncertain=harness('readback-unavailable');
   await assert.rejects(()=>loaded.exports.createCatalogueProductEditorClient(uncertain.fetcher).save(originalProduct,intent),/uncertain|reconcil/i);
   assert.deepEqual(uncertain.getMedia().map(item=>item.mediaId),[ids.a,'new-1','new-2'],'unavailable readback cannot cause partial old-media loss');

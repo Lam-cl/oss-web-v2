@@ -1,6 +1,6 @@
 type VariantModel = {
   details?: { price: number };
-  choices: Array<{ values: Array<{ key: string; retired?: boolean }> }>;
+  choices: Array<{ name?: string; values: Array<{ key: string; retired?: boolean }> }>;
   combinations: Array<{ valueKeys: string[]; sku?: string; price?: number }>;
 };
 
@@ -64,6 +64,23 @@ export function hasValidCatalogueVariants(model: VariantModel) {
   return combinations.size === model.combinations.length
     && combinations.size === expectedTuples.length
     && expectedTuples.every((tuple) => combinations.has(JSON.stringify(tuple)));
+}
+
+export function catalogueChoiceSummary(model: VariantModel) {
+  const activeChoices = model.choices.map((choice) => ({
+    name: choice.name?.trim() || 'Choice',
+    values: choice.values.filter((value) => !value.retired),
+  }));
+  if (!activeChoices.length) return { primary: 'Standard', secondary: '1 combination', incomplete: model.combinations.length !== 1 };
+  const activeKeys = new Set(activeChoices.flatMap((choice) => choice.values.map((value) => value.key)));
+  const actual = model.combinations.filter((combination) => combination.valueKeys.length === activeChoices.length
+    && combination.valueKeys.every((key) => activeKeys.has(key))).length;
+  const expected = activeChoices.reduce((total, choice) => total * choice.values.length, 1);
+  return {
+    primary: activeChoices.map((choice) => `${choice.name} ${choice.values.length}`).join(' · '),
+    secondary: actual === expected ? `${actual} ${actual === 1 ? 'combination' : 'combinations'}` : `${actual} of ${expected} combinations`,
+    incomplete: actual !== expected,
+  };
 }
 
 export function catalogueHazardReason(model: VariantModel, providerOperationUnresolved: boolean) {

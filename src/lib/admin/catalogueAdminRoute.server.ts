@@ -97,6 +97,32 @@ async function latestPublication(catalogueId:string){
   else {const names=await filenames(PUBLICATION_DIRECTORY,/^[a-f0-9]{64}\.json$/);for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;const job=await readPublicationJob(operationId);if(job?.catalogueId===catalogueId)jobs.push(job);}}
   return jobs.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||b.operationId.localeCompare(a.operationId))[0]??null;
 }
+type CatalogueInventoryRow={valueKeys:string[];variantId:number;inventory:number};
+type CatalogueInventoryState={bundleProductId:number;rows:CatalogueInventoryRow[];providerVariants:Map<number,{id:number;sku:string;price:number;inventory:number}>};
+const inventoryQueues=new Map<string,Promise<void>>();
+function withInventoryLock<T>(catalogueId:string,action:()=>Promise<T>){
+  const previous=inventoryQueues.get(catalogueId)??Promise.resolve();
+  const result=previous.then(action,action),settled=result.then(()=>undefined,()=>undefined);
+  inventoryQueues.set(catalogueId,settled);settled.then(()=>{if(inventoryQueues.get(catalogueId)===settled)inventoryQueues.delete(catalogueId);});
+  return result;
+}
+async function activeCatalogueInventory(id:string,token:string):Promise<CatalogueInventoryState>{
+  const product=await requireProduct(id),active=product.bundleVersions.filter(version=>version.retiredAt===null);
+  if(product.status!=='published'||product.currentBundleProductId===null||active.length!==1||active[0].bundleProductId!==product.currentBundleProductId)throw new CatalogueAdminRouteError('Live inventory is available only for one verified active publication.',409);
+  const jobs=(await publicationJobIndex()).byCatalogue.get(id)??[],matching=jobs.filter(job=>job.phase==='complete'&&job.draftBundleProductId===active[0].bundleProductId&&job.resultFingerprint64===active[0].fingerprint);
+  if(matching.length!==1)throw new CatalogueAdminRouteError('Live inventory publication evidence is missing or ambiguous.',409);
+  const snapshot=await readCataloguePublishedSnapshot(matching[0].operationId);
+  if(!snapshot||snapshot.catalogueId!==id||snapshot.bundleProductId!==product.currentBundleProductId||snapshot.resultFingerprint64!==active[0].fingerprint)throw new CatalogueAdminRouteError('Live inventory publication snapshot is missing or ambiguous.',409);
+  let response:Response;try{response=await fetch(`${BUNDLE_API}/products/${product.currentBundleProductId}`,{headers:{authorization:`Bearer ${token}`,accept:'application/json'},cache:'no-store'});}catch{throw new CatalogueAdminRouteError('Bundle live inventory could not be read.',503);}
+  if(!response.ok)throw new CatalogueAdminRouteError('Bundle live inventory could not be read.',response.status===404?404:503);
+  const payload=await response.json().catch(()=>null),provider=object(payload)&&object(payload.data)?payload.data:payload;
+  if(!object(provider)||provider.id!==product.currentBundleProductId||!Array.isArray(provider.productVariants))throw new CatalogueAdminRouteError('Bundle live inventory readback is invalid.',502);
+  const providerVariants=new Map<number,{id:number;sku:string;price:number;inventory:number}>();
+  for(const raw of provider.productVariants){if(!object(raw)||!revision(raw.id)||typeof raw.sku!=='string'||!raw.sku||!Number.isFinite(Number(raw.price))||Number(raw.price)<0||!Number.isSafeInteger(Number(raw.inventory))||Number(raw.inventory)<0||providerVariants.has(raw.id))throw new CatalogueAdminRouteError('Bundle live variant evidence is incomplete or ambiguous.',502);providerVariants.set(raw.id,{id:raw.id,sku:raw.sku,price:Number(raw.price),inventory:Number(raw.inventory)});}
+  const rows=snapshot.product.combinations.map(combination=>{const variant=providerVariants.get(combination.variantId);if(!variant)throw new CatalogueAdminRouteError('A published variant is missing from Bundle live inventory.',409);return {valueKeys:[...combination.valueKeys],variantId:combination.variantId,inventory:variant.inventory};});
+  if(new Set(rows.map(row=>row.variantId)).size!==rows.length)throw new CatalogueAdminRouteError('Published inventory bindings are ambiguous.',409);
+  return {bundleProductId:product.currentBundleProductId,rows,providerVariants};
+}
 async function requireProduct(id:string){ensureId(id);const product=await readCatalogueProduct(id);if(!product)throw new CatalogueAdminRouteError('Catalogue product was not found.',404);return product;}
 async function activeAdoption(product:CatalogueProductRecord){if(product.currentBundleProductId===null)return null;const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);return adoption?.status==='active'&&adoption.catalogueId===product.catalogueId?adoption:null;}
 async function enrichAdminProduct(product:CatalogueProductRecord){return enrichCatalogueProductWithAdoption(product,await activeAdoption(product)) as CatalogueProductRecord&Row;}
@@ -117,6 +143,21 @@ function publishedProduct(source:CatalogueProductRecord,bundleProductId:number,b
 export const catalogueAdminRoute={
   async list(){return {products:await listProducts()};},
   async get(id:string){return {product:await enrichAdminProduct(await requireProduct(id))};},
+  async inventory(id:string,token:string){ensureId(id);const state=await activeCatalogueInventory(id,token);return {bundleProductId:state.bundleProductId,inventory:state.rows};},
+  async updateInventory(id:string,body:unknown,token:string){
+    ensureId(id);if(!object(body)||!exact(body,['bundleProductId','changes'])||!revision(body.bundleProductId)||!Array.isArray(body.changes)||body.changes.length>10_000)invalid('Exact Bundle product identity and inventory changes are required.');
+    const changes=body.changes;if(changes.some(change=>!object(change)||!exact(change,['expectedInventory','inventory','variantId'])||!revision(change.variantId)||typeof change.expectedInventory!=='number'||!Number.isSafeInteger(change.expectedInventory)||change.expectedInventory<0||typeof change.inventory!=='number'||!Number.isSafeInteger(change.inventory)||change.inventory<0)||new Set(changes.map(change=>(change as Row).variantId)).size!==changes.length)invalid('Each inventory change requires one unique variant ID and nonnegative expected/new stock.');
+    return withInventoryLock(id,async()=>{
+      const before=await activeCatalogueInventory(id,token);if(before.bundleProductId!==body.bundleProductId)throw new CatalogueAdminRouteError('The active product changed. Reload before saving stock.',409);
+      const requested=changes as Array<{variantId:number;expectedInventory:number;inventory:number}>;
+      for(const change of requested){const variant=before.providerVariants.get(change.variantId);if(!variant||!before.rows.some(row=>row.variantId===change.variantId))throw new CatalogueAdminRouteError('A stock variant binding changed. Reload before saving.',409);if(variant.inventory!==change.expectedInventory&&variant.inventory!==change.inventory)throw new CatalogueAdminRouteError('Live stock changed after this editor was opened. Reload and review the latest stock before saving.',409);}
+      const updates=requested.flatMap(change=>{const variant=before.providerVariants.get(change.variantId)!;return variant.inventory===change.inventory?[]:[{id:variant.id,sku:variant.sku,price:variant.price,inventory:change.inventory}];});
+      let mutationFailed=false;if(updates.length)try{const response=await fetch(`${BUNDLE_API}/products/${before.bundleProductId}/batch-update`,{method:'POST',headers:{authorization:`Bearer ${token}`,accept:'application/json','content-type':'application/json'},body:JSON.stringify({variants:updates}),cache:'no-store'});if(!response.ok)mutationFailed=true;}catch{mutationFailed=true;}
+      const after=await activeCatalogueInventory(id,token);
+      for(const change of requested){const prior=before.providerVariants.get(change.variantId)!,current=after.providerVariants.get(change.variantId);if(!current||current.inventory!==change.inventory||current.sku!==prior.sku||current.price!==prior.price)throw new CatalogueAdminRouteError(mutationFailed?'Bundle stock update failed and could not be reconciled.':'Bundle stock readback did not match the requested change.',503);}
+      return {bundleProductId:after.bundleProductId,inventory:after.rows,reconciled:mutationFailed};
+    });
+  },
   async create(body:unknown){if(!object(body)||!exact(body,['model','slug']))invalid('Exact model and slug fields are required.');return {product:await createCatalogueProduct(body.model,body.slug)};},
   async update(id:string,body:unknown){ensureId(id);if(!object(body)||!exact(body,['model','revision','slug'])||!revision(body.revision))invalid('Exact positive revision, model and slug fields are required.');const existing=await requireProduct(id);if(existing.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);const model=body.model as CatalogueProductRecord['model'],slug=body.slug as string;return {product:await updateCatalogueProduct(id,body.revision,record=>({...record,model,slug}))};},
   async archive(id:string,body:unknown){
@@ -179,12 +220,15 @@ export const catalogueAdminRoute={
   async publish(id:string,body:unknown,token:string){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
+    let publishModel=product.model;
+    if(product.currentBundleProductId!==null){const live=await activeCatalogueInventory(id,token),byTuple=new Map(live.rows.map(row=>[JSON.stringify(row.valueKeys),row]));publishModel={...product.model,combinations:product.model.combinations.map(combination=>{const current=byTuple.get(JSON.stringify(combination.valueKeys));return current?{...combination,inventory:current.inventory}:combination;})};}
+    const publicationProduct={...product,model:publishModel};
     const metadata=await listCatalogueMedia(id);const uploads:Array<CataloguePreparedImageUpload&{body:Uint8Array}>=[];
     for(const item of metadata.sort((a,b)=>a.order-b.order)){const media=await readVerifiedCatalogueMedia(id,item.mediaId);uploads.push({key:media.mediaId,name:media.originalName,contentType:media.contentType,order:media.order,body:media.body,sha256:media.sha256});}
-    const publishRequest={catalogueId:id,spec:product.model,uploads,previousBundleProductId:product.currentBundleProductId,versionOrdinal:product.bundleVersions.length+1};
+    const publishRequest={catalogueId:id,spec:publishModel,uploads,previousBundleProductId:product.currentBundleProductId,versionOrdinal:product.bundleVersions.length+1};
     const pendingPublication=await latestPublication(id),operationId=cataloguePublicationOperationId(publishRequest);
     const persistSnapshot=async(productId:number,bindings:CatalogueVariantBinding[],fingerprint:string,snapshotOperationId:string)=>{
-      const publicProduct=publishedProduct(product,productId,bindings,metadata);
+      const publicProduct=publishedProduct(publicationProduct,productId,bindings,metadata);
       const snapshotMedia=uploads.map(upload=>{const item=metadata.find(media=>media.mediaId===upload.key);if(!item)throw new CatalogueAdminRouteError('Published snapshot media binding is missing.',502);return {mediaId:item.mediaId,originalName:item.originalName,contentType:item.contentType,bytes:item.bytes,sha256:item.sha256,order:item.order,assignment:item.assignment,body:upload.body};});
       await createCataloguePublishedSnapshot({operationId:snapshotOperationId,catalogueId:id,bundleProductId:productId,resultFingerprint64:fingerprint,product:publicProduct,media:snapshotMedia});
       const readback=await readCataloguePublishedSnapshot(snapshotOperationId);
@@ -199,8 +243,8 @@ export const catalogueAdminRoute={
       async activateVersion(productId:number,bindings:CatalogueVariantBinding[],fingerprint:string,previousProductId:number|null,operationId:string){
         activationOperation=operationId;await persistSnapshot(productId,bindings,fingerprint,operationId);snapshotOperation=operationId;const current=await requireProduct(id);const active=current.bundleVersions.find(version=>version.retiredAt===null);
         if(current.currentBundleProductId===productId&&active?.fingerprint===fingerprint)return;
-        if(current.currentBundleProductId!==previousProductId)throw new CatalogueAdminRouteError('Catalogue activation conflicts with the current Bundle version.',409);
-        const now=new Date().toISOString();await updateCatalogueProduct(id,current.revision,record=>({...record,status:'published' as const,currentBundleProductId:productId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:productId,fingerprint,publishedAt:now,retiredAt:null}]}));
+        if(current.currentBundleProductId!==previousProductId||current.revision!==product.revision)throw new CatalogueAdminRouteError('Catalogue activation conflicts with a newer product edit.',409);
+        const now=new Date().toISOString();await updateCatalogueProduct(id,current.revision,record=>({...record,model:publishModel,status:'published' as const,currentBundleProductId:productId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:productId,fingerprint,publishedAt:now,retiredAt:null}]}));
       },
       async readActivation(operationId:string,productId:number){
         activationOperation=operationId;const [job,current]=await Promise.all([readPublicationJob(operationId),requireProduct(id)]);const active=current.bundleVersions.find(version=>version.retiredAt===null);
@@ -214,7 +258,7 @@ export const catalogueAdminRoute={
     if(snapshotOperation!==publication.operationId)await persistSnapshot(publication.bundleProductId,publication.bindings,publication.fingerprint,publication.operationId);
     let updated=await requireProduct(id);
     if(updated.currentBundleProductId!==publication.bundleProductId||!updated.bundleVersions.some(version=>version.bundleProductId===publication.bundleProductId&&version.fingerprint===publication.fingerprint&&version.retiredAt===null)){
-      updated=await updateCatalogueProduct(id,updated.revision,record=>{const now=new Date().toISOString();return {...record,status:'published' as const,currentBundleProductId:publication.bundleProductId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:publication.bundleProductId,fingerprint:publication.fingerprint,publishedAt:now,retiredAt:null}]};});
+      updated=await updateCatalogueProduct(id,updated.revision,record=>{const now=new Date().toISOString();return {...record,model:publishModel,status:'published' as const,currentBundleProductId:publication.bundleProductId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:publication.bundleProductId,fingerprint:publication.fingerprint,publishedAt:now,retiredAt:null}]};});
     }
     if(product.currentBundleProductId!==null){const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);if(adoption?.status==='active'&&adoption.catalogueId===id)await supersedeCatalogueAdoption(product.currentBundleProductId,publication.bundleProductId);}
     await inheritShippingProductGroup({catalogueId:id,previousBundleProductId:product.currentBundleProductId,bundleProductId:publication.bundleProductId,slug:product.slug});

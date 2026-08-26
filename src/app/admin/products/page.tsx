@@ -14,11 +14,12 @@ import { Empty, ErrorState, Skeleton, StatusBadge, Toast } from '@/components/ad
 import { adminFetch } from '@/lib/admin/client';
 import { money, Paged, Product } from '@/lib/admin/types';
 import type { ProductEditorSpec } from '@/lib/admin/productEditor';
-import { liveCombinationInventory, productInventory } from '@/lib/admin/productStock';
+import { productInventory } from '@/lib/admin/productStock';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
 import {
   catalogueHazardReason,
+  catalogueChoiceSummary,
   genericCatalogueLifecycleAllowed,
   hasValidCatalogueVariants,
   isSystemCatalogueProduct,
@@ -44,7 +45,7 @@ type CatalogueProductRecord = {
 };
 
 
-type EditorTarget = { kind: 'new' } | { kind: 'existing'; product: CatalogueProductRecord; liveProduct?: Product };
+type EditorTarget = { kind: 'new' } | { kind: 'existing'; product: CatalogueProductRecord };
 type ProductRow =
   | { kind: 'catalogue'; catalogue: CatalogueProductRecord; product?: Product }
   | { kind: 'legacy'; product: Product };
@@ -89,9 +90,29 @@ function productSlug(title: string) {
   return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 128);
 }
 
-function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCategories, onClose, onSaved }: {
+type CatalogueInventoryResponse = {
+  bundleProductId: number;
+  inventory: Array<{ valueKeys: string[]; variantId: number; inventory: number }>;
+};
+
+function catalogueContentIntent(intent: UnifiedProductEditorSaveIntent, persisted: ProductEditorSpec): UnifiedProductEditorSaveIntent {
+  const previous = new Map(persisted.combinations.map((combination) => [JSON.stringify(combination.valueKeys), combination]));
+  return {
+    ...intent,
+    spec: {
+      ...intent.spec,
+      combinations: intent.spec.combinations.map((combination) => {
+        const stored = previous.get(JSON.stringify(combination.valueKeys));
+        return stored?.variantId !== undefined && stored.variantId === combination.variantId
+          ? { ...combination, inventory: stored.inventory }
+          : combination;
+      }),
+    },
+  };
+}
+
+function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClose, onSaved }: {
   catalogueProduct: CatalogueProductRecord;
-  liveProduct?: Product;
   availableCategories: string[];
   onClose: () => void;
   onSaved: () => void;
@@ -101,6 +122,9 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
   const [model, setModel] = useState<ProductEditorSpec | null>(null);
   const [existingPhotos, setExistingPhotos] = useState<UnifiedProductEditorExistingPhoto[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<UnifiedProductEditorPendingPhoto[]>([]);
+  const [inventory, setInventory] = useState<CatalogueInventoryResponse | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(catalogueProduct.status === 'published');
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (product) setModel(product.model);
@@ -114,17 +138,34 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
       order: photo.order,
     }] : []));
   }, [media]);
+  useEffect(() => {
+    if (catalogueProduct.status !== 'published' || catalogueProduct.currentBundleProductId === null) {
+      setInventoryLoading(false);
+      return;
+    }
+    let active = true;
+    setInventoryLoading(true);
+    setInventoryError(null);
+    void catalogueRequest<CatalogueInventoryResponse>(`/${encodeURIComponent(catalogueId)}/inventory`).then((result) => {
+      if (active) setInventory(result);
+    }).catch((problem) => {
+      if (active) setInventoryError(problem instanceof Error ? problem.message : 'Live stock could not be loaded.');
+    }).finally(() => {
+      if (active) setInventoryLoading(false);
+    });
+    return () => { active = false; };
+  }, [catalogueId, catalogueProduct.currentBundleProductId, catalogueProduct.status]);
 
-  if (loading || !model) return <Skeleton rows={8} />;
+  if (loading || inventoryLoading || !model) return <Skeleton rows={8} />;
+  if (inventoryError) return <ErrorState message={inventoryError} retry={() => window.location.reload()} />;
+  const liveInventory = inventory ? Object.fromEntries(inventory.inventory.map((row) => [row.valueKeys.join('|'), row.inventory])) : undefined;
   return <UnifiedProductEditor
     editorKey={catalogueId}
     availableCategories={availableCategories}
     minimumOrderQuantity={catalogueProduct.minimumOrderQuantity}
     saveMode="product"
     model={model}
-    liveInventory={catalogueProduct.status === 'published' && liveProduct?.id === catalogueProduct.currentBundleProductId
-      ? liveCombinationInventory(model, liveProduct)
-      : undefined}
+    liveInventory={liveInventory}
     existingPhotos={existingPhotos}
     pendingPhotos={pendingPhotos}
     onModelChange={setModel}
@@ -133,7 +174,22 @@ function ExistingCatalogueEditor({ catalogueProduct, liveProduct, availableCateg
       setPendingPhotos(nextPending);
     }}
     onSave={async (intent) => {
-      await save(intent);
+      const saved = await save(catalogueContentIntent(intent, product!.model));
+      if (intent.inventoryChanges.length) {
+        try {
+          await catalogueRequest(`/${encodeURIComponent(catalogueId)}/inventory`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              bundleProductId: inventory!.bundleProductId,
+              changes: intent.inventoryChanges.map(({ variantId, expectedInventory, inventory: nextInventory }) => ({ variantId, expectedInventory, inventory: nextInventory })),
+            }),
+          });
+        } catch (problem) {
+          const prefix = saved.product.revision !== product!.revision ? 'Product details were saved, but ' : '';
+          const message = problem instanceof Error ? problem.message : 'live stock could not be updated.';
+          throw new Error(`${prefix}${message.charAt(0).toLowerCase()}${message.slice(1)}`);
+        }
+      }
       setPendingPhotos([]);
       onSaved();
     }}
@@ -376,7 +432,7 @@ function ProductsContent() {
           flash('Product added successfully.');
           void load();
         }} />
-      : <ExistingCatalogueEditor catalogueProduct={editor.product} liveProduct={editor.liveProduct} availableCategories={availableCategories} onClose={() => setEditor(undefined)} onSaved={() => {
+      : <ExistingCatalogueEditor catalogueProduct={editor.product} availableCategories={availableCategories} onClose={() => setEditor(undefined)} onSaved={() => {
           window.history.replaceState(null, '', '/admin/products');
           setEditor(undefined);
           flash('Product saved.');
@@ -388,13 +444,14 @@ function ProductsContent() {
   return <AdminShell title="Products" eyebrow="Catalogue">
     <div className="adm-page-head"><div><h1>Product catalogue</h1><p>Manage details, photos, choices, prices and inventory.</p></div><button className="adm-button" onClick={openCreate}><Icon name="plus" /><span>Add product</span></button></div>
     <div className="adm-toolbar"><div className="adm-tabs"><button className={type === 'MOBILE' ? 'active' : ''} onClick={() => { setType('MOBILE'); setPage(1); }}>Mobile</button><button className={type === 'MERCHANDISE' ? 'active' : ''} onClick={() => { setType('MERCHANDISE'); setPage(1); }}>Merchandise</button></div><label className="adm-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, SKU, catalogue UUID or provider ID…" /></label><select aria-label="Stock filter" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'out')}><option value="all">All stock</option><option value="out">Out of stock</option></select></div>
-    <section className="adm-panel">{error ? <ErrorState message={error} retry={load} /> : !data || !catalogue ? <Skeleton /> : !rows.length ? <Empty title="No products found" message="Try another search or add a new product." action={<button className="adm-button" onClick={openCreate}>Add product</button>} /> : <><div className="adm-table-wrap"><table className="adm-table"><thead><tr><th>Product</th><th>Price</th><th>Variants</th><th>Inventory</th><th>Status</th><th></th></tr></thead><tbody>{rows.map((row) => {
+    <section className="adm-panel">{error ? <ErrorState message={error} retry={load} /> : !data || !catalogue ? <Skeleton /> : !rows.length ? <Empty title="No products found" message="Try another search or add a new product." action={<button className="adm-button" onClick={openCreate}>Add product</button>} /> : <><div className="adm-table-wrap"><table className="adm-table"><thead><tr><th>Product</th><th>Price</th><th>Choices</th><th>Inventory</th><th>Status</th><th></th></tr></thead><tbody>{rows.map((row) => {
       const model = row.kind === 'catalogue' ? row.catalogue.model : null;
       const product = row.product;
       const title = model?.details.title || sanitizeProviderTitle(product?.title || '') || 'Untitled product';
       const slug = row.kind === 'catalogue' ? row.catalogue.slug : product!.slug;
       const price = model?.details.price ?? product!.price;
       const variants = model?.combinations.length ?? product?.productVariants?.length ?? 0;
+      const choices = model ? catalogueChoiceSummary(model) : { primary: 'Legacy', secondary: `${variants} ${variants === 1 ? 'combination' : 'combinations'}`, incomplete: false };
       const stock = productInventory(row.kind === 'catalogue' ? row.catalogue : null, product);
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
@@ -420,11 +477,11 @@ function ProductsContent() {
       return <tr key={key}>
         <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
         <td data-label="Price">{money(price)}</td>
-        <td data-label="Variants">{variants}</td>
+        <td data-label="Choices"><span className={`adm-choice-summary${choices.incomplete ? ' is-incomplete' : ''}`}><strong>{choices.primary}</strong><small>{choices.secondary}</small></span></td>
         <td data-label="Inventory">{stock}</td>
         <td data-label="Status"><StatusBadge status={row.kind === 'catalogue' && row.catalogue.status === 'draft' ? 'DRAFT' : stock === 0 ? 'OUT' : 'ACTIVE'} /></td>
         <td><div className="adm-actions">{row.kind === 'catalogue' ? <>
-          <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue, liveProduct: product })}><Icon name="edit" /></button>
+          <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue })}><Icon name="edit" /></button>
           {genericLifecycleAllowed && publishAvailable && <button
             className="adm-button secondary"
             title={hazardousActionReason || `${publishLabel} for ${title} to OSS`}

@@ -11,13 +11,13 @@ assert.match(source, /useCatalogueProductEditor\(/, 'migrated catalogue records 
 assert.match(source, /\/admin-api\/catalogue-products/, 'products page must discover catalogue records from the public frontend admin alias');
 assert.match(source, /currentBundleProductId/, 'catalogue records must be matched to legacy list rows by their returned published product identity');
 assert.match(source, /product\.catalogueId/, 'the editor must open the catalogue ID returned by the catalogue API');
-assert.match(source, /<UnifiedProductEditor[\s\S]*?onSave=\{async \(intent\) => \{[\s\S]*?await save\(intent\);/, 'existing catalogue edits use the ordinary catalogue save action');
+assert.match(source, /<UnifiedProductEditor[\s\S]*?onSave=\{async \(intent\) => \{[\s\S]*?await save\(catalogueContentIntent\(intent, product!\.model\)\)/, 'existing catalogue content edits preserve operational live inventory');
 assert.match(source, /editorKey=\{catalogueId\}/, 'existing editor must identify the controlled product by catalogue ID');
 assert.match(source, /editorKey="new-product"/, 'new-product editor must use a stable identity key');
 assert.match(source, /availableCategories = useMemo\([\s\S]*?product\.model\.details\.category/, 'Products page must derive category options from saved Catalogue products');
 assert.match(source, /<CreateCatalogueEditor availableCategories=\{availableCategories\}/, 'new editor receives saved categories');
 assert.match(source, /<ExistingCatalogueEditor[\s\S]*?availableCategories=\{availableCategories\}/, 'existing editor receives saved categories');
-assert.match(source, /await save\(intent\);\s*setPendingPhotos\(\[\]\);\s*onSaved\(\);/, 'successful existing generic save must clear uploaded pending photos before re-render');
+assert.match(source, /intent\.inventoryChanges\.length[\s\S]*?method:\s*['"]PATCH['"][\s\S]*?setPendingPhotos\(\[\]\);\s*onSaved\(\);/, 'successful existing save applies explicit live stock changes before closing');
 assert.match(source, /catalogueRequest<\{ product: CatalogueProductRecord \}>[\s\S]*?method:\s*['"]POST['"]/, 'new products must be created through the catalogue collection and use its returned record');
 assert.doesNotMatch(source, /ProductDrawer/, 'the fragmented legacy editor must not remain an entry point');
 assert.doesNotMatch(source, /soft-delete|Soft delete|Soft-delete/, 'destructive legacy product actions must not remain on this page');
@@ -45,6 +45,17 @@ const dirtyAction = presentation.exports.publicationActionPresentation({ state: 
 assert.deepEqual(dirtyAction, { visible: true, label: 'Publish changes', disabledReason: null }, 'verified dirty evidence exposes replacement publication');
 assert.deepEqual(presentation.exports.publicationActionPresentation({ state: 'clean', localDraft: false, simManaged: false }), { visible: false }, 'verified clean evidence hides publication');
 assert.equal(presentation.exports.publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false }).disabledReason.length > 0, true, 'unknown evidence stays visible but disabled with a reason');
+const shirtChoices = [
+  { name: 'Color', values: Array.from({ length: 4 }, (_, index) => ({ key: `color-${index}` })) },
+  { name: 'Size', values: Array.from({ length: 9 }, (_, index) => ({ key: `size-${index}` })) },
+];
+const shirtCombinations = shirtChoices[0].values.flatMap((color) => shirtChoices[1].values.map((size) => ({ valueKeys: [color.key, size.key] })));
+assert.deepEqual(presentation.exports.catalogueChoiceSummary({ choices: shirtChoices, combinations: shirtCombinations }), {
+  primary: 'Color 4 · Size 9', secondary: '36 combinations', incomplete: false,
+}, 'shirt rows explain both choice dimensions while retaining the real Bundle combination count');
+assert.deepEqual(presentation.exports.catalogueChoiceSummary({ choices: shirtChoices, combinations: shirtCombinations.slice(0, 35) }), {
+  primary: 'Color 4 · Size 9', secondary: '35 of 36 combinations', incomplete: true,
+}, 'an incomplete Cartesian matrix is visible instead of being disguised as a valid count');
 assert.match(source, /encodeURIComponent\(product\.catalogueId\)\}\/archive`[\s\S]*?JSON\.stringify\(\{ revision: product\.revision \}\)/, 'Archive must call the exact revision-aware Catalogue route');
 assert.match(source, /Archive \$\{title\}/, 'draft Catalogue rows must expose an Archive action');
 assert.match(source, /Product archived successfully\./, 'successful archive must refresh the list and confirm removal');

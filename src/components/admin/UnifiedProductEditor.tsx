@@ -40,6 +40,12 @@ export type UnifiedProductEditorPhotoRow = {
 
 export type UnifiedProductEditorSaveIntent = {
   spec: ProductEditorSpec;
+  inventoryChanges: Array<{
+    valueKeys: string[];
+    variantId: number;
+    expectedInventory: number;
+    inventory: number;
+  }>;
   existingMedia: Array<{
     mediaId: string;
     url: string;
@@ -327,6 +333,7 @@ export function validateProductEditorDraft(
 
 export function friendlySpecError(problem: unknown) {
   const message = problem instanceof Error ? problem.message : '';
+  if (/live stock|stock variant|active product changed/i.test(message)) return message;
   if (/^Combination (?:inventory|price) must /i.test(message)) return message;
   if (/duplicate/i.test(message)) return 'Remove duplicate choice names, values, SKUs, or IDs before saving.';
   if (/combination/i.test(message)) return 'Complete every price and stock combination before saving.';
@@ -377,6 +384,7 @@ export function buildSaveIntent(
   const spec = normalize({ ...saveModel, existingImages });
   return {
     spec,
+    inventoryChanges: [],
     existingMedia: photos.flatMap((photo) => photo.kind === 'existing' && photo.mediaId
       ? [{ mediaId: photo.mediaId, url: photo.url, order: existingOrders.get(photo)!, assignment: photo.assignment, remove: photo.removed }]
       : []),
@@ -444,6 +452,7 @@ export default function UnifiedProductEditor({
   const [descriptionDraft, setDescriptionDraft] = useState(initialProductContent.description);
   const [productDetailsDraft, setProductDetailsDraft] = useState(initialProductContent.details.join('\n'));
   const [emptyNumericFields, setEmptyNumericFields] = useState<Set<string>>(() => new Set());
+  const [touchedInventory, setTouchedInventory] = useState<Set<string>>(() => new Set());
   const [numericResetToken, setNumericResetToken] = useState(0);
   const [customCategoryMode, setCustomCategoryMode] = useState(() => Boolean(
     model.details.category && !categoryOptions.some((category) => category.toLowerCase() === model.details.category!.toLowerCase()),
@@ -459,6 +468,7 @@ export default function UnifiedProductEditor({
     ));
     setChoiceDrafts({});
     setEmptyNumericFields(new Set());
+    setTouchedInventory(new Set());
     setNumericResetToken((current) => current + 1);
   }, [editorKey]);
   useEffect(() => () => {
@@ -473,6 +483,17 @@ export default function UnifiedProductEditor({
   const validationError = validateProductEditorDraft(model, photos, emptyNumericFields);
   const activeValues = model.choices.flatMap((choice) => choice.values.filter((value) => !value.retired).map((value) => ({ key: value.key, label: `${choice.name}: ${value.label}` })));
   const matrix = model.choices.length === 2 ? buildStockMatrix(model) : null;
+  const shownInventory = (combination: ProductEditorCombination) => {
+    const key = combinationKey(combination.valueKeys);
+    return !touchedInventory.has(key) && liveInventory?.[key] !== undefined
+      ? liveInventory[key]
+      : combination.inventory;
+  };
+  const changeInventory = (combination: ProductEditorCombination, value: number | '') => {
+    const key = combinationKey(combination.valueKeys);
+    setTouchedInventory((current) => new Set(current).add(key));
+    updateNumeric(`inventory:${key || 'standard'}`, value, (inventory) => updateCombination(combination.valueKeys, { inventory }));
+  };
 
   const emitPhotos = (next: UnifiedProductEditorPhotoRow[]) => {
     const split = splitPhotoRows(next);
@@ -633,7 +654,18 @@ export default function UnifiedProductEditor({
       return;
     }
     try {
-      await onSave(buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged));
+      const intent = buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged);
+      intent.inventoryChanges = intent.spec.combinations.flatMap((combination) => {
+        const key = combinationKey(combination.valueKeys);
+        const expectedInventory = liveInventory?.[key];
+        return touchedInventory.has(key)
+          && combination.variantId !== undefined
+          && expectedInventory !== undefined
+          && combination.inventory !== expectedInventory
+          ? [{ valueKeys: [...combination.valueKeys], variantId: combination.variantId, expectedInventory, inventory: combination.inventory }]
+          : [];
+      });
+      await onSave(intent);
       createdObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
       createdObjectUrls.current.clear();
     } catch (problem) {
@@ -734,8 +766,8 @@ export default function UnifiedProductEditor({
                 <caption>Stock by {model.choices[0].name} and {model.choices[1].name}</caption>
                 <thead><tr><th scope="col">{model.choices[0].name} / {model.choices[1].name}</th>{matrix.columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}<th scope="col">Row total</th></tr></thead>
                 <tbody>{matrix.rows.map((row, rowIndex) => {
-                  const total = matrix.cells[rowIndex].reduce((sum, cell) => sum + cell.combination.inventory, 0);
-                  return <tr key={row.key}><th scope="row">{row.label}</th>{matrix.cells[rowIndex].map((cell) => <td key={cell.key}>{liveInventory?.[cell.key] !== undefined && liveInventory[cell.key] !== cell.combination.inventory && <small className={styles.liveStock}>Live stock: {liveInventory[cell.key]}</small>}<label>{liveInventory?.[cell.key] !== undefined && liveInventory[cell.key] !== cell.combination.inventory ? 'Stock to publish' : <span className={styles.srOnly}>Stock for {row.label} / {matrix.columns.find((column) => cell.valueKeys.includes(column.key))?.label}</span>}<NumericInput resetToken={numericResetToken} value={cell.combination.inventory} onChange={(value) => updateNumeric(`inventory:${cell.key}`, value, (inventory) => updateCombination(cell.valueKeys, { inventory }))} /></label>{simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /></label> : <details className={styles.cellAdvanced}><summary>Variant Price / Product Code</summary><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={cell.combination.sku ?? ''} onChange={(event) => updateCombination(cell.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></details>}</td>)}<td className={styles.rowTotal}>{total}</td></tr>;
+                  const total = matrix.cells[rowIndex].reduce((sum, cell) => sum + shownInventory(cell.combination), 0);
+                  return <tr key={row.key}><th scope="row">{row.label}</th>{matrix.cells[rowIndex].map((cell) => <td key={cell.key}><label><span className={styles.srOnly}>Stock for {row.label} / {matrix.columns.find((column) => cell.valueKeys.includes(column.key))?.label}</span><NumericInput resetToken={numericResetToken} value={shownInventory(cell.combination)} onChange={(value) => changeInventory(cell.combination, value)} /></label>{simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /></label> : <details className={styles.cellAdvanced}><summary>Variant Price / Product Code</summary><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={cell.combination.sku ?? ''} onChange={(event) => updateCombination(cell.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></details>}</td>)}<td className={styles.rowTotal}>{total}</td></tr>;
                 })}</tbody>
               </table>
             </div>
@@ -744,7 +776,7 @@ export default function UnifiedProductEditor({
               {model.combinations.filter((combination) => combination.valueKeys.every((key) => model.choices.some((choice) => choice.values.some((value) => value.key === key && !value.retired)))).map((combination) => (
                 <div className={styles.variantRow} key={combinationKey(combination.valueKeys) || 'standard'}>
                   <strong>{combinationLabel(combination, model.choices)}</strong>
-                  <label>{liveInventory?.[combinationKey(combination.valueKeys)] !== undefined && liveInventory[combinationKey(combination.valueKeys)] !== combination.inventory ? <><small className={styles.liveStock}>Live stock: {liveInventory[combinationKey(combination.valueKeys)]}</small><span>Stock to publish</span></> : combination.valueKeys.length === 0 ? 'Stock quantity' : 'Stock'}<NumericInput resetToken={numericResetToken} value={combination.inventory} onChange={(value) => updateNumeric(`inventory:${combinationKey(combination.valueKeys) || 'standard'}`, value, (inventory) => updateCombination(combination.valueKeys, { inventory }))} /></label>
+                  <label>{combination.valueKeys.length === 0 ? 'Stock quantity' : 'Stock'}<NumericInput resetToken={numericResetToken} value={shownInventory(combination)} onChange={(value) => changeInventory(combination, value)} /></label>
                   {combination.valueKeys.length === 0
                     ? simManaged ? null : <label className={styles.standardSku}>Product Code<input value={combination.sku ?? ''} onChange={(event) => updateCombination(combination.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label>
                     : simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={combination.price} onChange={(value) => updateNumeric(`price:${combinationKey(combination.valueKeys)}`, value, (price) => updateCombination(combination.valueKeys, { price }))} /></label> : <details className={styles.advanced}><summary>Advanced</summary><div><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={combination.price} onChange={(value) => updateNumeric(`price:${combinationKey(combination.valueKeys)}`, value, (price) => updateCombination(combination.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={combination.sku ?? ''} onChange={(event) => updateCombination(combination.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></div></details>}

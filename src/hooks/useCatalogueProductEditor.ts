@@ -112,12 +112,16 @@ export function createCatalogueProductEditorClient(fetcher: Fetcher = fetch) {
           return photo.order === original.order && photo.assignment === original.assignment;
         });
       if (mediaUnchanged) {
+        const desiredModel = { ...intent.spec, existingImages: snapshot.product.model.existingImages };
+        if (snapshot.product.slug === product.slug && JSON.stringify(desiredModel) === JSON.stringify(snapshot.product.model)) {
+          return { product: snapshot.product, media: snapshot.media.sort((left, right) => left.order - right.order) };
+        }
         const updated = await readJson<ProductResponse>(fetcher, path.product, {
           method: 'PATCH',
           body: JSON.stringify({
             revision: snapshot.product.revision,
             slug: snapshot.product.slug,
-            model: { ...intent.spec, existingImages: snapshot.product.model.existingImages },
+            model: desiredModel,
           }),
         });
         const media = await loadMedia(product.catalogueId);

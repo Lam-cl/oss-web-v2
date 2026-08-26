@@ -27,11 +27,13 @@ test('admin uses an opaque session and renders evidence-backed publication actio
     const response = await fetch('/admin-api/catalogue-products', { cache: 'no-store' });
     if (!response.ok) throw new Error(`Catalogue request failed (${response.status}).`);
     return response.json();
-  }) as { products: Array<{ currentBundleProductId: number | null; model: { details: { title: string; category?: string } }; publicationChangeState: string }> };
+  }) as { products: Array<{ currentBundleProductId: number | null; status: string; managementDomain?: string; model: { details: { title: string; category?: string } }; publicationChangeState: string }> };
   const byId = new Map(catalogue.products.map((product) => [product.currentBundleProductId, product]));
   expect(byId.get(91)?.publicationChangeState).toBe('clean');
-  expect(byId.get(81)?.publicationChangeState).toBe('dirty');
-  expect(byId.get(90)?.publicationChangeState).toBe('clean');
+  expect(byId.get(39)?.model.details.category).toBe('SIM Card');
+  expect(byId.get(39)?.managementDomain).toBeUndefined();
+  expect(byId.get(40)?.model.details.category).toBe('SIM Card');
+  expect(byId.get(90)?.publicationChangeState).toBe('dirty');
   expect(catalogue.products.filter((product) => product.publicationChangeState === 'unknown')).toHaveLength(0);
 
   const search = page.getByPlaceholder(/Search title/);
@@ -43,13 +45,19 @@ test('admin uses an opaque session and renders evidence-backed publication actio
   await search.fill('Topi');
   const topi = page.getByRole('row', { name: /Topi/i });
   await expect(topi).toBeVisible();
-  await expect(topi.getByRole('button', { name: /Publish changes/i })).toBeEnabled();
+  await expect(topi.getByRole('button', { name: /^Publish for/i })).toBeEnabled();
 
   await search.fill('90');
   const sim = page.getByRole('row', { name: /QA.*SIM SUPERLITE/i });
   await expect(sim).toBeVisible();
-  await expect(sim.getByRole('button', { name: /Publish|Unpublish|Archive/i })).toHaveCount(0);
+  await expect(sim.getByRole('button', { name: /Publish changes/i })).toBeEnabled();
+  await expect(sim.getByRole('button', { name: /Unpublish/i })).toBeEnabled();
 
-  await page.getByTitle('Log out').click();
+  await search.fill('39');
+  const superlite = page.getByRole('row', { name: /SUPERLITE SIM/i });
+  await expect(superlite.getByRole('button', { name: /Edit SUPERLITE SIM/i })).toBeEnabled();
+  await expect(superlite.getByRole('button', { name: /Unpublish SUPERLITE SIM/i })).toBeEnabled();
+
+  await page.getByRole('banner').getByRole('button', { name: 'Log out' }).click();
   await expect(page).toHaveURL(/\/admin\/login/);
 });

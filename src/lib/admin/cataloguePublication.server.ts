@@ -32,6 +32,8 @@ export type CataloguePublicationJob = {
   updatedAt: string;
 };
 export type CreatePublicationJobInput = Pick<CataloguePublicationJob, 'operationId' | 'catalogueId' | 'modelFingerprint64' | 'previousBundleProductId'>;
+export type CompletedPublicationEvidenceInput = Pick<CataloguePublicationJob,
+  'operationId'|'catalogueId'|'modelFingerprint64'|'previousBundleProductId'|'draftBundleProductId'|'resolved'|'bindings'|'resultFingerprint64'>;
 
 type Row = Record<string, unknown>;
 type Updater = (job: CataloguePublicationJob) => CataloguePublicationJob | Promise<CataloguePublicationJob>;
@@ -318,4 +320,24 @@ export async function listPublicationJobs(directory = DEFAULT_DIRECTORY): Promis
     const job = await readPublicationJob(entry.name.slice(0, -5), directory); if (job) jobs.push(job);
   }
   return jobs.sort((left, right) => left.operationId.localeCompare(right.operationId));
+}
+
+export async function createCompletedPublicationEvidence(input: CompletedPublicationEvidenceInput, directory = DEFAULT_DIRECTORY) {
+  if (!object(input)) throw new Error('Exact completed publication evidence is required.');
+  const existing = await readPublicationJob(String(input.operationId), directory);
+  if (existing) {
+    const identity = ({ operationId, catalogueId, modelFingerprint64, previousBundleProductId, draftBundleProductId, resolved, bindings, resultFingerprint64 }: CataloguePublicationJob) => (
+      { operationId, catalogueId, modelFingerprint64, previousBundleProductId, draftBundleProductId, resolved, bindings, resultFingerprint64 }
+    );
+    if (existing.phase !== 'complete' || !isDeepStrictEqual(identity(existing), input)) throw new Error(`Catalogue publication evidence ${input.operationId} conflicts.`);
+    return existing;
+  }
+  const now = new Date().toISOString();
+  const job = validateJob({ ...input, version: 1, revision: 1, phase: 'complete', createdAt: now, updatedAt: now,
+    completedSteps: STEPS.map((name) => ({ name, completedAt: now })) }, input.operationId);
+  if (directory === DEFAULT_DIRECTORY && dataApiEnabled()) {
+    return validateJob((await createRemoteDocument('catalogue-publications', job.operationId, job)).value, job.operationId);
+  }
+  await enqueue(job.operationId, directory, () => durableWrite(job, directory, true));
+  return structuredClone(job);
 }

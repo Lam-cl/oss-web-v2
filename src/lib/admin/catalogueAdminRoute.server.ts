@@ -91,8 +91,9 @@ async function listProducts(){
   return products.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||String(a.catalogueId).localeCompare(String(b.catalogueId)));
 }
 async function latestPublication(catalogueId:string){
-  const names=await filenames(PUBLICATION_DIRECTORY,/^[a-f0-9]{64}\.json$/);const jobs:CataloguePublicationJob[]=[];
-  for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;const job=await readPublicationJob(operationId);if(job?.catalogueId===catalogueId)jobs.push(job);}
+  const jobs:CataloguePublicationJob[]=[];
+  if(REMOTE_DATA){for(const job of await listPublicationJobs())if(job.catalogueId===catalogueId)jobs.push(job);}
+  else {const names=await filenames(PUBLICATION_DIRECTORY,/^[a-f0-9]{64}\.json$/);for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;const job=await readPublicationJob(operationId);if(job?.catalogueId===catalogueId)jobs.push(job);}}
   return jobs.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||b.operationId.localeCompare(a.operationId))[0]??null;
 }
 async function requireProduct(id:string){ensureId(id);const product=await readCatalogueProduct(id);if(!product)throw new CatalogueAdminRouteError('Catalogue product was not found.',404);return product;}

@@ -107,7 +107,10 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   const variants = provider.productVariants || [];
   const providerById = new Map(variants.map((variant) => [variant.id, variant]));
   const expectedIds = new Set(snapshot.product.combinations.map((combination) => combination.variantId));
-  if (variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
+  const simManaged = (product.currentBundleProductId === 39 || product.currentBundleProductId === 40)
+    && /^sim$/i.test(product.model.details.category?.trim() || '');
+  if (simManaged ? Array.from(expectedIds).some((id) => !providerById.has(id))
+    : variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
   const currentByTuple = new Map(product.model.combinations.map((combination, index) => [
     JSON.stringify(combination.valueKeys),
     { combination, index },
@@ -116,8 +119,8 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   for (const published of snapshot.product.combinations) {
     const current = currentByTuple.get(JSON.stringify(published.valueKeys));
     const providerVariant = providerById.get(published.variantId);
-    if (!current || typeof providerVariant?.sku !== 'string' || !suffix.test(providerVariant.sku.toUpperCase())) return null;
-    const providerCanonicalSku = providerVariant.sku.toUpperCase().replace(suffix, '');
+    if (!current || typeof providerVariant?.sku !== 'string' || !simManaged && !suffix.test(providerVariant.sku.toUpperCase())) return null;
+    const providerCanonicalSku = simManaged ? normalizedSku(providerVariant.sku) : providerVariant.sku.toUpperCase().replace(suffix, '');
     if (providerCanonicalSku !== expectedSku(product, current.combination.valueKeys, current.combination.sku, current.index)) return false;
   }
   return true;

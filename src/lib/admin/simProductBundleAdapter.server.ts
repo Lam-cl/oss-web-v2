@@ -9,7 +9,6 @@ import {
   synchronizeSimVariantProjection,
   verifySimVariantProjection,
 } from "./catalogueAdoption.server";
-import { simDataRoot } from "./simVariantMigrationStore.server";
 type Row = Record<string, any>;
 type Fetcher = typeof fetch;
 const MAX = 10 * 1024 * 1024,
@@ -222,14 +221,8 @@ export function createSimProductBundleAdapter(
     },
     updateMetadata,
     updateVariants,
-    synchronizeProjection: (change) =>
-      synchronizeSimVariantProjection(change, {
-        dataDirectory: simDataRoot(),
-      }).then(() => undefined),
-    verifyProjection: (change) =>
-      verifySimVariantProjection(change, { dataDirectory: simDataRoot() }).then(
-        () => undefined,
-      ),
+    synchronizeProjection: (change) => synchronizeSimVariantProjection(change).then(() => undefined),
+    verifyProjection: (change) => verifySimVariantProjection(change).then(() => undefined),
     async readShippingGroup(id, slug) {
       const s = await readShippingSettings(),
         key = String(id);

@@ -306,6 +306,91 @@ app.post('/v1/catalogue-archives/:catalogueId/restore', serviceAuth, async (requ
   } finally { client.release(); }
 });
 
+app.post('/v1/sim-projections/:productId', serviceAuth, express.json({ limit: '2mb', strict: true }), async (request, response, next) => {
+  const client = await pool.connect();
+  try {
+    const productId = Number(param(request.params.productId)); const body = request.body as Record<string, any>;
+    const catalogueId = String(body?.catalogueId || ''); const mode = body?.mode;
+    const expectedAdoptionRevision = Number(body?.expectedAdoptionRevision); const expectedProductRevision = Number(body?.expectedProductRevision);
+    if (![39, 40].includes(productId) || !UUID.test(catalogueId) || !['activate', 'restore'].includes(mode)
+      || !Number.isSafeInteger(expectedAdoptionRevision) || expectedAdoptionRevision <= 0
+      || !Number.isSafeInteger(expectedProductRevision) || expectedProductRevision <= 0) {
+      throw new ApiError(400, 'INVALID_SIM_PROJECTION', 'Exact SIM projection transaction fields are required.');
+    }
+    await client.query('BEGIN');
+    const adoption = (await client.query(
+      `SELECT revision,value,created_at AS "createdAt" FROM catalogue_documents
+       WHERE namespace='catalogue-adoptions' AND document_key=$1 FOR UPDATE`, [String(productId)],
+    )).rows[0];
+    const product = (await client.query(
+      `SELECT revision,value,created_at AS "createdAt" FROM catalogue_documents
+       WHERE namespace='catalogue-products' AND document_key=$1 FOR UPDATE`, [catalogueId],
+    )).rows[0];
+    if (!adoption || !product) throw new ApiError(404, 'SIM_PROJECTION_NOT_FOUND', 'SIM projection records were not found.');
+    if (adoption.revision !== expectedAdoptionRevision || product.revision !== expectedProductRevision) {
+      throw new ApiError(409, 'REVISION_CONFLICT', 'SIM projection revision conflict.');
+    }
+    const currentAdoption = adoption.value as Record<string, any>; const currentProduct = product.value as Record<string, any>;
+    if (currentAdoption.bundleProductId !== productId || currentAdoption.catalogueId !== catalogueId
+      || currentAdoption.status !== 'active' || currentAdoption.managementProfile?.domain !== 'SIM'
+      || currentProduct.catalogueId !== catalogueId || currentProduct.currentBundleProductId !== productId) {
+      throw new ApiError(409, 'SIM_PROJECTION_IDENTITY', 'SIM projection identity is invalid.');
+    }
+    let nextAdoption: Record<string, any>; let nextProduct: Record<string, any>;
+    if (mode === 'activate') {
+      nextAdoption = body.nextAdoption; nextProduct = body.nextProduct;
+      if (!nextAdoption || !nextProduct || nextAdoption.bundleProductId !== productId || nextAdoption.catalogueId !== catalogueId
+        || nextAdoption.status !== 'active' || nextAdoption.managementProfile?.domain !== 'SIM'
+        || nextProduct.catalogueId !== catalogueId || nextProduct.currentBundleProductId !== productId
+        || nextProduct.revision !== currentProduct.revision + 1) {
+        throw new ApiError(400, 'INVALID_SIM_PROJECTION', 'The next SIM projection is invalid.');
+      }
+      const backup = { version: 1, adoption: currentAdoption, product: currentProduct };
+      const existingBackup = (await client.query(
+        `SELECT revision,created_at AS "createdAt" FROM catalogue_documents
+         WHERE namespace='sim-projection-backups' AND document_key=$1 FOR UPDATE`, [String(productId)],
+      )).rows[0];
+      if (existingBackup) {
+        await client.query(
+          `UPDATE catalogue_documents SET revision=$2,value=$3,updated_at=now()
+           WHERE namespace='sim-projection-backups' AND document_key=$1`,
+          [String(productId), existingBackup.revision + 1, JSON.stringify(backup)],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO catalogue_documents(namespace,document_key,revision,value,created_at,updated_at)
+           VALUES('sim-projection-backups',$1,1,$2,now(),now())`, [String(productId), JSON.stringify(backup)],
+        );
+      }
+    } else {
+      const backup = (await client.query(
+        `SELECT value FROM catalogue_documents WHERE namespace='sim-projection-backups' AND document_key=$1 FOR UPDATE`, [String(productId)],
+      )).rows[0]?.value;
+      if (!backup?.adoption || !backup?.product || backup.adoption.bundleProductId !== productId
+        || backup.adoption.catalogueId !== catalogueId || backup.product.catalogueId !== catalogueId) {
+        throw new ApiError(409, 'SIM_BACKUP_UNAVAILABLE', 'SIM projection compensation backup is unavailable.');
+      }
+      nextAdoption = backup.adoption;
+      nextProduct = { ...backup.product, revision: currentProduct.revision + 1, updatedAt: new Date().toISOString() };
+    }
+    const now = new Date().toISOString();
+    const updatedAdoption = (await client.query(
+      `UPDATE catalogue_documents SET revision=revision+1,value=$3,updated_at=$4
+       WHERE namespace='catalogue-adoptions' AND document_key=$1 AND revision=$2
+       RETURNING revision,value`, [String(productId), expectedAdoptionRevision, JSON.stringify(nextAdoption), now],
+    )).rows[0];
+    const updatedProduct = (await client.query(
+      `UPDATE catalogue_documents SET revision=revision+1,value=$3,updated_at=$4
+       WHERE namespace='catalogue-products' AND document_key=$1 AND revision=$2
+       RETURNING revision,value`, [catalogueId, expectedProductRevision, JSON.stringify(nextProduct), now],
+    )).rows[0];
+    if (!updatedAdoption || !updatedProduct) throw new ApiError(409, 'REVISION_CONFLICT', 'SIM projection revision conflict.');
+    await client.query('COMMIT');
+    response.json({ data: { adoption: updatedAdoption, product: updatedProduct, mode } });
+  } catch (error) { await client.query('ROLLBACK').catch(() => undefined); next(error); }
+  finally { client.release(); }
+});
+
 app.post('/v1/media/:catalogueId/:mediaId', serviceAuth, express.raw({ type: Array.from(CONTENT_TYPES), limit: '10mb' }), async (request, response, next) => {
   let uploaded: { objectKey: string; bucket: string; sha256: string } | null = null;
   try {

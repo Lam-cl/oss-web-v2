@@ -4,6 +4,7 @@ export const NAMESPACES = new Set([
   'catalogue-products', 'catalogue-publications', 'catalogue-published', 'catalogue-adoptions',
   'product-control', 'order-metadata', 'shipping-settings', 'sim-assignments', 'product-image-colors',
   'sim-product-updates', 'sim-tone-variant-migrations', 'ready-collection-email', 'catalogue-archives',
+  'sim-projection-backups',
 ]);
 
 export type DocumentInput = {

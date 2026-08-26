@@ -112,3 +112,35 @@ test('missing, corrupt, duplicate, and ambiguous evidence is unknown', () => {
   ];
   for (const evidence of cases) assert.equal(evaluatePublicationChangeState(evidence as any).publicationChangeState, 'unknown');
 });
+
+test('same-ID SIM evidence permits its preserved legacy variant but remains exact', () => {
+  const evidence = fixture() as any;
+  evidence.product.currentBundleProductId = 39;
+  evidence.product.bundleVersions[0].bundleProductId = 39;
+  evidence.product.slug = 'superlite-sim';
+  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM', minimumOrderQuantity: 2 };
+  evidence.product.model.choices[0].values[0].key = 'tone-excel';
+  evidence.product.model.choices[0].values[1].key = 'tone-plus';
+  evidence.product.model.combinations = [
+    { valueKeys: ['tone-excel'], variantId: 209, sku: 'SUPER-TONE EXCEL', price: 10, inventory: 44 },
+    { valueKeys: ['tone-plus'], variantId: 210, sku: 'SUPER-TONE PLUS', price: 10, inventory: 44 },
+  ];
+  evidence.jobs[0].draftBundleProductId = 39;
+  evidence.jobs[0].bindings = [{ valueKeys: ['CV-a'], variantId: 209 }, { valueKeys: ['CV-b'], variantId: 210 }];
+  evidence.snapshot.bundleProductId = 39;
+  evidence.snapshot.product = {
+    ...evidence.snapshot.product, bundleProductId: 39, slug: 'superlite-sim',
+    details: { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM' }, minimumOrderQuantity: 2,
+    choices: [{ key: 'colour', name: 'Colour', values: [{ key: 'tone-excel', label: 'Blue & Black' }, { key: 'tone-plus', label: 'Blue & Pink' }] }],
+    combinations: [
+      { valueKeys: ['tone-excel'], variantId: 209, price: 10, inventory: 44 },
+      { valueKeys: ['tone-plus'], variantId: 210, price: 10, inventory: 44 },
+    ],
+  };
+  evidence.providerProduct = { id: 39, productVariants: [
+    { id: 106, sku: 'SIM-SUPERLITE' }, { id: 209, sku: 'SUPER-TONE EXCEL' }, { id: 210, sku: 'SUPER-TONE PLUS' },
+  ] };
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'clean');
+  evidence.product.model.combinations[0].inventory = 43;
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'dirty');
+});

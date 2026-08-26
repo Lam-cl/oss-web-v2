@@ -12,7 +12,7 @@ import {
   rm,
 } from "node:fs/promises";
 import path from "node:path";
-import { dataApiEnabled, remoteDocument, replaceRemoteDocument } from '../dataApiClient.server';
+import { dataApiEnabled, dataApiRequest, remoteDocument, replaceRemoteDocument, withRemoteLease } from '../dataApiClient.server';
 import { isDeepStrictEqual } from "node:util";
 import {
   normalizeProductEditorSpec,
@@ -1340,6 +1340,25 @@ export async function verifySimVariantProjection(
   change: SimVariantProjectionChange,
   options: AdoptionReadOptions = {},
 ) {
+  if (options.dataDirectory === undefined && dataApiEnabled()) {
+    const adoptionDocument = await remoteDocument<CatalogueAdoptionRecord>('catalogue-adoptions', String(change.productId));
+    if (!adoptionDocument) throw new CatalogueAdoptionError('SIM adoption is unavailable or not active.');
+    const adoption = validateRecord(adoptionDocument.value, change.productId);
+    const productDocument = await remoteDocument<Row>('catalogue-products', adoption.catalogueId);
+    const product = productDocument?.value;
+    const expected = change.mode === 'restore' ? change.expectedSourceFingerprint : change.providerFingerprint;
+    const bundleVersions = object(product) && Array.isArray(product.bundleVersions) ? product.bundleVersions : [];
+    if (adoption.status !== 'active' || !DIGEST.test(String(expected)) || adoption.sourceFingerprint !== expected
+      || !object(product) || !object(bundleVersions[0]) || bundleVersions[0].fingerprint !== expected) {
+      throw new CatalogueAdoptionError('SIM provider/Catalogue/adoption fingerprints are not synchronized.', 503);
+    }
+    if (change.mode === 'activate' && !isDeepStrictEqual(adoption.activatedProjection.combinations.map((item) => ({
+      variantId: item.variantId, price: item.price, inventory: item.inventory,
+    })), change.variants.map((item) => ({ variantId: item.variantId, price: item.price, inventory: item.inventory })))) {
+      throw new CatalogueAdoptionError('SIM activated projection matrix is not synchronized.', 503);
+    }
+    return { catalogueId: adoption.catalogueId, fingerprint: expected };
+  }
   const root = rootOf(options);
   await ensureSafeRoot(root);
   await recoverProjectionTransaction(root, change.productId, options);
@@ -1406,6 +1425,67 @@ export async function synchronizeSimVariantProjection(
       "Exact SIM variant projection change required.",
       400,
     );
+  if (options.dataDirectory === undefined && dataApiEnabled()) {
+    return withRemoteLease(`sim-projection-${change.productId}`, async () => {
+      const adoptionDocument = await remoteDocument<CatalogueAdoptionRecord>('catalogue-adoptions', String(change.productId));
+      if (!adoptionDocument) throw new CatalogueAdoptionError('SIM adoption is unavailable or not active.');
+      const current = validateRecord(adoptionDocument.value, change.productId);
+      const productDocument = await remoteDocument<Row>('catalogue-products', current.catalogueId);
+      const product = productDocument?.value;
+      if (current.status !== 'active' || current.managementProfile?.domain !== 'SIM' || !productDocument || !object(product)
+        || !object(product.model) || product.currentBundleProductId !== change.productId || !Array.isArray(product.bundleVersions)
+        || product.bundleVersions.length !== 1 || product.bundleVersions[0]?.fingerprint !== current.sourceFingerprint) {
+        throw new CatalogueAdoptionError('SIM Catalogue/adoption projection is not synchronized.');
+      }
+      if (change.mode === 'restore') {
+        await dataApiRequest(`/v1/sim-projections/${change.productId}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+            mode: 'restore', catalogueId: current.catalogueId,
+            expectedAdoptionRevision: adoptionDocument.revision, expectedProductRevision: productDocument.revision,
+          }),
+        });
+        return { mode: 'restore' as const, catalogueId: current.catalogueId };
+      }
+      if (current.sourceFingerprint === change.providerFingerprint) {
+        return { mode: 'activate' as const, catalogueId: current.catalogueId, revision: Number(product.revision) };
+      }
+      if (current.sourceFingerprint !== change.expectedSourceFingerprint) throw new CatalogueAdoptionError('SIM adoption CAS fingerprint drifted.');
+      if (!DIGEST.test(String(change.providerFingerprint)) || change.variants.length !== 2
+        || !isDeepStrictEqual(change.variants.map((item) => item.label), ['Tone Excel', 'Tone Plus'])
+        || new Set(change.variants.map((item) => item.valueId)).size !== 2
+        || new Set(change.variants.map((item) => item.variantId)).size !== 2) {
+        throw new CatalogueAdoptionError('Authoritative SIM provider bindings are incomplete.', 400);
+      }
+      const values = change.variants.map((item) => ({ key: item.valueKey, valueId: item.valueId, label: item.label, retired: false }));
+      const combinations = change.variants.map((item) => ({ valueKeys: [item.valueKey], variantId: item.variantId,
+        sku: item.sku, price: item.price, inventory: item.inventory }));
+      const choices = [{ key: 'variant', optionId: change.optionId, name: 'Variant', values }];
+      const model = { ...product.model, choices, combinations };
+      const activatedProjection = { ...current.activatedProjection,
+        choices: choices.map((choice) => ({ key: choice.key, name: choice.name,
+          values: choice.values.map((value) => ({ key: value.key, label: value.label })) })),
+        combinations: change.variants.map((item) => ({ valueKeys: [item.valueKey], variantId: item.variantId,
+          price: item.price, inventory: item.inventory })) };
+      const providerBindings = { ...current.providerBindings, optionIds: [change.optionId],
+        valueBindings: change.variants.map((item) => ({ valueKey: item.valueKey, valueId: item.valueId })),
+        variantBindings: change.variants.map((item) => ({ valueKeys: [item.valueKey], variantId: item.variantId })) };
+      const evidence = { ...current.evidence, relationshipEvidence: change.variants.map((item) => ({
+        valueKeys: [item.valueKey], kind: 'verified-recorded', reason: `Generated provider IDs read back after creating ${item.label}.`,
+      })) };
+      const nextAdoption = { ...current, sourceFingerprint: change.providerFingerprint!, activatedProjection, providerBindings,
+        exclusions: { hiddenValueIds: [change.legacyValueId], orphanVariantIds: [change.legacyVariantId] }, evidence };
+      const nextProduct = { ...product, revision: Number(product.revision) + 1, model,
+        bundleVersions: [{ ...product.bundleVersions[0], fingerprint: change.providerFingerprint }], updatedAt: new Date().toISOString() };
+      await dataApiRequest(`/v1/sim-projections/${change.productId}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          mode: 'activate', catalogueId: current.catalogueId,
+          expectedAdoptionRevision: adoptionDocument.revision, expectedProductRevision: productDocument.revision,
+          nextAdoption, nextProduct,
+        }),
+      });
+      return { mode: 'activate' as const, catalogueId: current.catalogueId, revision: nextProduct.revision };
+    });
+  }
   const root = rootOf(options),
     key = `${root}\0${change.productId}`;
   return enqueue(key, async () => {

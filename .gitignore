@@ -38,6 +38,7 @@ yarn-error.log*
 .merdeka-promo-deploy.lock
 
 # backup files
+/backups/
 *.bak
 
 # vercel

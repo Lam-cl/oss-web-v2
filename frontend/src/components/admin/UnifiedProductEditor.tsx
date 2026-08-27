@@ -4,6 +4,7 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from '
 import { normalizeProductEditorSpec } from '@/lib/admin/productEditor';
 import type { ProductEditorChoice, ProductEditorCombination, ProductEditorSpec } from '@/lib/admin/productEditor';
 import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
+import { adminMediaUrl } from '@/lib/admin/mediaUrl';
 import styles from './UnifiedProductEditor.module.css';
 
 export type UnifiedProductEditorExistingPhoto = {
@@ -734,7 +735,7 @@ export default function UnifiedProductEditor({
             {visiblePhotos.length === 0 && <p className={styles.empty}>Add your cover photo and any choice-specific photos here.</p>}
             {visiblePhotos.map((photo, index) => (
               <article className={styles.photoCard} key={photo.key}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}<img src={photo.url} alt={photo.alt || `Product photo ${index + 1}`} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}<img src={adminMediaUrl(photo.url)} alt={photo.alt || `Product photo ${index + 1}`} />
                 <div className={styles.photoBody}>
                   <strong>{index === 0 ? 'Cover photo' : `Photo ${index + 1}`}</strong>
                   {simManaged ? <div className={styles.simManagedPhoto}><span>Current General image · Locked read-only</span></div> : <><label>Show for<select value={photo.assignment} onChange={(event) => patchPhoto(photo.key, { assignment: event.target.value })}><option value="all">General</option>{activeValues.map((value) => <option value={value.key} key={value.key}>{value.label}</option>)}</select></label>
@@ -748,7 +749,7 @@ export default function UnifiedProductEditor({
             ))}
             {removedPhotos.map((photo) => (
               <article className={`${styles.photoCard} ${styles.isRetired}`} key={photo.key}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}<img src={photo.url} alt={photo.alt || 'Removed product photo'} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}<img src={adminMediaUrl(photo.url)} alt={photo.alt || 'Removed product photo'} />
                 <div className={styles.photoBody}><strong>Removed photo</strong>{simManaged && photo.assignment !== 'all' ? <span className={styles.fieldHint}>Managed by SIM workflow</span> : <div className={styles.photoActions}><button type="button" onClick={() => patchPhoto(photo.key, { removed: false })}>Undo</button></div>}</div>
               </article>
             ))}
@@ -789,7 +790,7 @@ export default function UnifiedProductEditor({
         <section className={`${styles.section} ${styles.previewSection}`} aria-labelledby="storefront-preview-title">
           <div className={styles.sectionHeading}><span>04</span><div><h2 id="storefront-preview-title">Storefront preview</h2><p>A calm final check before you save your changes.</p></div></div>
           <article className={styles.previewCard}>
-            <div className={styles.previewMedia}>{previewPhoto ? <>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={previewPhoto.url} alt={previewPhoto.alt || ''} /></> : <span>Photo preview</span>}</div>
+            <div className={styles.previewMedia}>{previewPhoto ? <>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={adminMediaUrl(previewPhoto.url)} alt={previewPhoto.alt || ''} /></> : <span>Photo preview</span>}</div>
             <div className={styles.previewCopy}><span>{model.details.category?.trim() || 'Product'}</span><h3>{model.details.title || 'Untitled product'}</h3><strong>{money.format(model.details.price || 0)}</strong><p>{descriptionDraft || 'Your product description will appear here.'}</p>{previewDetails.length > 0 && <ul className={styles.previewDetails}>{previewDetails.map((detail) => <li key={detail}>{detail}</li>)}</ul>}{model.choices.map((choice) => <div key={choice.key}><small>{choice.name}</small><div className={styles.previewChoices}>{choice.values.filter((value) => !value.retired).map((value) => <span key={value.key}>{value.label}</span>)}</div></div>)}</div>
           </article>
         </section>

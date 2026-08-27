@@ -15,6 +15,7 @@ import { adminFetch } from '@/lib/admin/client';
 import { money, Paged, Product } from '@/lib/admin/types';
 import type { ProductEditorSpec } from '@/lib/admin/productEditor';
 import { productInventory } from '@/lib/admin/productStock';
+import { adminMediaUrl } from '@/lib/admin/mediaUrl';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
 import {
@@ -475,7 +476,7 @@ function ProductsContent() {
       const publishLabel = publicationAction.visible ? publicationAction.label : 'Publish';
       const hazardousActionDisabled = hazardousActionReason !== null;
       return <tr key={key}>
-        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={product.images[0].url} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
+        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={adminMediaUrl(product.images[0].url)} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Choices"><span className={`adm-choice-summary${choices.incomplete ? ' is-incomplete' : ''}`}><strong>{choices.primary}</strong><small>{choices.secondary}</small></span></td>
         <td data-label="Inventory">{stock}</td>

@@ -137,7 +137,7 @@ function publishedProduct(source:CatalogueProductRecord,bundleProductId:number,b
   const combinations=source.model.combinations.filter(combination=>combination.valueKeys.length===choices.length&&combination.valueKeys.every((key,index)=>activeKeysByChoice[index].has(key))).map(combination=>({valueKeys:[...combination.valueKeys],variantId:bindingByTuple.get(JSON.stringify(combination.valueKeys))!,price:combination.price,inventory:combination.inventory}));
   if(combinations.length!==bindings.length||combinations.some(combination=>!revision(combination.variantId)))throw new CatalogueAdminRouteError('Published snapshot variant bindings are not exact.',502);
   const ordered=[...metadata].sort((a,b)=>a.order-b.order);const {minimumOrderQuantity=1,...details}=source.model.details;
-  return {catalogueId:source.catalogueId,slug:source.slug,details,choices,combinations,images:ordered.map(item=>({url:`/catalogue-products-api?catalogueId=${encodeURIComponent(source.catalogueId)}&mediaId=${encodeURIComponent(item.mediaId)}`,order:item.order,assignment:item.assignment})),bundleProductId,minimumOrderQuantity};
+  return {catalogueId:source.catalogueId,slug:source.slug,details,choices,combinations,images:ordered.map(item=>({url:`/admin-api/catalogue-products/${encodeURIComponent(source.catalogueId)}/media/${encodeURIComponent(item.mediaId)}`,order:item.order,assignment:item.assignment})),bundleProductId,minimumOrderQuantity};
 }
 
 export const catalogueAdminRoute={

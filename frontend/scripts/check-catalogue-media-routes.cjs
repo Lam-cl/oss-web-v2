@@ -169,7 +169,18 @@ const oversizedStream = () => {
     assert.equal(listed.media.length, 1);
     assert.equal('body' in listed.media[0], false);
     assert.equal('sha256' in listed.media[0], false);
-    assert.equal(listed.media[0].url, `/catalogue-products-api?catalogueId=${productId}&mediaId=${created.mediaId}`);
+    assert.equal(listed.media[0].url, `/admin-api/catalogue-products/${productId}/media/${created.mediaId}`);
+
+    // Raw draft media is available only through the authenticated admin endpoint.
+    const mediaContext = { params: { id: productId, mediaId: created.mediaId } };
+    assert.equal((await item.GET(request({ auth: false }), mediaContext)).status, 401);
+    assert.equal((await item.GET(request(), { params: { id: productId, mediaId: 'bad' } })).status, 400);
+    assert.equal((await item.GET(request(), { params: { id: missingProductId, mediaId: created.mediaId } })).status, 404);
+    const mediaResponse = await item.GET(request(), mediaContext);
+    assert.equal(mediaResponse.status, 200);
+    assert.equal(mediaResponse.headers.get('content-type'), 'image/jpeg');
+    assert.equal(mediaResponse.headers.get('cache-control'), 'private, no-store, max-age=0');
+    assert.deepEqual(Buffer.from(await mediaResponse.arrayBuffer()), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]));
 
     // Active SIM media is provider-owned and cannot drift through generic media routes.
     simActive = true;
@@ -216,7 +227,7 @@ const oversizedStream = () => {
     const collectionReexport = fs.readFileSync(path.join(root, 'src/app/admin-api/catalogue-products/[id]/media/route.ts'), 'utf8');
     const itemReexport = fs.readFileSync(path.join(root, 'src/app/admin-api/catalogue-products/[id]/media/[mediaId]/route.ts'), 'utf8');
     assert.match(collectionReexport, new RegExp(`export \\{[^}]*GET[^}]*POST[^}]*\\} from '${collectionAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
-    assert.match(itemReexport, new RegExp(`export \\{[^}]*PATCH[^}]*DELETE[^}]*\\} from '${itemAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
+    assert.match(itemReexport, new RegExp(`export \\{[^}]*GET[^}]*PATCH[^}]*DELETE[^}]*\\} from '${itemAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
     console.log('Catalogue media route check passed');
   } finally {
     await fsp.rm(directory, { recursive: true, force: true });

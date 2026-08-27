@@ -7,6 +7,10 @@ import { readCatalogueAdoptionByBundle } from '@/lib/admin/catalogueAdoption.ser
 const MULTIPART_MAX_BYTES = 11 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+export function adminCatalogueMediaUrl(catalogueId: string, mediaId: string) {
+  return `/admin-api/catalogue-products/${encodeURIComponent(catalogueId)}/media/${encodeURIComponent(mediaId)}`;
+}
+
 export class CatalogueMediaRequestError extends Error {
   constructor(readonly status: 400 | 413) {
     super(status === 413 ? 'Catalogue media request is too large.' : 'Catalogue media request is invalid.');
@@ -16,7 +20,7 @@ export class CatalogueMediaRequestError extends Error {
 export function publicCatalogueMedia(media: CatalogueMediaMetadata) {
   const { mediaId, catalogueId, originalName, contentType, bytes, order, assignment, createdAt } = media;
   return { mediaId, catalogueId, originalName, contentType, bytes, order, assignment, createdAt,
-    url: `/catalogue-products-api?catalogueId=${encodeURIComponent(catalogueId)}&mediaId=${encodeURIComponent(mediaId)}` };
+    url: adminCatalogueMediaUrl(catalogueId, mediaId) };
 }
 
 export function catalogueMediaError(reason: unknown) {

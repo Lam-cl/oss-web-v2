@@ -10,6 +10,7 @@ import { isProductSetupDraft, PRODUCT_SETUP_DRAFT_TAG, splitStockAllocation, vis
 import { COURIER_GROUPS, type CourierGroup, type ShippingSettings } from '@/lib/shipping';
 import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
 import { buildVariantMatrix } from '@/lib/admin/variantMatrix';
+import { adminMediaUrl } from '@/lib/admin/mediaUrl';
 
 type Props = {
   product: Product | null;
@@ -967,7 +968,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
             >
               <div className="adm-image-list">
               {[...(sourceProduct?.images || [])].sort((left, right) => left.order - right.order).map((image, index, images) => <div className="adm-image-card" key={image.id}>
-                <img src={image.url} alt="" />
+                <img src={adminMediaUrl(image.url)} alt="" />
                 <div><span>{index + 1}</span><span>
                   <button type="button" disabled={!fresh || index === 0 || busy} onClick={() => orderImage(image.id, -1)}>←</button>
                   <button type="button" disabled={!fresh || index === images.length - 1 || busy} onClick={() => orderImage(image.id, 1)}>→</button>

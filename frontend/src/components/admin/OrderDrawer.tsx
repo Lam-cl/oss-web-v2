@@ -7,6 +7,7 @@ import {
   type SimVariantBinding,
 } from "@/lib/admin/simAssignments";
 import { adminFetch } from "@/lib/admin/client";
+import { adminMediaUrl } from "@/lib/admin/mediaUrl";
 import {
   indexAdminOrderItemPresentations,
   resolveAdminOrderItemPresentation,
@@ -399,7 +400,7 @@ export default function OrderDrawer({
                       return (
                         <div className="adm-order-item" key={item.id || index}>
                           {item.product?.images?.[0]?.url && (
-                            <img src={item.product.images[0].url} alt="" />
+                            <img src={adminMediaUrl(item.product.images[0].url)} alt="" />
                           )}
                           <div>
                             <strong>

@@ -110,6 +110,21 @@ export async function verifyAdminGateCookie(cookie?: string | null) {
   }
 }
 
+// Middleware only uses this as a navigation guard. Admin data remains protected
+// by verifySessionCookie in every API route, so middleware does not need access
+// to the signing secret or the remote session store.
+export function hasActiveAdminGateCookie(cookie?: string | null) {
+  if (!cookie) return false;
+  try {
+    const [payload, signature, extra] = cookie.split('.');
+    if (!payload || !signature || extra) return false;
+    const gate = JSON.parse(base64UrlDecode(payload)) as Pick<AdminSession['user'], 'email' | 'role'> & { expiresAt: number };
+    return Boolean(gate.email && ADMIN_ROLES.includes(gate.role) && gate.expiresAt > Date.now());
+  } catch {
+    return false;
+  }
+}
+
 export async function verifySessionCookie(cookie?: string | null): Promise<AdminSession | null> {
   if (!cookie) return null;
   try {

@@ -22,6 +22,22 @@ assert.equal(resolveAdminNextPath('//attacker.example/admin'), '/admin');
 assert.equal(resolveAdminNextPath('https://attacker.example/admin'), '/admin');
 assert.equal(resolveAdminNextPath(null), '/admin');
 
+const sessionFile = path.join(root, 'src/lib/admin/session.ts');
+const sessionOutput = ts.transpileModule(fs.readFileSync(sessionFile, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const loadedSession = new Module(sessionFile, module);
+loadedSession.filename = sessionFile;
+loadedSession.paths = Module._nodeModulePaths(path.dirname(sessionFile));
+loadedSession._compile(sessionOutput, sessionFile);
+const { hasActiveAdminGateCookie } = loadedSession.exports;
+const gate = (role, expiresAt) => `${Buffer.from(JSON.stringify({ email: 'admin@example.com', role, expiresAt })).toString('base64url')}.signature`;
+assert.equal(hasActiveAdminGateCookie(gate('ADMIN', Date.now() + 60_000)), true);
+assert.equal(hasActiveAdminGateCookie(gate('STAFF', Date.now() + 60_000)), true);
+assert.equal(hasActiveAdminGateCookie(gate('CUSTOMER', Date.now() + 60_000)), false);
+assert.equal(hasActiveAdminGateCookie(gate('ADMIN', Date.now() - 1)), false);
+assert.equal(hasActiveAdminGateCookie('invalid'), false);
+
 const loginPage = fs.readFileSync(path.join(root, 'src/app/admin/login/page.tsx'), 'utf8');
 assert.match(loginPage, /window\.location\.replace\(resolveAdminNextPath\(params\.get\('next'\)\)\)/);
 assert.match(loginPage, /signal:\s*AbortSignal\.timeout\(20_000\)/);
@@ -34,7 +50,7 @@ assert.match(loginRoute, /createAdminGateCookie/);
 assert.match(loginRoute, /response\.cookies\.set\(ADMIN_GATE_COOKIE/);
 
 const middleware = fs.readFileSync(path.join(root, 'src/middleware.ts'), 'utf8');
-assert.match(middleware, /verifyAdminGateCookie/);
+assert.match(middleware, /hasActiveAdminGateCookie/);
 assert.doesNotMatch(middleware, /verifySessionCookie/);
 
 const logoutRoute = fs.readFileSync(path.join(root, 'src/app/api/admin/auth/logout/route.ts'), 'utf8');

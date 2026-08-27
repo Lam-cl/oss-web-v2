@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ADMIN_COOKIE, verifySessionCookie } from '@/lib/admin/session';
+import { ADMIN_GATE_COOKIE, verifyAdminGateCookie } from '@/lib/admin/session';
 
 export const runtime = 'nodejs';
 
@@ -29,7 +29,9 @@ export async function middleware(req: NextRequest) {
 
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     const login = pathname === '/admin/login';
-    const session = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE)?.value);
+    // Keep the edge guard stateless. Full Bundle session validation still happens
+    // in every admin API route, where the remote session store is reachable.
+    const session = await verifyAdminGateCookie(req.cookies.get(ADMIN_GATE_COOKIE)?.value);
 
     if (!login && !session) {
       const url = req.nextUrl.clone();

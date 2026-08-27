@@ -1,4 +1,5 @@
 export const ADMIN_COOKIE = 'tonewow_admin_session';
+export const ADMIN_GATE_COOKIE = 'tonewow_admin_gate';
 export const ADMIN_ROLES = ['ADMIN', 'STAFF'] as const;
 export const SESSION_MAX_AGE = 60 * 60 * 24;
 
@@ -86,6 +87,27 @@ export async function createSessionCookie(session: AdminSession) {
   }
   const payload = base64UrlEncode(JSON.stringify(session));
   return `${payload}.${await sign(payload)}`;
+}
+
+export async function createAdminGateCookie(session: AdminSession) {
+  const payload = base64UrlEncode(JSON.stringify({
+    email: session.user.email,
+    role: session.user.role,
+    expiresAt: session.expiresAt,
+  }));
+  return `${payload}.${await sign(payload)}`;
+}
+
+export async function verifyAdminGateCookie(cookie?: string | null) {
+  if (!cookie) return false;
+  try {
+    const [payload, signature, extra] = cookie.split('.');
+    if (!payload || !signature || extra || !safeEqual(signature, await sign(payload))) return false;
+    const gate = JSON.parse(base64UrlDecode(payload)) as Pick<AdminSession['user'], 'email' | 'role'> & { expiresAt: number };
+    return Boolean(gate.email && ADMIN_ROLES.includes(gate.role) && gate.expiresAt > Date.now());
+  } catch {
+    return false;
+  }
 }
 
 export async function verifySessionCookie(cookie?: string | null): Promise<AdminSession | null> {

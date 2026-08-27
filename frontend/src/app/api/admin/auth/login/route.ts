@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BUNDLE_API, readUpstream, requestIsSameOrigin, safeError } from '@/lib/admin/server';
-import { ADMIN_COOKIE, ADMIN_ROLES, createSessionCookie, jwtExpiry, SESSION_MAX_AGE } from '@/lib/admin/session';
+import { ADMIN_COOKIE, ADMIN_GATE_COOKIE, ADMIN_ROLES, createAdminGateCookie, createSessionCookie, jwtExpiry, SESSION_MAX_AGE } from '@/lib/admin/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,10 +39,16 @@ export async function POST(request: NextRequest) {
     expiresAt,
   };
   const response = NextResponse.json({ user: session.user, expiresAt }, { headers: { 'cache-control': 'no-store' } });
-  let cookie: string;
-  try { cookie = await createSessionCookie(session); } catch { return safeError(500, { message: 'The admin session configuration is incomplete.' }); }
+  let cookie: string; let gateCookie: string;
+  try {
+    [cookie, gateCookie] = await Promise.all([createSessionCookie(session), createAdminGateCookie(session)]);
+  } catch { return safeError(500, { message: 'The admin session configuration is incomplete.' }); }
+  const cookieOptions = {
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' as const, path: '/', maxAge: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
+  };
   response.cookies.set(ADMIN_COOKIE, cookie, {
-    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
+    ...cookieOptions,
   });
+  response.cookies.set(ADMIN_GATE_COOKIE, gateCookie, cookieOptions);
   return response;
 }

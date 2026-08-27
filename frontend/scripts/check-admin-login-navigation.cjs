@@ -30,6 +30,15 @@ assert.doesNotMatch(loginPage, /router\.(replace|refresh)/);
 const loginRoute = fs.readFileSync(path.join(root, 'src/app/api/admin/auth/login/route.ts'), 'utf8');
 assert.match(loginRoute, /signal:\s*AbortSignal\.timeout\(15_000\)/);
 assert.match(loginRoute, /safeError\(504/);
+assert.match(loginRoute, /createAdminGateCookie/);
+assert.match(loginRoute, /response\.cookies\.set\(ADMIN_GATE_COOKIE/);
+
+const middleware = fs.readFileSync(path.join(root, 'src/middleware.ts'), 'utf8');
+assert.match(middleware, /verifyAdminGateCookie/);
+assert.doesNotMatch(middleware, /verifySessionCookie/);
+
+const logoutRoute = fs.readFileSync(path.join(root, 'src/app/api/admin/auth/logout/route.ts'), 'utf8');
+assert.match(logoutRoute, /response\.cookies\.set\(ADMIN_GATE_COOKIE,\s*''/);
 
 const adminShell = fs.readFileSync(path.join(root, 'src/components/admin/AdminShell.tsx'), 'utf8');
 assert.match(adminShell, /window\.location\.replace\('\/admin\/login'\)/);

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BUNDLE_API, readUpstream, requestIsSameOrigin, safeError } from '@/lib/admin/server';
 import { ADMIN_COOKIE, ADMIN_GATE_COOKIE, ADMIN_ROLES, createAdminGateCookie, createSessionCookie, jwtExpiry, SESSION_MAX_AGE } from '@/lib/admin/session';
+import { verifyAdminTurnstile } from '@/lib/admin/turnstile.server';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   if (!requestIsSameOrigin(request)) return safeError(403);
-  let credentials: { email?: string; password?: string };
+  let credentials: { email?: string; password?: string; turnstileToken?: string };
   try { credentials = await request.json(); } catch { return safeError(400); }
   if (!credentials.email || !credentials.password) return safeError(400, { message: 'Email and password are required.' });
+  const turnstile = await verifyAdminTurnstile(request, credentials.turnstileToken);
+  if (!turnstile.ok) return safeError(turnstile.status, { message: turnstile.message });
 
   let upstream: Response;
   try {

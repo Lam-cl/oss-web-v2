@@ -72,6 +72,32 @@ app.get('/health/ready', async (_request, response, next) => {
   catch (error) { next(new ApiError(503, 'NOT_READY', error instanceof Error ? error.message : 'Data service is not ready.')); }
 });
 
+app.post('/v1/security/turnstile/verify', serviceAuth, express.json({ limit: '4kb', strict: true }), async (request, response, next) => {
+  try {
+    const token = typeof request.body?.token === 'string' ? request.body.token.trim() : '';
+    const remoteIp = typeof request.body?.remoteIp === 'string' ? request.body.remoteIp.trim() : '';
+    if (!token || token.length > 2048 || remoteIp.length > 128) throw new ApiError(400, 'INVALID_TURNSTILE_TOKEN', 'Security verification is invalid.');
+    const body = new URLSearchParams({ secret: config.turnstileSecretKey, response: token });
+    if (remoteIp) body.set('remoteip', remoteIp);
+    let upstream: globalThis.Response;
+    try {
+      upstream = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+        body,
+        signal: AbortSignal.timeout(8_000),
+      });
+    } catch { throw new ApiError(503, 'TURNSTILE_UNAVAILABLE', 'Security verification is temporarily unavailable.'); }
+    if (!upstream.ok) throw new ApiError(503, 'TURNSTILE_UNAVAILABLE', 'Security verification is temporarily unavailable.');
+    const result = await upstream.json().catch(() => null) as { success?: unknown; hostname?: unknown; action?: unknown } | null;
+    if (!result || result.success !== true || result.action !== 'admin_login'
+      || typeof result.hostname !== 'string' || !['tonewow.xifuhalim.com', 'shop.tonewow.com'].includes(result.hostname.toLowerCase())) {
+      throw new ApiError(400, 'TURNSTILE_REJECTED', 'Security verification failed or expired.');
+    }
+    response.json({ data: { success: true, hostname: result.hostname.toLowerCase(), action: result.action } });
+  } catch (error) { next(error); }
+});
+
 app.use('/v1/state', serviceAuth, express.json({ limit: '2mb', strict: true }));
 app.get('/v1/state/:namespace', async (request, response, next) => {
   try {

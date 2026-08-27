@@ -261,7 +261,12 @@ function CreateCatalogueEditor({ availableCategories, onClose, onCreated }: {
   />;
 }
 
-function LegacyProductView({ product, onClose }: { product: Product; onClose: () => void }) {
+function LegacyProductView({ product, busy, onArchive, onClose }: {
+  product: Product;
+  busy: boolean;
+  onArchive: () => void;
+  onClose: () => void;
+}) {
   const stock = (product.productVariants || []).reduce((sum, variant) => sum + Number(variant.inventory || 0), 0);
   const title = sanitizeProviderTitle(product.title);
   const description = sanitizeProviderDescription(product.description || '');
@@ -272,9 +277,9 @@ function LegacyProductView({ product, onClose }: { product: Product; onClose: ()
       <div className="adm-drawer-body">
         <section className="adm-section"><h3 className="adm-section-title">{title}</h3><p>{description || 'No description.'}</p></section>
         <section className="adm-section"><div className="adm-form-grid"><div className="adm-field"><span>Price</span><strong>{money(product.price)}</strong></div><div className="adm-field"><span>Variants</span><strong>{product.productVariants?.length || 0}</strong></div><div className="adm-field"><span>Inventory</span><strong>{stock}</strong></div><div className="adm-field"><span>Reference</span><strong>#{product.id}</strong></div></div></section>
-        <div className="adm-warning">This older product is view-only here. It can be edited after it is moved to the new catalogue.</div>
+        <div className="adm-warning">This older product is view-only here. It can be deleted after its current details and Catalogue ownership are verified.</div>
       </div>
-      <footer className="adm-drawer-foot"><button className="adm-button secondary" onClick={onClose}>Close</button></footer>
+      <footer className="adm-drawer-foot"><button className="adm-button danger" disabled={busy} onClick={onArchive}>{busy ? 'Deleting…' : 'Delete product'}</button><button className="adm-button secondary" disabled={busy} onClick={onClose}>Close</button></footer>
     </section>
   </div>;
 }
@@ -292,6 +297,7 @@ function ProductsContent() {
   const [error, setError] = useState('');
   const [editor, setEditor] = useState<EditorTarget | undefined>(params.get('create') === '1' ? { kind: 'new' } : undefined);
   const [legacyViewer, setLegacyViewer] = useState<Product | null>(null);
+  const [deletingLegacyProductId, setDeletingLegacyProductId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const [publishingCatalogueId, setPublishingCatalogueId] = useState<string | null>(null);
   const publishingCatalogueIdRef = useRef<string | null>(null);
@@ -424,6 +430,28 @@ function ProductsContent() {
       setArchivingCatalogueId(null);
     }
   };
+  const archiveLegacy = async (product: Product) => {
+    if (deletingLegacyProductId !== null || !window.confirm(`Delete ${sanitizeProviderTitle(product.title)} (#${product.id})? It will be removed from the active product list.`)) return;
+    setDeletingLegacyProductId(product.id);
+    try {
+      const expectedInventory = (product.productVariants || []).reduce((sum, variant) => sum + Number(variant.inventory || 0), 0);
+      await adminFetch(`legacy-products/${product.id}/archive`, {
+        method: 'POST',
+        body: JSON.stringify({
+          expectedTitle: product.title,
+          expectedUpdatedAt: product.updatedAt,
+          expectedInventory,
+        }),
+      });
+      setLegacyViewer(null);
+      await load();
+      flash('Legacy product deleted successfully.');
+    } catch (problem) {
+      flash(problem instanceof Error ? problem.message : 'The legacy product could not be deleted.', 'error');
+    } finally {
+      setDeletingLegacyProductId(null);
+    }
+  };
 
   if (editor) return <AdminShell title="Products" eyebrow="Catalogue">
     {editor.kind === 'new'
@@ -504,7 +532,12 @@ function ProductsContent() {
         </> : <button className="adm-icon-btn" title="View legacy product" onClick={() => setLegacyViewer(product!)}><Icon name="arrow" /></button>}</div></td>
       </tr>;
     })}</tbody></table></div><div className="adm-pagination"><span>{(data.meta?.total || data.data.length) + (page === 1 && type === 'MERCHANDISE' ? catalogue.filter((product) => product.currentBundleProductId === null).length : 0)} products · page {page}</span><div><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>←</button><button disabled={page >= (data.meta?.totalPages || 1)} onClick={() => setPage((current) => current + 1)}>→</button></div></div></>}</section>
-    {legacyViewer && <LegacyProductView product={legacyViewer} onClose={() => setLegacyViewer(null)} />}
+    {legacyViewer && <LegacyProductView
+      product={legacyViewer}
+      busy={deletingLegacyProductId === legacyViewer.id}
+      onArchive={() => void archiveLegacy(legacyViewer)}
+      onClose={() => setLegacyViewer(null)}
+    />}
     {toast && <Toast {...toast} onClose={() => setToast(null)} />}
   </AdminShell>;
 }

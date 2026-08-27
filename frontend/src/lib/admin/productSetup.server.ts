@@ -1,5 +1,6 @@
 import { BUNDLE_API, readUpstream, sanitizePayload } from './server';
 import { PRODUCT_SETUP_DRAFT_TAG } from '@/lib/productSetup';
+import { readProductHiddenOptionValues } from '@/lib/productImageColors.server';
 
 type SetupOption = { name: string; values: string[] };
 type VariantOverride = { values: string[]; sku?: string; price?: number; inventory?: number };
@@ -494,7 +495,11 @@ export async function resumeProductSetup(productId: number, form: FormData, toke
 
 export async function repairProductVariants(productId: number, token: string) {
   let product = await getProduct(productId, token);
-  const options = product.options || [];
+  const hiddenOptionValues = new Set(await readProductHiddenOptionValues(productId));
+  const options = (product.options || []).map((option) => ({
+    ...option,
+    values: option.values.filter((value) => !hiddenOptionValues.has(value.id)),
+  }));
   if (options.length !== 1) {
     const requestedOptions = options.map((option) => ({ name: option.name, values: option.values.map((value) => value.value) }));
     const expected = expectedCombinations(requestedOptions);
@@ -509,32 +514,43 @@ export async function repairProductVariants(productId: number, token: string) {
   const requested = [{ name: option.name, values: option.values.map((value) => value.value) }];
   const mapped = mapProductVariants(product, requested);
   const missing = option.values.filter((value) => !mapped.has(variantKey([value.value])));
-  if (!missing.length) {
-    product = await publishRepairedProduct(product, token);
-    return { product: sanitizePayload(product), repaired: 0 };
-  }
-
-  for (const value of missing) {
-    await upstream(`products/${productId}/options/${option.id}/values/${value.id}`, token, {
-      method: 'DELETE',
-      headers: authHeaders(token),
+  if (missing.length) {
+    await upstream(`products/${productId}/variants`, token, {
+      method: 'POST',
+      headers: authHeaders(token, true),
+      body: JSON.stringify({
+        optionName: option.name,
+        values: missing.map((value) => ({ value: value.value })),
+        autoGenerateSku: true,
+        defaultInventory: 0,
+      }),
     });
+    product = await getProduct(productId, token);
   }
-  const defaultVariant = product.productVariants?.[0];
-  await upstream(`products/${productId}/variants`, token, {
-    method: 'POST',
-    headers: authHeaders(token, true),
-    body: JSON.stringify({
-      optionName: option.name,
-      values: missing.map((value) => ({ value: value.value })),
-      autoGenerateSku: true,
-      defaultInventory: Math.max(0, Number(defaultVariant?.inventory) || 0),
-    }),
-  });
-  product = await getProduct(productId, token);
   const repairedMap = mapProductVariants(product, requested);
   if (repairedMap.size < requested[0].values.length) {
     throw new ProductSetupError('Bundle API created variants but their mapping is still incomplete.', 422, productId);
+  }
+  const missingKeys = new Set(missing.map((value) => variantKey([value.value])));
+  const repairedVariants = option.values.flatMap((value) => {
+    const key = variantKey([value.value]);
+    const variant = repairedMap.get(key);
+    if (!variant?.sku) throw new ProductSetupError('Bundle API created a variant without a usable SKU.', 422, productId);
+    if (!missingKeys.has(key) && variant.price !== null && variant.price !== undefined && Number.isFinite(Number(variant.price))) return [];
+    return [{
+      id: variant.id,
+      sku: variant.sku,
+      price: Number(product.price) || 0,
+      inventory: missingKeys.has(key) ? 0 : Math.max(0, Number(variant.inventory) || 0),
+    }];
+  });
+  if (repairedVariants.length) {
+    await upstream(`products/${productId}/batch-update`, token, {
+      method: 'POST',
+      headers: authHeaders(token, true),
+      body: JSON.stringify({ variants: repairedVariants }),
+    });
+    product = await getProduct(productId, token);
   }
   product = await publishRepairedProduct(product, token);
   return { product: sanitizePayload(product), repaired: missing.length };

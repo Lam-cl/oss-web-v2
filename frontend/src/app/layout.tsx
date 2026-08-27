@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import 'react-day-picker/style.css';
 import './globals.css';
 import './merchandise-parity.css';
 import RouteChrome from '@/components/layout/RouteChrome';

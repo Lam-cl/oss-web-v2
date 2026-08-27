@@ -1,4 +1,5 @@
 import { getProductMinimumOrderQuantity } from '@/lib/minimumOrderQuantity';
+import { parseProductDescription } from '@/lib/productDescription';
 
 export interface MerchandiseOption {
   name: string;
@@ -28,6 +29,8 @@ export interface MerchandiseProduct {
   variantPrices?: Record<string, number>;
   variantInventoryById?: Record<number, number>;
   minimumOrderQuantity: number;
+  hasColorImageAssignments?: boolean;
+  providerBindingOnly?: boolean;
 }
 
 export interface BundleMerchandiseProduct {
@@ -39,6 +42,7 @@ export interface BundleMerchandiseProduct {
   price: number | string;
   shippingCost?: number | string;
   images?: Array<{ id?: number; imageUrl?: string; url?: string; order?: number }>;
+  imageColorAssignments?: Record<string, number | 'all'>;
   categories?: Array<{ id?: number; name: string }>;
   tags?: Array<string | { id?: number; name?: string | null }>;
   options?: Array<{
@@ -74,6 +78,34 @@ export function getMerchandiseVariantId(
   return product.variantIds?.[merchandiseVariantKey(option, size)];
 }
 
+export function getMerchandiseGalleryIndexForOption(product: MerchandiseProduct, optionIndex: number) {
+  const option = product.options[optionIndex];
+  const gallery = product.gallery || [];
+  const exact = gallery.indexOf(option?.image || '');
+  if (exact >= 0) return exact;
+  const groupSize = product.options.length && gallery.length % product.options.length === 0
+    ? gallery.length / product.options.length
+    : 0;
+  return groupSize ? optionIndex * groupSize : -1;
+}
+
+export function getMerchandiseOptionIndexForImage(product: MerchandiseProduct, image?: string) {
+  if (!image) return -1;
+  const exact = product.options.findIndex((option) => option.image === image);
+  if (exact >= 0) return exact;
+  if (product.hasColorImageAssignments) {
+    const assigned = product.options.map((option, index) => option.gallery?.includes(image) ? index : -1).filter((index) => index >= 0);
+    if (assigned.length === 1) return assigned[0];
+    if (assigned.length > 1) return -1;
+  }
+  const gallery = product.gallery || [];
+  const galleryIndex = gallery.indexOf(image);
+  const groupSize = product.options.length && gallery.length % product.options.length === 0
+    ? gallery.length / product.options.length
+    : 0;
+  return groupSize && galleryIndex >= 0 ? Math.floor(galleryIndex / groupSize) : -1;
+}
+
 export function getMerchandiseVariantInventory(product: MerchandiseProduct, variantId?: number) {
   if (!variantId) return 0;
   return Math.max(0, Number(product.variantInventoryById?.[variantId]) || 0);
@@ -83,10 +115,35 @@ function normaliseProductName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function stripPublishedProviderTitleSuffix(value: string) {
+  const suffix = value.match(/ \[TW-[a-f0-9]{8}-a[1-9][0-9]*\]$/);
+  return suffix && value.split('[TW-').length - 1 === 1
+    ? value.slice(0, -suffix[0].length)
+    : value;
+}
+
+// ponytail: Bundle's product update endpoint does not persist categories; keep this stable-ID map until it does.
+const CATALOG_CATEGORY_BY_ID: Record<number, string> = {
+  23: 'Apparel',
+  24: 'Apparel',
+  25: 'Bottles',
+  26: 'Bottles',
+  27: 'Bottles',
+  28: 'Marketing Material',
+  29: 'Stationery',
+  32: 'Stationery',
+  33: 'Stationery',
+  34: 'Marketing Material',
+  35: 'Apparel',
+  36: 'Apparel',
+};
+
 const SWATCHES: Record<string, string> = {
   black: '#111827',
   white: '#ffffff',
   grey: '#9ca3af',
+  gold: '#d4af37',
+  silver: '#c0c0c0',
   gray: '#9ca3af',
   navy: '#172554',
   'navy blue': '#19376d',
@@ -171,9 +228,28 @@ export function mergeBundleMerchandiseProducts(
     product,
   ]));
 
-  return products.map((apiProduct) => {
-    const name = apiProduct.title || apiProduct.name || `Product ${apiProduct.id}`;
-    const enrichment = enrichmentByName.get(normaliseProductName(name));
+  return products.flatMap((apiProduct) => {
+    // Bundle fallback is not authoritative for Catalogue publication state. Hide
+    // every reserved marker occurrence, including malformed/duplicated forms.
+    if ((apiProduct.description || '').includes('TW-CATALOGUE-DRAFT')) return [];
+    const sourceName = stripPublishedProviderTitleSuffix(apiProduct.title || apiProduct.name || `Product ${apiProduct.id}`);
+    const name = sourceName;
+    const enrichment = enrichmentByName.get(normaliseProductName(sourceName));
+    if (apiProduct.options?.some((option) => /^Catalogue Variant$/i.test(option.name)
+      || option.values?.some((value) => /^CV-/i.test(value.value)))) {
+      const variantInventoryById = Object.fromEntries((apiProduct.productVariants || [])
+        .map((variant) => [variant.id, Math.max(0, Number(variant.inventory) || 0)]));
+      const inventory = Object.values(variantInventoryById).reduce((sum, quantity) => sum + quantity, 0);
+      return [{
+        ...(enrichment || { id: String(apiProduct.id), slug: apiProduct.slug, name, category: 'Other', price: Number(apiProduct.price), description: '', options: [], minimumOrderQuantity: getProductMinimumOrderQuantity(apiProduct) }),
+        apiProductId: apiProduct.id,
+        variantInventoryById,
+        inventory,
+        soldOut: inventory === 0,
+        providerBindingOnly: true,
+      } as MerchandiseProduct];
+    }
+    const productContent = parseProductDescription(apiProduct.description || '');
     const variants = [...(apiProduct.productVariants || [])].sort((a, b) => a.id - b.id);
     const variantIds: Record<string, number> = {};
     const apiOptions = apiProduct.options || [];
@@ -183,10 +259,15 @@ export function mergeBundleMerchandiseProducts(
     const primaryValues = primaryOption?.values?.length
       ? primaryOption.values
       : [{ value: 'Standard', imageUrl: null }];
-    const images = [...(apiProduct.images || [])]
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .map((image) => image.url || image.imageUrl || '')
-      .filter(Boolean);
+    const imageRecords = [...(apiProduct.images || [])]
+      .sort((a, b) => {
+        const leftOrder = Number.isFinite(Number(a.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;
+        const rightOrder = Number.isFinite(Number(b.order)) ? Number(b.order) : Number.MAX_SAFE_INTEGER;
+        return leftOrder - rightOrder || Number(a.id || 0) - Number(b.id || 0);
+      })
+      .map((image) => ({ id: Number(image.id) || 0, url: image.url || image.imageUrl || '' }))
+      .filter((image) => image.url);
+    const images = imageRecords.map((image) => image.url);
 
     for (const variant of variants) {
       const selected = selectedOptionMap(variant);
@@ -245,30 +326,44 @@ export function mergeBundleMerchandiseProducts(
       (total, variant) => total + Math.max(0, variant.inventory),
       0,
     );
-    const fallbackImage = images[0] || '/favicon.ico';
-    const options: MerchandiseOption[] = primaryValues.map((value) => ({
-      name: value.value,
-      image: value.imageUrl || fallbackImage,
-      swatch: SWATCHES[value.value.toLowerCase()],
-      sizes: sizes.length ? sizes : undefined,
-      gallery: images.filter((image) => image !== value.imageUrl),
-    }));
+    const optionImages = primaryValues.map((value) => value.imageUrl || '').filter(Boolean);
+    // Product Images is the canonical customer gallery. Explicit local mappings
+    // only decide which of those images belong to each Bundle option value.
+    const galleryImages = images.length ? images : optionImages;
+    const fallbackImage = galleryImages[0] || '/favicon.ico';
+    const assignments = apiProduct.imageColorAssignments || {};
+    const hasAssignments = Object.keys(assignments).length > 0;
+    const options: MerchandiseOption[] = primaryValues.map((value) => {
+      const assignedGallery = hasAssignments && value.id
+        ? imageRecords.filter((image) => assignments[String(image.id)] === 'all' || Number(assignments[String(image.id)]) === Number(value.id)).map((image) => image.url)
+        : [];
+      const optionGallery = hasAssignments
+        ? (assignedGallery.length ? assignedGallery : [value.imageUrl || ''].filter(Boolean))
+        : galleryImages.filter((image) => image !== value.imageUrl);
+      return {
+        name: value.value,
+        image: hasAssignments ? optionGallery[0] || value.imageUrl || fallbackImage : value.imageUrl || fallbackImage,
+        swatch: SWATCHES[value.value.toLowerCase()],
+        sizes: sizes.length ? sizes : undefined,
+        gallery: optionGallery,
+      };
+    });
 
-    return {
+    return [{
       id: String(apiProduct.id),
       apiProductId: apiProduct.id,
       slug: apiProduct.slug || String(apiProduct.id),
       name,
-      category: apiProduct.categories?.[0]?.name
+      category: CATALOG_CATEGORY_BY_ID[apiProduct.id] || apiProduct.categories?.[0]?.name
         ?.replace(/^\s*[\["']+|[\]"']+\s*$/g, '')
         .trim() || (/\bsim\b/i.test(name) ? 'SIM Cards' : 'Other'),
       price: Number(apiProduct.price),
-      description: apiProduct.description || '',
+      description: productContent.description,
       optionLabel: primaryOption?.name,
       options,
       sizes: sizes.length ? sizes : undefined,
-      gallery: images,
-      features: enrichment?.features,
+      gallery: galleryImages,
+      features: productContent.details.length ? productContent.details : enrichment?.features,
       unitLabel: enrichment?.unitLabel,
       soldOut: variants.length === 0 || inventory === 0,
       inventory,
@@ -276,7 +371,8 @@ export function mergeBundleMerchandiseProducts(
       variantPrices,
       variantInventoryById,
       minimumOrderQuantity: getProductMinimumOrderQuantity(apiProduct),
-    };
+      hasColorImageAssignments: hasAssignments,
+    }];
   });
 }
 
@@ -287,7 +383,7 @@ export const merchandiseProducts: MerchandiseProduct[] = [
     id: 'merch-cap',
     minimumOrderQuantity: 1,
     slug: 'tone-wow-cap',
-    name: 'tone wow Cap',
+    name: 'tone wow Baseball Cap',
     category: 'Apparel',
     price: 39,
     description: 'A structured snapback cap finished with the embroidered tone wow mark.',
@@ -381,16 +477,17 @@ export const merchandiseProducts: MerchandiseProduct[] = [
     id: 'merch-bunting',
     minimumOrderQuantity: 1,
     slug: 'tone-wow-bunting',
-    name: 'tone wow Bunting',
+    name: 'tone wow T-Stand Bunting',
     category: 'Marketing',
     price: 45,
-    description: 'Freestanding tone wow display bunting for events, booths and promotions.',
+    description: 'Basic t-stand bunting with tone wow artwork printed on quality laminated synthetic paper.',
     optionLabel: 'Design',
     options: ['Blue', 'Gradient', 'Logo', 'White'].map((name) => ({
       name,
       image: `${IMAGE_ROOT}/bunting-gpt-transparent.webp`,
     })),
     gallery: [`${IMAGE_ROOT}/bunting-lifestyle.webp`],
+    features: ['6 ft (H) x 2 ft (W)', 'Synthetic Paper', 'Plastic Tube (Top & Bottom)', 'Hanging String', 'No Stand'],
   },
   {
     id: 'merch-button-badge',
@@ -442,13 +539,14 @@ export const merchandiseProducts: MerchandiseProduct[] = [
     id: 'merch-flyers',
     minimumOrderQuantity: 1,
     slug: 'tone-wow-flyers-50pcs',
-    name: 'tone wow Flyers',
+    name: 'tone wow 3-Fold Flyers',
     category: 'Marketing',
     price: 20,
-    description: 'A ready-to-distribute bundle of 50 tone wow promotional flyers.',
+    description: 'Basic tone wow info flyer with relevant and important tone wow product info for on-ground marketing.',
     options: [{ name: 'Standard', image: `${IMAGE_ROOT}/flyers-gpt-transparent.webp` }],
     gallery: [`${IMAGE_ROOT}/flyers-lifestyle.webp`],
     unitLabel: '50 pcs per bundle',
+    features: ['A4 Size', '3-Fold Accordion Fold', 'Double Sided', '50 pieces'],
   },
   {
     id: 'merch-comix-shirt',
@@ -457,7 +555,7 @@ export const merchandiseProducts: MerchandiseProduct[] = [
     name: 'tone wow Comix Shirt',
     category: 'Apparel',
     price: 69,
-    description: 'Oversized cotton round-neck tee with the tone wow Comix graphic.',
+    description: 'Heavy roundneck t-shirt with single tone wow printed logo on front side and Tapir COMIX graphics on the back.',
     optionLabel: 'Colour',
     options: [
       {
@@ -481,16 +579,16 @@ export const merchandiseProducts: MerchandiseProduct[] = [
         ],
       },
     ],
-    features: ['Cotton oversized fit', 'Unisex round neck'],
+    features: ['100% Cotton', '280gsm', 'Oversized Fit', 'Unisex'],
   },
   {
     id: 'merch-tone-wow-shirt',
     minimumOrderQuantity: 1,
     slug: 'tone-wow-shirt',
-    name: 'tone wow Shirt',
+    name: 'tone wow BASICS Shirt',
     category: 'Apparel',
     price: 39,
-    description: 'tone wow unisex cotton round-neck tee in four colourways.',
+    description: 'Basic roundneck t-shirt with single tone wow printed logo on front side in four colourways.',
     optionLabel: 'Colour',
     options: [
       {
@@ -534,7 +632,7 @@ export const merchandiseProducts: MerchandiseProduct[] = [
         ],
       },
     ],
-    features: ['Cotton tee', 'Unisex round neck'],
+    features: ['100% Cotton', '210gsm', 'Regular fit', 'Unisex'],
   },
 ];
 

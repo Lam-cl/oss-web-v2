@@ -1,0 +1,14 @@
+const assert=require('assert');const fs=require('fs');const Module=require('module');const ts=require('typescript');
+const source=fs.readFileSync('src/lib/productDescription.ts','utf8');
+const output=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const mod=new Module('productDescription');mod.paths=module.paths;mod._compile(output,'productDescription.js');const api=mod.exports;
+const details=['6 ft (H) x 2 ft (W)','Synthetic Paper','Plastic Tube (Top & Bottom)','Hanging String','No Stand'];
+const stored=api.formatProductDescription('Basic bunting.',details.join('\n'));
+assert.strictEqual(stored,'Basic bunting.\n\nProduct details:\n- 6 ft (H) x 2 ft (W)\n- Synthetic Paper\n- Plastic Tube (Top & Bottom)\n- Hanging String\n- No Stand');
+assert.deepStrictEqual(api.parseProductDescription(stored),{description:'Basic bunting.',details});
+assert.deepStrictEqual(api.parseProductDescription('Plain description'),{description:'Plain description',details:[]});
+const admin=fs.readFileSync('src/components/admin/ProductDrawer.tsx','utf8');const unified=fs.readFileSync('src/components/admin/UnifiedProductEditor.tsx','utf8');const catalogue=fs.readFileSync('src/data/merchandise.ts','utf8');
+assert(admin.includes("name=\"productDetails\""));assert(admin.includes('formatProductDescription('));
+assert(unified.includes("name=\"productDetails\""));assert(unified.includes('parseProductDescription('));assert(unified.includes('formatProductDescription('));
+assert(catalogue.includes('parseProductDescription('));
+console.log('Product-details description bridge check passed');

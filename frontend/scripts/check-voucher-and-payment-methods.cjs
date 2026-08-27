@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const checkout=fs.readFileSync('src/app/checkout/page.tsx','utf8');
+const route=fs.readFileSync('src/app/api/bundle/checkout/route.ts','utf8');
+const admin=fs.readFileSync('src/app/admin/vouchers/page.tsx','utf8');
+for(const id of ['16','2','3']) assert(checkout.includes(`setPaymentMethodId('${id}')`),`payment method ${id} missing`);
+assert(checkout.includes("NEXT_PUBLIC_MERCH_PAYMENT_METHODS || '16'"),'unverified payment methods must be feature-gated');
+assert(route.includes("['16', '2', '3'].includes(paymentMethodId)"),'server payment allowlist missing');
+assert(route.includes('paymentMethodId,'),'payment method not forwarded to Bundle');
+assert(admin.includes("adminFetch('vouchers'")&&admin.includes('/status`'),'voucher CRUD wiring missing');
+assert(admin.includes("method: 'DELETE'")&&admin.includes("method: 'PATCH'"),'voucher edit/delete missing');
+console.log('voucher and payment method checks passed');

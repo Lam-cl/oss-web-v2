@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const source = fs.readFileSync('src/app/checkout/page.tsx', 'utf8');
+const css = ['src/app/globals.css', 'src/app/merchandise-parity.css']
+  .map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+assert.equal((source.match(/\{itemLabel\(item\)\} × \{item\.quantity\}/g) || []).length, 2, 'desktop and mobile summaries must share the same item quantity format');
+assert.equal(source.includes('className="sidebar-order-description"'), true, 'desktop wrapping description missing');
+assert.equal(css.includes('.sidebar-order-description'), true, 'desktop description styling missing');
+assert.equal(css.includes('overflow-wrap: anywhere;'), true, 'long desktop labels must wrap');
+assert.equal(source.includes('sidebar-order-quantity'), false, 'desktop quantity badge must be removed');
+assert.equal(source.includes('sidebar-order-item'), false, 'desktop item grid must be removed');
+assert.equal(css.includes('.sidebar-order-quantity'), false, 'quantity badge CSS must be removed');
+assert.equal(css.includes('.sidebar-order-item'), false, 'item grid CSS must be removed');
+assert.equal((source.match(/formatRM\(item\.price \* item\.quantity\)/g) || []).length, 2, 'desktop and mobile summaries must show line totals');
+console.log('checkout summary mobile-format parity check passed');

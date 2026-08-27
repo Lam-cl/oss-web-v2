@@ -1,0 +1,25 @@
+{
+  "name": "@tonewow/data-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/migrations && cp migrations/*.sql dist/migrations/",
+    "start": "node dist/src/server.js",
+    "test": "node --test --import tsx src/**/*.test.ts",
+    "migrate": "tsx scripts/import-data.ts"
+  },
+  "dependencies": {
+    "@tonewow/contracts": "1.0.0",
+    "express": "^4.21.2",
+    "minio": "^8.0.5",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.17.19",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

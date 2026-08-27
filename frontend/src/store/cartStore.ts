@@ -3,13 +3,21 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@/types';
-import { getMerchandiseVariantId, getMerchandiseVariantInventory, type MerchandiseProduct } from '@/data/merchandise';
+import { getMerchandiseVariantId, getMerchandiseVariantInventory, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
 
 function clampQuantity(item: { minimumOrderQuantity?: number; availableQuantity?: number }, requested: number) {
   const minimum = Math.max(1, item.minimumOrderQuantity || 1);
   const normalized = Math.max(minimum, Math.floor(Number(requested) || minimum));
   if (item.availableQuantity === undefined) return normalized;
   return Math.min(Math.max(0, item.availableQuantity), normalized);
+}
+
+export function cartItemsWithUpdatedQuantity(items: CartItem[], id: string, requested: number) {
+  return items.flatMap((item) => {
+    if (item.id !== id) return [item];
+    const minimum = Math.max(1, item.minimumOrderQuantity || 1);
+    return requested < minimum ? [] : [{ ...item, quantity: clampQuantity(item, requested) }];
+  });
 }
 
 interface CartState {
@@ -25,6 +33,65 @@ interface CartState {
   clear: () => void;
   getTotal: () => number;
   getCount: () => number;
+}
+
+export function reconcileMerchandiseCartItems(items: CartItem[], products: MerchandiseProduct[]) {
+  return items.map((item) => {
+    if (item.type !== 'merchandise') return item;
+    const product = products.find((candidate) => (
+      candidate.apiProductId === item.bundleProductId
+      || candidate.id === item.productId
+      || candidate.slug === item.slug
+      || candidate.name === item.name
+    ));
+    if (!product || !product.apiProductId) return item;
+    let option = product.options.find((candidate) => candidate.name === item.variant);
+    let bundleVariantId = option
+      ? getMerchandiseVariantId(product, option.name, item.size)
+      : undefined;
+    let singleVariantRebind = false;
+    const stableIdentity = product.id === item.productId || product.slug === item.slug;
+    const candidateSingleOption = product.options.length === 1 ? product.options[0] : null;
+    const singleOption = stableIdentity && candidateSingleOption
+      && !(candidateSingleOption.sizes || product.sizes)?.length ? candidateSingleOption : null;
+    if (singleOption) {
+      const singleVariantId = getMerchandiseVariantId(product, singleOption.name);
+      if (singleVariantId) {
+        option = singleOption;
+        bundleVariantId = singleVariantId;
+        singleVariantRebind = true;
+      }
+    }
+    if (!option || !bundleVariantId
+      || !singleVariantRebind && (product.apiProductId !== item.bundleProductId
+        || bundleVariantId !== item.bundleVariantId)) return {
+      ...item,
+      productId: product.id,
+      bundleProductId: product.apiProductId,
+      bundleVariantId: undefined,
+      variant: undefined,
+      size: undefined,
+      availableQuantity: undefined,
+      selectionRequired: 'Variant selection required' as const,
+    };
+    const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
+    const { selectionRequired: _selectionRequired, ...current } = item;
+    return {
+      ...current,
+      productId: product.id,
+      bundleProductId: product.apiProductId,
+      bundleVariantId,
+      slug: product.slug,
+      name: product.name,
+      description: product.unitLabel || product.description,
+      variant: option.name,
+      image: option.image,
+      price: product.variantPrices?.[merchandiseVariantKey(option.name)] ?? product.price,
+      minimumOrderQuantity: product.minimumOrderQuantity,
+      availableQuantity,
+      quantity: clampQuantity({ minimumOrderQuantity: product.minimumOrderQuantity, availableQuantity }, item.quantity),
+    };
+  });
 }
 
 export const useCartStore = create<CartState>()(
@@ -85,13 +152,7 @@ export const useCartStore = create<CartState>()(
       },
 
       updateQuantity: (id, quantity) => {
-        set((state) => ({
-          items: state.items.map((i) =>
-            i.id === id
-              ? { ...i, quantity: clampQuantity(i, quantity) }
-              : i,
-          ),
-        }));
+        set((state) => ({ items: cartItemsWithUpdatedQuantity(state.items, id, quantity) }));
       },
 
       updateMerchandiseItem: (id, updates) => {
@@ -150,42 +211,7 @@ export const useCartStore = create<CartState>()(
       },
 
       reconcileMerchandiseCatalog: (products) => {
-        set((state) => ({
-          items: state.items.map((item) => {
-            if (item.type !== 'merchandise') return item;
-            const product = products.find((candidate) => (
-              candidate.apiProductId === item.bundleProductId
-              || candidate.id === item.productId
-              || candidate.slug === item.slug
-              || candidate.name === item.name
-            ));
-            if (!product || !product.apiProductId) return item;
-
-            const option = product.options.find((candidate) => candidate.name === item.variant)
-              || product.options[0];
-            if (!option) return item;
-            const bundleVariantId = getMerchandiseVariantId(product, option.name, item.size);
-            const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
-
-            return {
-              ...item,
-              productId: product.id,
-              bundleProductId: product.apiProductId,
-              bundleVariantId,
-              slug: product.slug,
-              name: product.name,
-              description: product.unitLabel || product.description,
-              image: option.image,
-              price: product.price,
-              minimumOrderQuantity: product.minimumOrderQuantity,
-              availableQuantity,
-              quantity: clampQuantity(
-                { minimumOrderQuantity: product.minimumOrderQuantity, availableQuantity },
-                item.quantity,
-              ),
-            };
-          }),
-        }));
+        set((state) => ({ items: reconcileMerchandiseCartItems(state.items, products) }));
       },
 
       clear: () => set({ items: [] }),

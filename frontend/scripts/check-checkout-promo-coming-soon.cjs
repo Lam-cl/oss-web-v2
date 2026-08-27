@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const source=fs.readFileSync('src/app/checkout/page.tsx','utf8');
+const route=fs.readFileSync('src/app/api/bundle/checkout/route.ts','utf8');
+assert(source.includes('renderPromo'),'shared desktop/mobile promo control missing');
+assert(source.includes("fetch('/bundle/vouchers/preview'"),'voucher preview call missing');
+assert(source.includes('Promo applied. You save'),'voucher feedback missing');
+assert(source.includes('voucherCode: promo?.code'),'voucher code not sent to checkout');
+assert(source.includes('expectedTotal: grandTotal'),'verified checkout total missing');
+assert(route.includes('merchandiseSubtotal - voucherDiscount + shippingAmount'),'delivery must remain outside voucher discount');
+assert(!source.includes('Promo codes are not active yet.'),'obsolete coming-soon copy remains');
+console.log('checkout promo enabled check passed');

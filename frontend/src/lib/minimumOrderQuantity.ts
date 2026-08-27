@@ -30,7 +30,8 @@ export function getProductMinimumOrderQuantity(product: MinimumOrderProduct) {
 
   const slug = product.slug?.trim().toLowerCase();
   const name = (product.title || product.name || '').trim().toLowerCase();
-  if (slug === 'superlite-sim' || name === 'superlite sim') return 10;
+  if (['superlite-sim', 'biz-sim'].includes(slug || '')
+    || ['superlite sim', 'biz sim'].includes(name)) return 2;
 
   const descriptionMatch = product.description?.match(/minimum order\s*:\s*(\d+)\s*units?/i);
   const describedQuantity = Number(descriptionMatch?.[1]);
@@ -39,8 +40,16 @@ export function getProductMinimumOrderQuantity(product: MinimumOrderProduct) {
     : 1;
 }
 
+export function incrementOrderQuantity(current: number, minimum: number, maximum: number) {
+  return Math.min(maximum, current === 0 ? minimum : current + 1);
+}
+
 export function minimumOrderLabel(quantity: number) {
   return quantity > 1
     ? `Minimum order: ${quantity} units`
     : 'No minimum order';
+}
+
+export function minimumOrderError(quantity: number) {
+  return `Minimum order quantity is ${quantity} ${quantity === 1 ? 'unit' : 'units'}`;
 }

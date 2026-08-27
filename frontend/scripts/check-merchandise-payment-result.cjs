@@ -1,0 +1,3 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const success=fs.readFileSync('src/app/payment/success/page.tsx','utf8'),failed=fs.readFileSync('src/app/payment/failed/page.tsx','utf8'),shared=fs.readFileSync('src/components/payment/PaymentResult.tsx','utf8');
+assert(success.includes('clear()'),'success must clear cart');assert(!failed.includes('clear()'),'failed must retain cart');assert(shared.includes("status:'success'|'failed'"),'shared OSS-style result missing');assert(shared.includes("success?'/':'/checkout'"),'failed retry must return to merchandise checkout');console.log('merchandise payment result check passed');

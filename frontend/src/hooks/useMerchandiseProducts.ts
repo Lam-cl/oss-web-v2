@@ -6,6 +6,7 @@ import {
   type BundleMerchandiseProduct,
   type MerchandiseProduct,
 } from '@/data/merchandise';
+import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
 import { useCartStore } from '@/store/cartStore';
 
 export function useMerchandiseProducts() {
@@ -31,7 +32,8 @@ export function useMerchandiseProducts() {
         if (!response.ok || !Array.isArray(result.data)) {
           throw new Error(result.error || 'Unable to load merchandise');
         }
-        const nextProducts = mergeBundleMerchandiseProducts(result.data as BundleMerchandiseProduct[]);
+        const stagingProducts = mergeBundleMerchandiseProducts(result.data as BundleMerchandiseProduct[]);
+        const nextProducts = await fetchCatalogueStorefrontProducts(stagingProducts);
         setProducts(nextProducts);
         reconcileMerchandiseCatalog(nextProducts);
         setError('');

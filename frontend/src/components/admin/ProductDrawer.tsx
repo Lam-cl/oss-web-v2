@@ -2,10 +2,14 @@
 
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { AdminApiError, adminFetch } from '@/lib/admin/client';
+import { productImageOrderPayload } from '@/lib/admin/imageOrder';
 import { asLabel, Product, ProductOption, ProductVariant } from '@/lib/admin/types';
 import { Icon } from './Icons';
 import { Confirm } from './UI';
-import { isProductSetupDraft, PRODUCT_SETUP_DRAFT_TAG, visibleProductTags } from '@/lib/productSetup';
+import { isProductSetupDraft, PRODUCT_SETUP_DRAFT_TAG, splitStockAllocation, visibleProductTags } from '@/lib/productSetup';
+import { COURIER_GROUPS, type CourierGroup, type ShippingSettings } from '@/lib/shipping';
+import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
+import { buildVariantMatrix } from '@/lib/admin/variantMatrix';
 
 type Props = {
   product: Product | null;
@@ -18,8 +22,10 @@ type Props = {
 type ProductTab = 'details' | 'options' | 'variants';
 type SetupOptionDraft = { name: string; values: string[] };
 type SetupVariantDraft = { sku?: string; price?: number; inventory?: number };
+type EditableProductVariant = Omit<ProductVariant, 'inventory'> & { inventory: number | '' };
+type ImageColorAssignment = 'all' | number;
 
-const CATEGORY_SUGGESTIONS = ['Accessories', 'Apparel', 'Drinkware', 'Marketing'];
+const CATEGORY_SUGGESTIONS = ['Apparel', 'Bottles', 'Marketing Material', 'Stationery'];
 const TAG_SUGGESTIONS = ['accessories', 'apparel', 'drinkware', 'marketing', 'merchandise', 'tone wow'];
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -219,6 +225,12 @@ function createNumericValue(value: number | null | undefined) {
   return value != null && Number(value) !== 0 ? String(value) : '';
 }
 
+function copyFormData(source: FormData) {
+  const copy = new FormData();
+  source.forEach((value, key) => copy.append(key, value));
+  return copy;
+}
+
 export default function ProductDrawer({ product, createType = 'MOBILE', onClose, onSaved, onError }: Props) {
   const startedAsCreate = !product;
   const continuingDraft = Boolean(product && isProductSetupDraft(product));
@@ -253,7 +265,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
   const [variantValues, setVariantValues] = useState('');
   const [defaultInventory, setDefaultInventory] = useState(0);
   const [createDefaultInventoryInput, setCreateDefaultInventoryInput] = useState(
-    continuingDraft ? createNumericValue(normalizedInitialProduct?.productVariants?.[0]?.inventory) : '',
+    continuingDraft ? String((normalizedInitialProduct?.productVariants || []).reduce((sum, variant) => sum + Math.max(0, Number(variant.inventory) || 0), 0)) : '',
   );
   const [confirmGenerate, setConfirmGenerate] = useState(false);
   const [pendingOptionDelete, setPendingOptionDelete] = useState<ProductOption | null>(null);
@@ -264,10 +276,14 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
   const [category, setCategory] = useState(() => labels(product?.categories)[0] || '');
   const [customCategory, setCustomCategory] = useState(false);
   const [tags, setTags] = useState(() => labels(visibleProductTags(product?.tags)));
+  const [shippingSettings, setShippingSettings] = useState<ShippingSettings | null>(null);
+  const [shippingGroup, setShippingGroup] = useState<CourierGroup | ''>('');
   const [editOptionId, setEditOptionId] = useState(0);
-  const [editOptionName, setEditOptionName] = useState('');
   const [editOptionValues, setEditOptionValues] = useState('');
-  const [variants, setVariants] = useState<ProductVariant[]>(product?.productVariants || []);
+  const [variants, setVariants] = useState<EditableProductVariant[]>(product?.productVariants || []);
+  const [imageColorAssignments, setImageColorAssignments] = useState<Record<string, ImageColorAssignment>>({});
+  const [pendingImageColors, setPendingImageColors] = useState<Record<string, ImageColorAssignment>>({});
+  const [hiddenOptionValueIds, setHiddenOptionValueIds] = useState<number[]>([]);
   const filePreviews = useMemo(
     () => files.map((file) => ({ file, url: URL.createObjectURL(file) })),
     [files],
@@ -285,7 +301,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     if (draft && value) {
       setCreateProductType(value.type === 'MOBILE' ? 'MOBILE' : 'MERCHANDISE');
       setCreatePriceInput(createNumericValue(value.price));
-      setCreateDefaultInventoryInput(createNumericValue(value.productVariants?.[0]?.inventory));
+      setCreateDefaultInventoryInput(String((value.productVariants || []).reduce((sum, variant) => sum + Math.max(0, Number(variant.inventory) || 0), 0)));
       setSetupStarted(true);
     }
     setVariants(value?.productVariants || []);
@@ -293,6 +309,9 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     setCustomCategory(false);
     setTags(labels(visibleProductTags(value?.tags)));
     setFiles([]);
+    setPendingImageColors({});
+    setImageColorAssignments({});
+    setHiddenOptionValueIds([]);
   }, [product]);
 
   useEffect(() => {
@@ -306,6 +325,34 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
       window.removeEventListener('drop', preventFileNavigation, true);
     };
   }, []);
+
+  useEffect(() => {
+    if (createProductType !== 'MERCHANDISE') return;
+    adminFetch<ShippingSettings>('shipping-settings').then((value) => {
+      setShippingSettings(value);
+      setShippingGroup(product?.id ? value.productGroups[String(product.id)] || '' : '');
+    }).catch(() => { setShippingSettings(null); });
+  }, [createProductType, product?.id]);
+
+  useEffect(() => {
+    if (!fresh?.id) return;
+    let active = true;
+    adminFetch<{ assignments?: Record<string, ImageColorAssignment> }>(`products/${fresh.id}/image-colors`)
+      .then((value) => { if (active) setImageColorAssignments(value.assignments || {}); })
+      .catch(() => { if (active) setImageColorAssignments({}); });
+    adminFetch<{ valueIds?: number[] }>(`products/${fresh.id}/hidden-option-values`)
+      .then((value) => { if (active) setHiddenOptionValueIds(value.valueIds || []); })
+      .catch(() => { if (active) setHiddenOptionValueIds([]); });
+    return () => { active = false; };
+  }, [fresh?.id]);
+
+  async function saveShippingAssignment(productId: number) {
+    if (createProductType !== 'MERCHANDISE') return;
+    if (!shippingGroup) throw new Error('Select a shipping category for this merchandise product.');
+    const latest = await adminFetch<ShippingSettings>('shipping-settings');
+    latest.productGroups[String(productId)] = shippingGroup;
+    await adminFetch('shipping-settings', { method: 'PUT', body: JSON.stringify(latest) });
+  }
 
   const categoryOptions = useMemo(
     () => CATEGORY_SUGGESTIONS.includes(category) || !category ? CATEGORY_SUGGESTIONS : [...CATEGORY_SUGGESTIONS, category],
@@ -323,14 +370,35 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     () => setupCombinations(activeSetupOptions),
     [activeSetupOptions],
   );
+  const allocatedStock = useMemo(() => variantCombinations.reduce((sum, values) => {
+    const inventory = setupVariantDrafts[setupVariantKey(values)]?.inventory;
+    return sum + Math.max(0, Math.floor(Number(inventory) || 0));
+  }, 0), [variantCombinations, setupVariantDrafts]);
+  const visibleOptions = useMemo(() => fresh?.options.map((option) => ({
+    ...option,
+    values: option.values.filter((value) => !hiddenOptionValueIds.includes(value.id)),
+  })) || [], [fresh, hiddenOptionValueIds]);
+  const variantMatrix = useMemo(() => fresh ? buildVariantMatrix(visibleOptions, variants) : null, [fresh, variants, visibleOptions]);
+  const colorOption = useMemo(() => visibleOptions.find((option) => /^colou?r$/i.test(option.name)), [visibleOptions]);
+
+  function splitStockEqually() {
+    const total = Math.max(0, Math.floor(Number(createDefaultInventoryInput) || 0));
+    if (!variantCombinations.length) return;
+    const allocation = splitStockAllocation(total, variantCombinations.length);
+    setSetupVariantDrafts((current) => Object.fromEntries(variantCombinations.map((values, index) => {
+      const key = setupVariantKey(values);
+      return [key, { ...current[key], inventory: allocation[index] }];
+    })));
+  }
+
   const needsVariantRepair = useMemo(() => {
-    if (!fresh || fresh.options.length !== 1) return false;
+    if (!fresh || visibleOptions.length !== 1) return false;
     const variants = fresh.productVariants || [];
-    return fresh.options[0].values.some((value) => {
+    return visibleOptions[0].values.some((value) => {
       const needle = value.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       return !variants.some((variant) => (variant.sku || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').includes(needle));
     });
-  }, [fresh]);
+  }, [fresh, visibleOptions]);
 
   async function reload(id: number) {
     const value = normalizeProduct(await adminFetch<any>(`products/${id}`));
@@ -362,6 +430,10 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
       const known = new Set(current.map(fileKey));
       return [...current, ...supported.filter((file) => !known.has(fileKey(file)))];
     });
+    setPendingImageColors((current) => ({
+      ...current,
+      ...Object.fromEntries(supported.map((file) => [fileKey(file), current[fileKey(file)] || 'all'])),
+    }));
   }
 
   function handleImageDrag(event: DragEvent<HTMLDivElement>) {
@@ -394,7 +466,41 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
   }
 
   function removeFile(index: number) {
+    const key = files[index] ? fileKey(files[index]) : '';
     setFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    if (key) setPendingImageColors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  async function saveImageColors(productValue: Product, assignments: Record<string, ImageColorAssignment>) {
+    const currentImageIds = new Set(productValue.images.map((image) => String(image.id)));
+    const completed = Object.fromEntries(productValue.images.map((image) => {
+      const imageId = String(image.id);
+      return [imageId, currentImageIds.has(imageId) ? assignments[imageId] || 'all' : 'all'];
+    }));
+    const result = await adminFetch<{ assignments?: Record<string, ImageColorAssignment> }>(`products/${productValue.id}/image-colors`, {
+      method: 'PUT',
+      body: JSON.stringify({ assignments: colorOption ? completed : {} }),
+    });
+    const saved = result.assignments || {};
+    setImageColorAssignments(saved);
+    return saved;
+  }
+
+  async function saveExistingImageColors() {
+    if (!fresh || !colorOption) return;
+    setBusy(true);
+    try {
+      await saveImageColors(fresh, imageColorAssignments);
+      onSaved('Image colors updated.');
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Image color save failed.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveDetails(event: FormEvent<HTMLFormElement>) {
@@ -402,6 +508,11 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     setBusy(true);
     const initialCreate = !fresh;
     const data = new FormData(event.currentTarget);
+    data.set('description', formatProductDescription(
+      String(data.get('description') || ''),
+      String(data.get('productDetails') || ''),
+    ));
+    data.delete('productDetails');
     const requestedSlug = String(data.get('slug') || '').trim();
     if (initialCreate) data.delete('slug');
 
@@ -429,6 +540,9 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
         if (hasVariations && setupOptions.some((option) => !option.name.trim() || !option.values.length)) {
           throw new Error('Each variation needs a name and at least one value.');
         }
+        if (hasVariations && allocatedStock !== parsedDefaultInventory) {
+          throw new Error(`Variant stock allocation must equal total stock (${allocatedStock} / ${parsedDefaultInventory} allocated).`);
+        }
         const specOptions = hasVariations
           ? setupOptions.map((option) => ({ name: option.name.trim(), values: option.values }))
           : [];
@@ -443,7 +557,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
           weight: Number(data.get('weight') || 0),
           categories: category.trim() ? [category.trim()] : [],
           tags,
-          defaultInventory: parsedDefaultInventory,
+          defaultInventory: hasVariations ? 0 : parsedDefaultInventory,
           options: specOptions,
           variantOverrides: specCombinations.map((values) => {
             const draft = setupVariantDrafts[setupVariantKey(values)] || {};
@@ -451,7 +565,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
               values,
               sku: draft.sku?.trim() || undefined,
               price: draft.price ?? parsedCreatePrice,
-              inventory: draft.inventory ?? parsedDefaultInventory,
+              inventory: hasVariations ? Math.max(0, Math.floor(Number(draft.inventory) || 0)) : parsedDefaultInventory,
             };
           }),
         };
@@ -462,24 +576,93 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
           const image = preparedValueImages[`${optionIndex}:${value}`];
           if (image) setupData.append(`valueImage:${optionIndex}:${valueIndex}`, image);
         }));
-        await adminFetch(draftProductId ? `products/${draftProductId}/complete-setup` : 'products/complete-setup', {
+        const result = await adminFetch<{ product?: Product }>(draftProductId ? `products/${draftProductId}/complete-setup` : 'products/complete-setup', {
           method: draftProductId ? 'PUT' : 'POST',
           body: setupData,
         });
+        const createdProductId = Number(result.product?.id || draftProductId);
+        if (!createdProductId) throw new Error('Product was created but its shipping category could not be linked. Edit the product and try again.');
+        await saveShippingAssignment(createdProductId);
         setSetupFinished(true);
         setFiles([]);
         onSaved('Product, images and variants created successfully.');
         onClose();
       } else {
+        const previousPrice = Number(fresh.price);
+        const nextPrice = Number(data.get('price'));
+        const hasMismatchedVariantPrices = fresh.productVariants.some(
+          (variant) => Number(variant.price) !== nextPrice,
+        );
+        const syncVariantPrices = fresh.type === 'MERCHANDISE'
+          && fresh.productVariants.length > 0
+          && Number.isFinite(previousPrice)
+          && Number.isFinite(nextPrice)
+          && (previousPrice !== nextPrice || hasMismatchedVariantPrices);
+
         await adminFetch(`products/${fresh.id}`, { method: 'PUT', body: data });
-        for (const file of preparedFiles) {
-          const imageData = new FormData();
-          imageData.append('images', file);
-          await adminFetch(`products/${fresh.id}`, { method: 'PUT', body: imageData });
+        if (syncVariantPrices) {
+          const variantsAtPreviousPrice = fresh.productVariants.map(({ id, sku, price, inventory }) => ({
+            id,
+            sku,
+            price: Number(price),
+            inventory: Number(inventory),
+          }));
+          try {
+            await adminFetch(`products/${fresh.id}/batch-update`, {
+              method: 'POST',
+              body: JSON.stringify({
+                variants: variantsAtPreviousPrice.map((variant) => ({
+                  ...variant,
+                  price: nextPrice,
+                })),
+              }),
+            });
+          } catch {
+            let rollbackFailed = false;
+            try {
+              await adminFetch(`products/${fresh.id}/batch-update`, {
+                method: 'POST',
+                body: JSON.stringify({ variants: variantsAtPreviousPrice }),
+              });
+            } catch {
+              rollbackFailed = true;
+            }
+
+            try {
+              const rollbackData = copyFormData(data);
+              rollbackData.set('price', String(previousPrice));
+              await adminFetch(`products/${fresh.id}`, { method: 'PUT', body: rollbackData });
+            } catch {
+              rollbackFailed = true;
+            }
+
+            throw new Error(rollbackFailed
+              ? 'Variant price sync failed and the previous prices could not be fully restored. Review this product before publishing it.'
+              : 'Variant price sync failed. The previous product and variant prices were restored.');
+          }
         }
-        await reload(fresh.id);
-        setFiles([]);
-        onSaved('Product details updated.');
+        let nextProduct = fresh;
+        const nextAssignments = { ...imageColorAssignments };
+        for (let index = 0; index < preparedFiles.length; index += 1) {
+          const beforeIds = new Set(nextProduct.images.map((image) => image.id));
+          const imageData = new FormData();
+          imageData.append('images', preparedFiles[index]);
+          await adminFetch(`products/${fresh.id}`, { method: 'PUT', body: imageData });
+          nextProduct = await reload(fresh.id);
+          const added = nextProduct.images.filter((image) => !beforeIds.has(image.id));
+          if (added.length !== 1) throw new Error('The uploaded image could not be linked safely. Reload the product before assigning its color.');
+          nextAssignments[String(added[0].id)] = pendingImageColors[fileKey(files[index])] || 'all';
+        }
+        if (!preparedFiles.length) nextProduct = await reload(fresh.id);
+        else {
+          setFiles([]);
+          setPendingImageColors({});
+        }
+        await saveImageColors(nextProduct, nextAssignments);
+        await saveShippingAssignment(fresh.id);
+        onSaved(syncVariantPrices
+          ? 'Product details, image colors and all merchandise variant prices updated.'
+          : 'Product details and image colors updated.');
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Save failed.';
@@ -565,7 +748,10 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     [sorted[index], sorted[next]] = [sorted[next], sorted[index]];
     await mutate(
       `products/${fresh.id}/images/order`,
-      { method: 'PATCH', body: JSON.stringify(sorted.map((image) => String(image.id))) },
+      {
+        method: 'PATCH',
+        body: JSON.stringify(productImageOrderPayload(sorted)),
+      },
       'Image order updated.',
     );
   }
@@ -602,8 +788,13 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
   }
 
   async function updateOption() {
-    if (!fresh || !editOptionId || !editOptionName.trim()) {
+    if (!fresh || !editOptionId) {
       onError('Select an option to edit.');
+      return;
+    }
+    const selectedOption = fresh.options.find((option) => option.id === editOptionId);
+    if (!selectedOption) {
+      onError('The selected option is no longer available. Reload this product and try again.');
       return;
     }
     const values = editOptionValues.split(',').map((value) => value.trim()).filter(Boolean).map((value) => ({ value }));
@@ -611,13 +802,41 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
       onError('Enter at least one option value.');
       return;
     }
+    const normalized = (value: string) => value.trim().toLowerCase();
+    const desired = new Set(values.map((value) => normalized(value.value)));
+    const activeValues = selectedOption.values.filter((value) => !hiddenOptionValueIds.includes(value.id));
+    const removed = activeValues.filter((value) => !desired.has(normalized(value.value)));
+    const reactivated = selectedOption.values.filter((value) => hiddenOptionValueIds.includes(value.id) && desired.has(normalized(value.value)));
+    const existing = new Set(selectedOption.values.map((value) => normalized(value.value)));
+    const added = values.filter((value) => !existing.has(normalized(value.value)));
+    if (removed.length && fresh.options.length !== 1) {
+      onError('Removing a value from a multi-option product needs verified combination cleanup. No changes were made.');
+      return;
+    }
+    if (removed.length && !window.confirm(`Remove the selected value${removed.length > 1 ? 's' : ''} and its checkout variant${removed.length > 1 ? 's' : ''}?`)) return;
     setBusy(true);
     try {
-      await adminFetch(`products/${fresh.id}/options/${editOptionId}`, {
+      for (const value of removed) {
+        const needle = normalized(value.value).replace(/[^a-z0-9]+/g, '-');
+        const matching = variants.filter((variant) => normalized(variant.sku || '').replace(/[^a-z0-9]+/g, '-').includes(needle));
+        for (const variant of matching) await adminFetch(`products/${fresh.id}/variants/${variant.id}`, { method: 'DELETE' });
+      }
+      if (added.length) {
+        await adminFetch(`products/${fresh.id}/options/${editOptionId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: selectedOption.name, values: [...selectedOption.values.map((value) => ({ value: value.value })), ...added] }),
+        });
+      }
+      const hidden = new Set(hiddenOptionValueIds);
+      removed.forEach((value) => hidden.add(value.id));
+      reactivated.forEach((value) => hidden.delete(value.id));
+      const nextHidden = Array.from(hidden);
+      await adminFetch(`products/${fresh.id}/hidden-option-values`, {
         method: 'PUT',
-        body: JSON.stringify({ name: editOptionName.trim(), values }),
+        body: JSON.stringify({ valueIds: nextHidden }),
       });
-      if (fresh.options.length === 1) {
+      setHiddenOptionValueIds(nextHidden);
+      if (fresh.options.length === 1 && (added.length || reactivated.length)) {
         await adminFetch(`products/${fresh.id}/repair-variants`, { method: 'POST' });
       }
       await reload(fresh.id);
@@ -648,7 +867,6 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
     if (removed) {
       if (editOptionId === pendingOptionDelete.id) {
         setEditOptionId(0);
-        setEditOptionName('');
         setEditOptionValues('');
       }
       setPendingOptionDelete(null);
@@ -664,6 +882,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
   const initialCreate = !fresh;
   const showTabs = !initialCreate;
   const sourceProduct = fresh || (continuingDraft ? normalizedInitialProduct : null);
+  const productContent = parseProductDescription(sourceProduct?.description || '');
 
   return <div className="adm-drawer-wrap">
     <button className="adm-modal-backdrop" onClick={requestClose} aria-label="Close editor" />
@@ -702,8 +921,8 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
               <label className="adm-field">{createProductType === 'MOBILE' ? 'Device price, 24-month total (RM)' : 'Price (RM)'}{initialCreate
                 ? <input name="price" type="number" min="0" step="0.01" value={createPriceInput} onChange={(event) => setCreatePriceInput(event.target.value)} placeholder="0" required />
                 : <input name="price" type="number" min="0" step="0.01" defaultValue={sourceProduct?.price ?? 0} required />}{initialCreate && createProductType === 'MOBILE' && createPriceInput !== '' && Number.isFinite(Number(createPriceInput)) && <span className="adm-hint">Customer preview: approximately RM{Math.round(Number(createPriceInput) / 24)}/month.</span>}</label>
-              <label className="adm-field">Shipping cost (RM)<input name="shippingCost" type="number" min="0" step="0.01" defaultValue={initialCreate ? createNumericValue(sourceProduct?.shippingCost) : sourceProduct?.shippingCost ?? 0} placeholder="0" /></label>
-              <label className="adm-field">Weight<input name="weight" type="number" min="0" step="0.001" defaultValue={initialCreate ? createNumericValue(sourceProduct?.weight) : sourceProduct?.weight ?? 0} placeholder="0" /><span className="adm-hint">Use the unit expected by Bundle API.</span></label>
+              {createProductType === 'MOBILE' ? <label className="adm-field">Shipping cost (RM)<input name="shippingCost" type="number" min="0" step="0.01" defaultValue={initialCreate ? createNumericValue(sourceProduct?.shippingCost) : sourceProduct?.shippingCost ?? 0} placeholder="0" /></label> : <label className="adm-field">Shipping category<select value={shippingGroup} onChange={(event) => setShippingGroup(event.target.value as CourierGroup | '')} required disabled={!shippingSettings}><option value="">{shippingSettings ? 'Select shipping category' : 'Loading shipping categories…'}</option>{shippingSettings && COURIER_GROUPS.map((group) => <option value={group} key={group}>{shippingSettings.groups[group].label}</option>)}</select><span className="adm-hint">Used by checkout to calculate the OPS courier rate.</span></label>}
+              {createProductType === 'MOBILE' && <label className="adm-field">Weight<input name="weight" type="number" min="0" step="0.001" defaultValue={initialCreate ? createNumericValue(sourceProduct?.weight) : sourceProduct?.weight ?? 0} placeholder="0" /><span className="adm-hint">Use the unit expected by Bundle API.</span></label>}
               <div className="adm-field">
                 <label htmlFor="product-category">Category</label>
                 <select
@@ -724,16 +943,17 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
                   <option value="__custom__">+ Add new category…</option>
                 </select>
                 {customCategory && <input className="adm-category-custom" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Enter new category name" autoFocus />}
-                <input type="hidden" name="categories" value={category.trim()} />
+                <input type="hidden" name="categories" value={JSON.stringify(category.trim() ? [category.trim()] : [])} />
                 <span className="adm-hint">Choose the main category shown in the catalogue.</span>
               </div>
               <div className="adm-field">
                 <span>Tags</span>
                 <TagInput value={tags} onChange={setTags} />
-                <input type="hidden" name="tags" value={(fresh && isProductSetupDraft(fresh) ? [...tags, PRODUCT_SETUP_DRAFT_TAG] : tags).join(',')} />
+                <input type="hidden" name="tags" value={JSON.stringify(fresh && isProductSetupDraft(fresh) ? [...tags, PRODUCT_SETUP_DRAFT_TAG] : tags)} />
                 <span className="adm-hint">Select a suggestion or type a new tag.</span>
               </div>
-              <label className="adm-field full">Description<textarea name="description" defaultValue={sourceProduct?.description || ''} required /></label>
+              <label className="adm-field full">Description<textarea name="description" defaultValue={productContent.description} required /></label>
+              <label className="adm-field full">Product details<textarea name="productDetails" defaultValue={productContent.details.join('\n')} placeholder="One detail per line" maxLength={2000} /><span className="adm-hint">One detail per line. Stored inside the Bundle description field.</span></label>
             </div>
           </section>
           <section className="adm-section">
@@ -753,6 +973,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
                   <button type="button" disabled={!fresh || index === images.length - 1 || busy} onClick={() => orderImage(image.id, 1)}>→</button>
                   <button type="button" disabled={!fresh || busy} onClick={() => mutate(`products/${fresh?.id}/images/${image.id}`, { method: 'DELETE' }, 'Image removed.')}>×</button>
                 </span></div>
+                {colorOption && <label className="adm-image-color"><span>Assign color</span><select aria-label={`Assign color for image ${index + 1}`} value={imageColorAssignments[String(image.id)] || 'all'} onChange={(event) => setImageColorAssignments((current) => ({ ...current, [String(image.id)]: event.target.value === 'all' ? 'all' : Number(event.target.value) }))}><option value="all">All colors / General</option>{colorOption.values.map((value) => <option value={value.id} key={value.id}>{value.value}</option>)}</select></label>}
               </div>)}
               {filePreviews.map((preview, index) => <div className="adm-image-card adm-image-card--pending" key={fileKey(preview.file)}>
                 <img src={preview.url} alt={`New upload ${index + 1}: ${preview.file.name}`} />
@@ -764,6 +985,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
                 <small title={preview.file.name}>
                   {imageType(preview.file) === 'image/webp' ? 'WebP → JPG' : preview.file.name}
                 </small>
+                {colorOption && <label className="adm-image-color"><span>Assign color</span><select aria-label={`Assign color for ${preview.file.name}`} value={pendingImageColors[fileKey(preview.file)] || 'all'} onChange={(event) => setPendingImageColors((current) => ({ ...current, [fileKey(preview.file)]: event.target.value === 'all' ? 'all' : Number(event.target.value) }))}><option value="all">All colors / General</option>{colorOption.values.map((value) => <option value={value.id} key={value.id}>{value.value}</option>)}</select></label>}
               </div>)}
               </div>
               <label className="adm-image-upload">
@@ -778,6 +1000,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
                 <small>JPG, PNG or WebP · max 10MB each</small>
               </label>
               <p className="adm-image-picker-note">When the file picker is open, select the files and press <strong>Open</strong>. For instant preview, close the picker and drag files directly onto this box.</p>
+              {fresh && colorOption && <div className="adm-image-color-save"><span>Several images can use the same color. General images appear for every color.</span><button type="button" className="adm-button" disabled={busy} onClick={saveExistingImageColors}>Save image colors</button></div>}
             </div>
           </section>
           {initialCreate && <section className="adm-section adm-setup-variations">
@@ -818,7 +1041,8 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
               {setupOptions.length === 2 && <div className="adm-warning"><strong>Color + Size:</strong> the backend will verify every generated combination before publishing.</div>}
 
               <div className="adm-form-grid adm-default-stock">
-                <label className="adm-field">Default stock<input type="number" min="0" value={createDefaultInventoryInput} onChange={(event) => setCreateDefaultInventoryInput(event.target.value)} placeholder="0" /><span className="adm-hint">Applied to every combination unless customized below.</span></label>
+                <label className="adm-field">Total stock<input type="number" min="0" value={createDefaultInventoryInput} onChange={(event) => setCreateDefaultInventoryInput(event.target.value)} placeholder="0" /><span className="adm-hint">Allocate this total across every variant below.</span></label>
+                <div className={`adm-stock-allocation ${allocatedStock === Math.max(0, Math.floor(Number(createDefaultInventoryInput) || 0)) ? 'is-valid' : 'is-invalid'}`}><strong>Allocated {allocatedStock} / {Math.max(0, Math.floor(Number(createDefaultInventoryInput) || 0))}</strong><button type="button" className="adm-button secondary small" onClick={splitStockEqually}>Split equally</button></div>
               </div>
 
               {variantCombinations.length > 0 && <details className="adm-variant-customizer">
@@ -838,7 +1062,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
                         <label className="adm-field">Stock<input type="number" min="0" value={draft.inventory ?? ''} placeholder={createDefaultInventoryInput || '0'} onChange={(event) => {
                           const value = event.target.value;
                           setSetupVariantDrafts((current) => ({ ...current, [key]: { ...current[key], inventory: value === '' ? undefined : Number(value) } }));
-                        }} /><span className="adm-hint">Leave blank to use default stock.</span></label>
+                        }} /><span className="adm-hint">Required. All variant stock must equal Total stock.</span></label>
                       </div>
                     </div>;
                   })}
@@ -856,7 +1080,7 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
           <section className="adm-section">
             <h3 className="adm-section-title">Current options</h3>
             {!fresh.options.length && <p className="adm-hint">No options created yet. Options are optional; continue if this product does not need variants.</p>}
-            {fresh.options.map((option) => <div className="adm-option-card" key={option.id}>
+            {visibleOptions.map((option) => <div className="adm-option-card" key={option.id}>
               <div className="adm-option-head">
                 <strong>{option.name}</strong>
                 <button type="button" className="adm-icon-btn" disabled={busy} onClick={() => setPendingOptionDelete(option)} aria-label={`Remove ${option.name}`}><Icon name="trash" /></button>
@@ -881,33 +1105,50 @@ export default function ProductDrawer({ product, createType = 'MOBILE', onClose,
             <h3 className="adm-section-title">Option pricing</h3>
             <div className="adm-form-grid">
               <label className="adm-field">Option<select value={pricingOption} onChange={(event) => { setPricingOption(event.target.value); setPricingValue(''); }}><option value="">Select option</option>{fresh.options.map((option) => <option key={option.id} value={option.name}>{option.name}</option>)}</select></label>
-              <label className="adm-field">Value<select value={pricingValue} onChange={(event) => setPricingValue(event.target.value)}><option value="">Select value</option>{fresh.options.find((option) => option.name === pricingOption)?.values.map((value) => <option key={value.id} value={value.value}>{value.value}</option>)}</select></label>
+              <label className="adm-field">Value<select value={pricingValue} onChange={(event) => setPricingValue(event.target.value)}><option value="">Select value</option>{visibleOptions.find((option) => option.name === pricingOption)?.values.map((value) => <option key={value.id} value={value.value}>{value.value}</option>)}</select></label>
               <label className="adm-field">Adjustment<input type="number" step=".01" value={pricingAdjustment} onChange={(event) => setPricingAdjustment(Number(event.target.value))} /><span className="adm-hint">Positive or negative amount.</span></label>
               <label className="adm-field">Pricing mode<select value={pricingPercentage ? 'percent' : 'fixed'} onChange={(event) => setPricingPercentage(event.target.value === 'percent')}><option value="fixed">Fixed amount (RM)</option><option value="percent">Percentage (%)</option></select></label>
             </div>
             <button className="adm-button" style={{ marginTop: 10 }} disabled={busy} onClick={saveOptionPricing}>Apply option pricing</button>
           </section>}
           {fresh.options.length > 0 && <section className="adm-section">
-            <h3 className="adm-section-title">Edit variation</h3>
+            <h3 className="adm-section-title">Edit option values</h3>
             <div className="adm-form-grid">
-              <label className="adm-field">Option<select value={editOptionId} onChange={(event) => { const option = fresh.options.find((item) => item.id === Number(event.target.value)); setEditOptionId(Number(event.target.value)); setEditOptionName(option?.name || ''); setEditOptionValues(option?.values.map((value) => value.value).join(', ') || ''); }}><option value="0">Select option</option>{fresh.options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}</select></label>
-              <label className="adm-field">Name<input value={editOptionName} onChange={(event) => setEditOptionName(event.target.value)} /></label>
-              <label className="adm-field full">Values<VariationValueInput value={editOptionValues.split(',').map((value) => value.trim()).filter(Boolean)} onChange={(values) => setEditOptionValues(values.join(', '))} placeholder="Type a value and press Enter" /><span className="adm-hint">The backend will repair missing variants after this update.</span></label>
+              <label className="adm-field">Option<select value={editOptionId} onChange={(event) => { const option = visibleOptions.find((item) => item.id === Number(event.target.value)); setEditOptionId(Number(event.target.value)); setEditOptionValues(option?.values.map((value) => value.value).join(', ') || ''); }}><option value="0">Select option</option>{fresh.options.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}</select></label>
+              <label className="adm-field full">Values<VariationValueInput value={editOptionValues.split(',').map((value) => value.trim()).filter(Boolean)} onChange={(values) => setEditOptionValues(values.join(', '))} placeholder="Type a value and press Enter" /><span className="adm-hint">Add a value here, or remove its chip to remove the matching checkout variant. The option name stays unchanged.</span></label>
             </div>
-            <button className="adm-button" style={{ marginTop: 10 }} disabled={busy || !editOptionId} onClick={updateOption}>Update option</button>
+            <button className="adm-button" style={{ marginTop: 10 }} disabled={busy || !editOptionId} onClick={updateOption}>Update values</button>
           </section>}
         </>}
 
         {tab === 'variants' && fresh && <section className="adm-section">
-          <h3 className="adm-section-title">SKU, price & inventory</h3>
-          {variants.map((variant, index) => <div className="adm-variant-row" key={variant.id}>
-            <div className="adm-variant-grid">
-              <label className="adm-field">SKU<input value={variant.sku || ''} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} /></label>
-              <label className="adm-field">Price (RM)<input type="number" step=".01" value={variant.price} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item))} /></label>
-              <label className="adm-field">Inventory<input type="number" value={variant.inventory} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, inventory: Number(event.target.value) } : item))} /></label>
+          <h3 className="adm-section-title">{variantMatrix?.title || 'Inventory by variant'}</h3>
+          {variantMatrix ? <>
+            <p className="adm-hint">Update stock directly in the matching color and size cell.</p>
+            <div className="adm-variant-matrix-wrap">
+              <table className={`adm-variant-matrix${variantMatrix.showTotals ? '' : ' compact'}`}>
+                <thead><tr><th>{variantMatrix.rowLabel} / {variantMatrix.columnLabel}</th>{variantMatrix.columns.map((column) => <th key={column}>{column}</th>)}{variantMatrix.showTotals && <th>Total</th>}</tr></thead>
+                <tbody>{variantMatrix.rows.map((row) => <tr key={row.label}>
+                  <th scope="row">{row.label}</th>
+                  {row.cells.map((cell) => <td key={cell.label}><input aria-label={`${row.label} ${cell.label} inventory`} type="number" min="0" value={cell.variant.inventory} onChange={(event) => setVariants((current) => current.map((item) => item.id === cell.variant.id ? { ...item, inventory: event.target.value === '' ? '' : Number(event.target.value) } : item))} /></td>)}
+                  {variantMatrix.showTotals && <td className="adm-variant-total">{row.cells.reduce((sum, cell) => sum + Math.max(0, Number(cell.variant.inventory) || 0), 0)}</td>}
+                </tr>)}</tbody>
+              </table>
             </div>
-          </div>)}
-          {variants.length ? <button className="adm-button" disabled={busy} onClick={batchSave}>Save all variants</button> : <p className="adm-hint">No variants available. Generate an option first, or finish setup without variants.</p>}
+          </> : <div className="adm-warning">Color and size mapping is incomplete. Use the advanced list below instead of guessing variant relationships.</div>}
+          {variants.length ? <>
+            <details className="adm-variant-advanced" open={!variantMatrix}>
+              <summary>Advanced SKU &amp; Price{variantMatrix?.unmapped.length ? ` · ${variantMatrix.unmapped.length} legacy variants` : ''}</summary>
+              <div className="adm-variant-customizer-list">{variants.map((variant, index) => <div className="adm-variant-row" key={variant.id}>
+                <div className="adm-variant-grid">
+                  <label className="adm-field">SKU<input value={variant.sku || ''} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sku: event.target.value } : item))} /></label>
+                  <label className="adm-field">Price (RM)<input type="number" step=".01" value={variant.price} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item))} /></label>
+                  {(!variantMatrix || variantMatrix.unmapped.some((item) => item.id === variant.id)) && <label className="adm-field">Inventory<input type="number" value={variant.inventory} onChange={(event) => setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, inventory: event.target.value === '' ? '' : Number(event.target.value) } : item))} /></label>}
+                </div>
+              </div>)}</div>
+            </details>
+            <button className="adm-button" disabled={busy} onClick={batchSave}>Save inventory &amp; variants</button>
+          </> : <p className="adm-hint">No variants available. Generate an option first, or finish setup without variants.</p>}
         </section>}
       </div>
 

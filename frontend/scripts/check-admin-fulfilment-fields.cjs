@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const source = fs.readFileSync('src/components/admin/OrderDrawer.tsx', 'utf8');
+assert.equal(source.includes('>IMEI<input'), false, 'IMEI field must be hidden');
+assert.equal(source.includes('<small>NRIC / Passport</small><strong>{orderCustomerId(order)||\'—\'}</strong>'), true, 'full read-only NRIC / Passport must be shown');
+assert.equal(source.includes('orderCustomerId'), true, 'customer ID helper must map Bundle order data');
+assert.equal(source.includes('{pickup&&<section className="adm-section"><h3 className="adm-section-title">Billing Address</h3>'), true, 'billing address must be pickup-only');
+assert.equal(source.includes("imei:f.get('imei')"), false, 'IMEI must not be sent during updates');
+assert.equal(source.includes("customerID:f.get('customerID')"), false, 'customer ID must not be sent during updates');
+assert.equal(source.includes('>Tracking number<input'), true, 'Tracking number must remain');
+assert.equal(source.includes('>Delivery option<select'), true, 'Delivery option must remain');
+assert.equal(source.includes("{pickup?'Pickup status':'Order status'}"), true, 'fulfilment status must remain');
+assert.equal(source.includes('>Courier service<select'), true, 'courier selector must remain for delivery');
+assert.equal(source.includes('Save fields'), false, 'generic Save fields action must be removed');
+assert.equal(source.includes("courierBusy?'Saving…':'Save'"), true, 'courier Save action missing');
+assert.equal(source.includes('courier-save'), true, 'light-blue courier button class missing');
+console.log('admin fulfilment fields regression check passed');

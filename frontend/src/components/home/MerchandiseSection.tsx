@@ -5,14 +5,17 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
+  getMerchandiseGalleryIndexForOption,
+  getMerchandiseOptionIndexForImage,
   getMerchandiseVariantId,
   getMerchandiseVariantInventory,
   merchandiseVariantKey,
   type MerchandiseProduct,
 } from '@/data/merchandise';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
+import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
 import { formatRM } from '@/lib/utils';
-import { minimumOrderLabel } from '@/lib/minimumOrderQuantity';
+import { incrementOrderQuantity, minimumOrderError, minimumOrderLabel } from '@/lib/minimumOrderQuantity';
 import { useCartStore } from '@/store/cartStore';
 
 type CategoryFilter = 'All' | string;
@@ -33,17 +36,15 @@ const SIZE_GUIDE = [
   ['5XL', '62', '82'],
 ];
 
-function getOptionGallery(product: MerchandiseProduct, optionIndex: number) {
-  const option = product.options[optionIndex];
-  if (!option) return [];
-  return Array.from(new Set([option.image, ...(option.gallery || product.gallery || [])]));
+function getOptionGallery(product: MerchandiseProduct, _optionIndex: number) {
+  return getProductGallery(product);
 }
 
 function getProductGallery(product: MerchandiseProduct) {
-  return Array.from(new Set([
-    ...product.options.flatMap((option) => [option.image, ...(option.gallery || [])]),
-    ...(product.gallery || []),
-  ]));
+  const productImages = (product.gallery || []).filter(Boolean);
+  return productImages.length
+    ? productImages
+    : product.options.map((option) => option.image).filter(Boolean);
 }
 
 function preloadGallery(images: string[]) {
@@ -55,20 +56,73 @@ function preloadGallery(images: string[]) {
   });
 }
 
+type FlySource = { src: string; rect: DOMRect };
+
+function animateProductToCart(source: FlySource | null) {
+  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-cart-target]'))
+    .find((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  if (!target) return;
+
+  const pulseTarget = () => {
+    target.classList.remove('is-fly-target');
+    void target.offsetWidth;
+    target.classList.add('is-fly-target');
+    window.setTimeout(() => target.classList.remove('is-fly-target'), 560);
+  };
+  if (!source || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    pulseTarget();
+    return;
+  }
+
+  const size = Math.min(150, source.rect.width, source.rect.height);
+  const startLeft = source.rect.left + (source.rect.width - size) / 2;
+  const startTop = source.rect.top + (source.rect.height - size) / 2;
+  const targetRect = target.getBoundingClientRect();
+  const image = document.createElement('img');
+  image.className = 'merch-fly-to-cart';
+  image.src = source.src;
+  image.alt = '';
+  image.style.left = `${startLeft}px`;
+  image.style.top = `${startTop}px`;
+  image.style.width = `${size}px`;
+  image.style.height = `${size}px`;
+  document.body.appendChild(image);
+
+  const x = targetRect.left + targetRect.width / 2 - (startLeft + size / 2);
+  const y = targetRect.top + targetRect.height / 2 - (startTop + size / 2);
+  image.animate([
+    { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 1, offset: 0 },
+    { transform: `translate3d(${x * 0.52}px, ${y * 0.24 - 72}px, 0) scale(0.82)`, opacity: 1, offset: 0.52 },
+    { transform: `translate3d(${x}px, ${y}px, 0) scale(0.24)`, opacity: 0.95, offset: 1 },
+  ], { duration: 1050, easing: 'cubic-bezier(.22,.72,.18,1)', fill: 'forwards' })
+    .finished.finally(() => {
+      image.remove();
+      pulseTarget();
+    });
+}
+
 export default function MerchandiseSection() {
   const {
-    products: merchandiseProducts,
+    products: stagingProducts,
     loading: productsLoading,
     error: productsError,
     retry: retryProducts,
   } = useMerchandiseProducts();
+  const [catalogueProducts, setCatalogueProducts] = useState<MerchandiseProduct[] | null>(null);
+  const merchandiseProducts = catalogueProducts || stagingProducts;
   const items = useCartStore((state) => state.items);
   const addItem = useCartStore((state) => state.addItem);
+  const removeItem = useCartStore((state) => state.removeItem);
   const [selectedProduct, setSelectedProduct] = useState<MerchandiseProduct | null>(null);
   const [optionIndex, setOptionIndex] = useState(0);
+  const [optionExplicitlySelected, setOptionExplicitlySelected] = useState(true);
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [optionImageOverride, setOptionImageOverride] = useState('');
   const [fullscreenImageIndex, setFullscreenImageIndex] = useState(0);
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('All');
@@ -84,12 +138,17 @@ export default function MerchandiseSection() {
   const sizeGuideHistoryRef = useRef(false);
 
   useEffect(() => {
+    if (productsLoading) return;
+    let active = true;
+    setCatalogueProducts(null);
+    fetchCatalogueStorefrontProducts(stagingProducts).then((products) => {
+      if (active) setCatalogueProducts(products);
+    });
+    return () => { active = false; };
+  }, [productsLoading, stagingProducts]);
+
+  useEffect(() => {
     setPortalReady(true);
-    document.body.classList.add('merchandise-active');
-    const freshworks = (window as Window & {
-      FreshworksWidget?: (...args: unknown[]) => void;
-    }).FreshworksWidget;
-    freshworks?.('hide');
     const handlePopState = () => {
       if (galleryHistoryRef.current) {
         galleryHistoryRef.current = false;
@@ -110,8 +169,6 @@ export default function MerchandiseSection() {
     };
     window.addEventListener('popstate', handlePopState);
     return () => {
-      document.body.classList.remove('merchandise-active');
-      freshworks?.('show');
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
@@ -178,9 +235,11 @@ export default function MerchandiseSection() {
     }
     setSelectedProduct(product);
     setOptionIndex(0);
+    setOptionExplicitlySelected(!(/^variant$/i.test(product.optionLabel || '') && product.options.length > 1));
     setSelectedSize('');
     setQuantity(product.minimumOrderQuantity);
     setActiveImageIndex(0);
+    setOptionImageOverride('');
     setFullscreenImageIndex(0);
     setAutoplayEnabled(true);
     setShowSizeGuide(false);
@@ -250,7 +309,7 @@ export default function MerchandiseSection() {
     () => selectedProduct ? getProductGallery(selectedProduct) : [],
     [selectedProduct],
   );
-  const selectedImage = gallery[activeImageIndex] || selectedOption?.image || '';
+  const selectedImage = optionImageOverride || gallery[activeImageIndex] || selectedOption?.image || '';
   const fullscreenImage = productGallery[fullscreenImageIndex] || selectedImage;
   const selectedBundleVariantId = selectedProduct && selectedOption
     ? getMerchandiseVariantId(selectedProduct, selectedOption.name, selectedSize || undefined)
@@ -290,10 +349,20 @@ export default function MerchandiseSection() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     const timer = window.setInterval(() => {
-      setActiveImageIndex((index) => (index + 1) % gallery.length);
+      setOptionImageOverride('');
+      setActiveImageIndex((index) => {
+        const next = (index + 1) % gallery.length;
+        const nextOption = getMerchandiseOptionIndexForImage(selectedProduct, gallery[next]);
+        if (nextOption >= 0 && nextOption !== optionIndex) {
+          setOptionIndex(nextOption);
+          setSelectedSize('');
+          return next;
+        }
+        return next;
+      });
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [selectedProduct, gallery.length, autoplayEnabled]);
+  }, [selectedProduct, gallery, optionIndex, autoplayEnabled]);
 
   useEffect(() => {
     if (!cartBumped) return;
@@ -305,21 +374,36 @@ export default function MerchandiseSection() {
     if (!selectedProduct) return;
     preloadGallery(getOptionGallery(selectedProduct, index));
     setOptionIndex(index);
+    setOptionExplicitlySelected(true);
     setSelectedSize('');
-    setActiveImageIndex(0);
+    const galleryIndex = getMerchandiseGalleryIndexForOption(selectedProduct, index);
+    setOptionImageOverride(galleryIndex >= 0 ? '' : selectedProduct.options[index]?.image || '');
+    setActiveImageIndex(Math.max(0, galleryIndex));
     setAutoplayEnabled(true);
     setError('');
   };
 
   const showImage = (index: number) => {
+    if (!selectedProduct) return;
+    setOptionImageOverride('');
+    const nextOption = getMerchandiseOptionIndexForImage(selectedProduct, gallery[index]);
+    if (nextOption >= 0 && nextOption !== optionIndex) {
+      setOptionIndex(nextOption);
+      setSelectedSize('');
+      setError('');
+    }
     setActiveImageIndex(index);
     setAutoplayEnabled(false);
   };
 
   const stepImage = (direction: -1 | 1) => {
+    if (!gallery.length) return;
+    if (optionImageOverride) {
+      showImage(direction < 0 ? gallery.length - 1 : 0);
+      return;
+    }
     if (gallery.length < 2) return;
-    setActiveImageIndex((index) => (index + direction + gallery.length) % gallery.length);
-    setAutoplayEnabled(false);
+    showImage((activeImageIndex + direction + gallery.length) % gallery.length);
   };
 
   const stepFullscreenImage = (direction: -1 | 1) => {
@@ -353,8 +437,20 @@ export default function MerchandiseSection() {
 
   const handleAddToCart = () => {
     if (!selectedProduct || !selectedOption) return;
+    const visibleSource = Array.from(document.querySelectorAll<HTMLElement>('[data-fly-source]'))
+      .find((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+    const flySource = visibleSource
+      ? { src: selectedImage, rect: visibleSource.getBoundingClientRect() }
+      : null;
     if (selectedProduct.soldOut) {
       setError('This item is currently unavailable.');
+      return;
+    }
+    if (!optionExplicitlySelected) {
+      setError('Please select a variant.');
       return;
     }
     if (availableSizes && !selectedSize) {
@@ -370,12 +466,30 @@ export default function MerchandiseSection() {
       setError('This option is not available for checkout yet. Please refresh and try again.');
       return;
     }
+    if (quantity === 0) {
+      const matchingItems = items.filter((item) => (
+        item.type === 'merchandise' && item.bundleVariantId === bundleVariantId
+      ));
+      if (!matchingItems.length) {
+        setError('This variation is not in your cart.');
+        return;
+      }
+      matchingItems.forEach((item) => removeItem(item.id));
+      setError('');
+      closeProduct();
+      return;
+    }
+
     const inventory = getMerchandiseVariantInventory(selectedProduct, bundleVariantId);
     const alreadyInCart = items.reduce((total, item) => total + (
       item.type === 'merchandise' && item.bundleVariantId === bundleVariantId ? item.quantity : 0
     ), 0);
     const remaining = Math.max(0, inventory - alreadyInCart);
-    if (quantity < selectedProduct.minimumOrderQuantity || quantity > remaining) {
+    if (quantity < selectedProduct.minimumOrderQuantity) {
+      setError(minimumOrderError(selectedProduct.minimumOrderQuantity));
+      return;
+    }
+    if (quantity > remaining) {
       setError(remaining > 0
         ? 'The selected quantity exceeds the current stock limit.'
         : 'This variation is currently unavailable.');
@@ -391,7 +505,7 @@ export default function MerchandiseSection() {
       slug: selectedProduct.slug,
       name: selectedProduct.name,
       description: selectedProduct.unitLabel || selectedProduct.description,
-      variant: selectedProduct.options.length > 1 ? selectedOption.name : undefined,
+      variant: selectedOption.name,
       size: selectedSize || undefined,
       image: selectedOption.image,
       price: selectedVariantPrice,
@@ -403,14 +517,14 @@ export default function MerchandiseSection() {
     window.requestAnimationFrame(() => setCartBumped(true));
     setError('');
     closeProduct();
+    window.setTimeout(() => animateProductToCart(flySource), 80);
   };
 
   return (
     <div className="merch-catalog">
       <div className="merch-catalog-heading">
-        <span className="merch-eyebrow">tone wow Collection</span>
         <h2>Merchandise</h2>
-        <p>Shop official tone wow merchandise and SIM cards for individual or bulk orders.</p>
+        <p>Shop official tone wow merchandise and SIM cards.</p>
       </div>
 
       <div className="merch-category-filters" role="tablist" aria-label="Merchandise categories">
@@ -428,10 +542,10 @@ export default function MerchandiseSection() {
         ))}
       </div>
 
-      {productsLoading && (
+      {productsLoading && merchandiseProducts.length === 0 && (
         <div className="merch-api-notice" role="status">Loading merchandise...</div>
       )}
-      {productsError && (
+      {productsError && merchandiseProducts.length === 0 && (
         <div className="merch-api-notice is-error" role="alert">
           <span>{productsError}</span>
           <button type="button" onClick={retryProducts}>Retry</button>
@@ -472,7 +586,7 @@ export default function MerchandiseSection() {
                 )}
                 <Image
                   className="merch-card-main-image"
-                  src={product.options[0].image}
+                  src={product.gallery?.[0] || product.options[0].image}
                   alt={product.name}
                   fill
                   priority={productIndex < 4}
@@ -522,6 +636,7 @@ export default function MerchandiseSection() {
         <Link
           href="/cart"
           className={`merch-floating-cart${cartBumped ? ' is-bumped' : ''}`}
+          data-cart-target
           aria-label={`Open cart${cartCount > 0 ? `, ${cartCount} items` : ''}`}
         >
           <svg
@@ -579,6 +694,7 @@ export default function MerchandiseSection() {
             <section className="merch-mobile-summary">
               <div
                 className="merch-mobile-gallery"
+                data-fly-source
                 onTouchStart={(event) => handleGalleryTouchStart(event.touches[0]?.clientX)}
                 onTouchEnd={(event) => handleGalleryTouchEnd(event.changedTouches[0]?.clientX)}
               >
@@ -615,7 +731,7 @@ export default function MerchandiseSection() {
                     <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
                   </svg>
                 </button>
-                {gallery.length > 1 && (
+                {gallery.length > 1 && !optionImageOverride && (
                   <span className="merch-mobile-image-count">
                     {activeImageIndex + 1}/{gallery.length}
                   </span>
@@ -641,6 +757,7 @@ export default function MerchandiseSection() {
             <section className="merch-modal-media" aria-label={`${selectedProduct.name} images`}>
               <div
                 className="merch-modal-main-image"
+                data-fly-source
                 onTouchStart={(event) => handleGalleryTouchStart(event.touches[0]?.clientX)}
                 onTouchEnd={(event) => handleGalleryTouchEnd(event.changedTouches[0]?.clientX)}
               >
@@ -681,7 +798,7 @@ export default function MerchandiseSection() {
                     <button
                       key={`${image}-${index}`}
                       type="button"
-                      className={activeImageIndex === index ? 'active' : ''}
+                      className={!optionImageOverride && activeImageIndex === index ? 'active' : ''}
                       onClick={() => showImage(index)}
                       aria-label={`View image ${index + 1}`}
                     >
@@ -696,7 +813,7 @@ export default function MerchandiseSection() {
                     <button
                       key={`dot-${image}-${index}`}
                       type="button"
-                      className={activeImageIndex === index ? 'active' : ''}
+                      className={!optionImageOverride && activeImageIndex === index ? 'active' : ''}
                       onClick={() => showImage(index)}
                       aria-label={`View image ${index + 1}`}
                     />
@@ -737,11 +854,14 @@ export default function MerchandiseSection() {
                         disabled={!(option.sizes || selectedProduct.sizes) && !getMerchandiseVariantId(selectedProduct, option.name)}
                       >
                         {isColourOption(selectedProduct.optionLabel) ? (
-                          <span
+                          <>
+                            <span
                             className="merch-colour-swatch"
                             style={{ background: option.swatch || '#e2e8f0' }}
                             aria-hidden="true"
                           />
+                          <span className="merch-colour-name">{option.name}</span>
+                        </>
                         ) : option.name}
                       </button>
                     ))}
@@ -798,7 +918,7 @@ export default function MerchandiseSection() {
                   <div className="merch-quantity" aria-label="Quantity">
                     <button
                       type="button"
-                      onClick={() => setQuantity((value) => Math.max(selectedProduct.minimumOrderQuantity, value - 1))}
+                      onClick={() => setQuantity((value) => value <= selectedProduct.minimumOrderQuantity ? 0 : value - 1)}
                       aria-label="Reduce quantity"
                     >
                       −
@@ -807,7 +927,11 @@ export default function MerchandiseSection() {
                     <button
                       type="button"
                       disabled={quantity >= remainingVariantInventory}
-                      onClick={() => setQuantity((value) => Math.min(remainingVariantInventory, value + 1))}
+                      onClick={() => setQuantity((value) => incrementOrderQuantity(
+                        value,
+                        selectedProduct.minimumOrderQuantity,
+                        remainingVariantInventory,
+                      ))}
                       aria-label="Increase quantity"
                     >
                       +
@@ -816,15 +940,20 @@ export default function MerchandiseSection() {
                   <button
                     type="button"
                     className="btn btn-primary merch-add-button"
+                    disabled={quantity === 0 && selectedVariantInCart === 0}
                     onClick={handleAddToCart}
                   >
-                    Add to Cart · {formatRM(selectedVariantPrice * quantity)}
+                    {quantity === 0 ? 'Remove from Cart' : <>Add to Cart · {formatRM(selectedVariantPrice * quantity)}</>}
                   </button>
                 </div>
               )}
               {error && <p className="merch-form-error" role="alert">{error}</p>}
 
               <div className="merch-product-accordions">
+                <details>
+                  <summary>Description</summary>
+                  <p>{selectedProduct.description}</p>
+                </details>
                 {selectedProduct.features && (
                   <details>
                     <summary>Product details</summary>
@@ -835,10 +964,6 @@ export default function MerchandiseSection() {
                     </ul>
                   </details>
                 )}
-                <details>
-                  <summary>Description</summary>
-                  <p>{selectedProduct.description}</p>
-                </details>
               </div>
             </section>
 
@@ -856,7 +981,7 @@ export default function MerchandiseSection() {
                   <div className="merch-quantity" aria-label="Quantity">
                     <button
                       type="button"
-                      onClick={() => setQuantity((value) => Math.max(selectedProduct.minimumOrderQuantity, value - 1))}
+                      onClick={() => setQuantity((value) => value <= selectedProduct.minimumOrderQuantity ? 0 : value - 1)}
                       aria-label="Reduce quantity"
                     >
                       −
@@ -865,7 +990,11 @@ export default function MerchandiseSection() {
                     <button
                       type="button"
                       disabled={quantity >= remainingVariantInventory}
-                      onClick={() => setQuantity((value) => Math.min(remainingVariantInventory, value + 1))}
+                      onClick={() => setQuantity((value) => incrementOrderQuantity(
+                        value,
+                        selectedProduct.minimumOrderQuantity,
+                        remainingVariantInventory,
+                      ))}
                       aria-label="Increase quantity"
                     >
                       +
@@ -874,9 +1003,10 @@ export default function MerchandiseSection() {
                   <button
                     type="button"
                     className="btn btn-primary merch-add-button"
+                    disabled={quantity === 0 && selectedVariantInCart === 0}
                     onClick={handleAddToCart}
                   >
-                    Add to Cart · {formatRM(selectedVariantPrice * quantity)}
+                    {quantity === 0 ? 'Remove from Cart' : <>Add to Cart · {formatRM(selectedVariantPrice * quantity)}</>}
                   </button>
                 </div>
               )}

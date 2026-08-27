@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const source=fs.readFileSync('src/lib/admin/simRange.server.ts','utf8');
+const route=fs.readFileSync('src/app/api/admin/[...path]/route.ts','utf8');
+assert(source.includes('/sim/x2/validate/productcode'),'x2 validation API missing');
+assert(source.includes('Array.from({ length: 10 }'),'random final-digit search missing');
+assert(source.includes("/^\\d{10,11}$/"),'10-digit stem input support missing');
+assert(source.includes('preferredSerial'),'optional 11th digit optimisation missing');
+assert(source.includes('STEM_CONCURRENCY = 4'),'validation concurrency guard missing');
+assert(!source.includes('authorization:'),'public SIM validation must not send an access token');
+assert(source.includes("createCipheriv('aes-256-gcm'"),'PUK assignment token must be encrypted');
+assert(source.includes('serials: validated.map(({ simSerial, simCode, simType })'),'browser-safe response must omit PUK');
+assert(route.includes('sim-range-validation')&&route.includes('sim-range-assignments'),'admin range routes missing');
+assert(route.includes('puk: source.puk'),'validated PUK must be forwarded only during Bundle save');
+console.log('admin SIM range API check passed');

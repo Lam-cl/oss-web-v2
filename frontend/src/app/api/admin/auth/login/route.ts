@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   if (!requestIsSameOrigin(request)) return safeError(403);
   let credentials: { email?: string; password?: string };
   try { credentials = await request.json(); } catch { return safeError(400); }
-  if (!credentials.email || !credentials.password) return safeError(400, { message: 'E-mel dan kata laluan diperlukan.' });
+  if (!credentials.email || !credentials.password) return safeError(400, { message: 'Email and password are required.' });
 
   let upstream: Response;
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   const token = payload.token || payload.accessToken || payload.access_token;
   const user = payload.user || payload.data?.user;
-  if (!token || !user || !ADMIN_ROLES.includes(user.role)) return safeError(403, { message: 'Hanya akaun ADMIN atau STAFF boleh mengakses panel ini.' });
+  if (!token || !user || !ADMIN_ROLES.includes(user.role)) return safeError(403, { message: 'Only ADMIN or STAFF accounts can access this panel.' });
 
   const expiresAt = Math.min(Date.now() + SESSION_MAX_AGE * 1000, jwtExpiry(token) || Number.POSITIVE_INFINITY);
   const session = {
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   };
   const response = NextResponse.json({ user: session.user, expiresAt }, { headers: { 'cache-control': 'no-store' } });
   let cookie: string;
-  try { cookie = await createSessionCookie(session); } catch { return safeError(500, { message: 'Konfigurasi sesi admin belum lengkap.' }); }
+  try { cookie = await createSessionCookie(session); } catch { return safeError(500, { message: 'The admin session configuration is incomplete.' }); }
   response.cookies.set(ADMIN_COOKIE, cookie, {
     httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
   });

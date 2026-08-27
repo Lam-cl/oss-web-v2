@@ -73,6 +73,7 @@ export interface CartItem {
   quantity: number;
   minimumOrderQuantity?: number;
   availableQuantity?: number;
+  selectionRequired?: 'Variant selection required';
   simType?: string;
   name: string;
   description?: string;

@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const page=fs.readFileSync('src/app/checkout/page.tsx','utf8');
+const route=fs.readFileSync('src/app/api/bundle/checkout/route.ts','utf8');
+assert.equal(page.includes("from '@/lib/pickup';")&&page.includes('pickupAddress'),true,'checkout must use shared pickup marker');
+assert.equal(page.includes("pickupDate: ''"),true,'pickup date state missing');
+assert.equal(page.includes('name="pickupDate"'),true,'collection date field missing');
+assert.equal(page.includes("address1: pickupAddress(form.pickupDate)"),true,'pickup date not persisted in Bundle address');
+assert.equal(page.includes("{pickupOption === 'self' ? 'Billing Address' : 'Shipping Address'}"),true,'pickup must render Billing Address while delivery renders Shipping Address');
+assert.match(route,/deliveryOption\s*===\s*["']PICKUP["']\s*&&\s*!pickupDate/,'server pickup-date validation missing');
+assert.equal(page.includes("pickupOption === 'self' && (!isKualaLumpurWorkingDay(form.pickupDate)"),true,'submit must reject non-working pickup');
+assert.equal(page.includes('const pickupMinimumDate = minimumPickupDate(malaysiaDate());'),true,'checkout minimum pickup date missing');
+assert.equal(page.includes('(date) => !isKualaLumpurWorkingDay(localDateToPickupDate(date))'),true,'calendar must disable KL non-working days');
+assert.equal(page.includes('{ before: pickupMinimumLocalDate }'),true,'calendar must disable dates before third working day');
+assert.equal(page.includes('Available after 3 Kuala Lumpur working days.'),true,'lead-time guidance missing');
+assert.equal(route.includes('const earliestPickupDate = minimumPickupDate(malaysiaDate());'),true,'server minimum pickup date missing');
+assert.equal(route.includes('!isKualaLumpurWorkingDay(pickupDate)'),true,'server KL holiday validation missing');
+assert.equal(route.includes('pickupDate < earliestPickupDate'),true,'server lead-time validation missing');
+console.log('checkout self-pickup date check passed');

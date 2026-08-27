@@ -22,14 +22,14 @@ export async function getAdminSession(request: NextRequest) {
 }
 
 export function safeError(status: number, payload?: unknown) {
-  let message = 'Permintaan tidak dapat diproses. Sila cuba lagi.';
-  if (status === 400) message = 'Maklumat yang dihantar tidak lengkap atau tidak sah.';
-  if (status === 401) message = 'Sesi anda telah tamat. Sila log masuk semula.';
-  if (status === 403) message = 'Akaun anda tidak mempunyai kebenaran untuk tindakan ini.';
-  if (status === 404) message = 'Rekod yang diminta tidak ditemui.';
-  if (status === 409) message = 'Maklumat ini bercanggah dengan rekod sedia ada.';
-  if (status === 413) message = 'Fail yang dimuat naik terlalu besar.';
-  if (status >= 500) message = 'Perkhidmatan Bundle API sedang bermasalah. Sila cuba sebentar lagi.';
+  let message = 'The request could not be processed. Please try again.';
+  if (status === 400) message = 'The submitted information is incomplete or invalid.';
+  if (status === 401) message = 'Your session has expired. Please sign in again.';
+  if (status === 403) message = 'Your account does not have permission to perform this action.';
+  if (status === 404) message = 'The requested record was not found.';
+  if (status === 409) message = 'This information conflicts with an existing record.';
+  if (status === 413) message = 'The uploaded file is too large.';
+  if (status >= 500) message = 'The Bundle API service is temporarily unavailable. Please try again shortly.';
 
   if (payload && typeof payload === 'object') {
     const native = (payload as { message?: unknown }).message;
@@ -49,6 +49,6 @@ export function sanitizePayload(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizePayload);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => !/password|passwordHash|token|accessToken|refreshToken|secret|credential/i.test(key))
+    .filter(([key]) => !/password|passwordHash|token|accessToken|refreshToken|secret|credential|puk/i.test(key))
     .map(([key, item]) => [key, sanitizePayload(item)]));
 }

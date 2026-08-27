@@ -172,11 +172,15 @@ export interface BundleGuestCheckout {
   isGuest: true;
   deliveryOption: 'DELIVER' | 'PICKUP';
   agentId?: string;
+  paymentMethodId: '16' | '2' | '3';
+  voucherCode?: string;
+  expectedTotal: number;
 }
 
 export async function initiateBundleGuestPayment(data: BundleGuestCheckout): Promise<{
   success: boolean;
   orderId?: string;
+  referenceNumber?: string;
   paymentUrl?: string;
   paymentParams?: Record<string, string>;
   redirectMethod?: 'GET' | 'POST';

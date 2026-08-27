@@ -2,6 +2,15 @@ export const PRODUCT_SETUP_DRAFT_TAG = '_tonewow_setup_draft';
 
 export type ProductTagLike = string | { name?: string | null };
 
+export function splitStockAllocation(total: number, count: number) {
+  const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
+  const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  if (!safeCount) return [];
+  const base = Math.floor(safeTotal / safeCount);
+  const remainder = safeTotal % safeCount;
+  return Array.from({ length: safeCount }, (_, index) => base + (index < remainder ? 1 : 0));
+}
+
 export function productTagName(tag: ProductTagLike) {
   return typeof tag === 'string' ? tag : tag?.name || '';
 }

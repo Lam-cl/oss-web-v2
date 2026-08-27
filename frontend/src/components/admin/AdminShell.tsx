@@ -9,6 +9,8 @@ const links = [
   { href: '/admin', label: 'Dashboard', icon: 'dashboard' },
   { href: '/admin/products', label: 'Products', icon: 'products' },
   { href: '/admin/orders', label: 'Orders', icon: 'orders' },
+  { href: '/admin/vouchers', label: 'Promo Codes', icon: 'voucher' },
+  { href: '/admin/shipping', label: 'Shipping', icon: 'shipping' },
 ];
 
 export default function AdminShell({ title, eyebrow, actions, children }: { title: string; eyebrow?: string; actions?: React.ReactNode; children: React.ReactNode }) {

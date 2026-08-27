@@ -1,0 +1,13 @@
+{
+  "name": "tonewow-services",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:data-api": "npm run build --workspace @tonewow/data-api",
+    "test:data-api": "npm run test --workspace @tonewow/data-api"
+  }
+}

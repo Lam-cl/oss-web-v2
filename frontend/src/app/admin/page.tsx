@@ -6,7 +6,7 @@ import AdminShell from '@/components/admin/AdminShell';
 import { Icon } from '@/components/admin/Icons';
 import { ErrorState, Skeleton, StatusBadge } from '@/components/admin/UI';
 import { adminFetch } from '@/lib/admin/client';
-import { dateTime, money, Order, orderCustomer, orderTotal, Paged, Product } from '@/lib/admin/types';
+import { dateTime, isPaymentConfirmedOrder, money, Order, orderCustomer, orderFulfilmentStatus, orderTotal, Paged, Product } from '@/lib/admin/types';
 
 export default function Dashboard() {
   const [products, setProducts] = useState<Paged<Product> | null>(null); const [orders, setOrders] = useState<Paged<Order> | null>(null); const [error, setError] = useState('');
@@ -22,7 +22,7 @@ export default function Dashboard() {
         <article className="adm-stat"><header><span>Awaiting action</span><span>PENDING</span></header><strong>{stats.pending}</strong><p>Orders not yet processed</p></article>
         <article className="adm-stat"><header><span>Paid / processing</span><span>ACTIVE</span></header><strong>{stats.paid + stats.processing}</strong><p>{stats.paid} paid · {stats.processing} processing</p></article>
       </section>
-      <section className="adm-grid-2"><div className="adm-panel"><header className="adm-panel-head"><h2>Recent orders</h2><Link href="/admin/orders">View all</Link></header><div className="adm-table-wrap"><table className="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Total</th><th>Created</th></tr></thead><tbody>{orders.data.slice(0, 7).map((order) => <tr key={order.id}><td data-label="Order"><strong>#{order.id}</strong></td><td data-label="Customer">{orderCustomer(order)}</td><td data-label="Status"><StatusBadge status={order.status}/></td><td data-label="Total">{money(orderTotal(order))}</td><td data-label="Created">{dateTime(order.createdAt)}</td></tr>)}</tbody></table></div></div>
+      <section className="adm-grid-2"><div className="adm-panel"><header className="adm-panel-head"><h2>Recent orders</h2><Link href="/admin/orders">View all</Link></header><div className="adm-table-wrap"><table className="adm-table"><thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Total</th><th>Created</th></tr></thead><tbody>{orders.data.filter(isPaymentConfirmedOrder).slice(0, 7).map((order) => <tr key={order.id}><td data-label="Order"><strong>#{order.id}</strong></td><td data-label="Customer">{orderCustomer(order)}</td><td data-label="Status"><StatusBadge status={orderFulfilmentStatus(order)}/></td><td data-label="Total">{money(orderTotal(order))}</td><td data-label="Created">{dateTime(order.createdAt)}</td></tr>)}</tbody></table></div></div>
       <aside className="adm-panel"><header className="adm-panel-head"><h2>Quick actions</h2></header><div className="adm-quick"><Link href="/admin/products?create=1"><span><Icon name="plus"/></span><span><strong>Create product</strong><small>Add mobile or merchandise</small></span><Icon name="arrow"/></Link><Link href="/admin/products"><span><Icon name="products"/></span><span><strong>Manage inventory</strong><small>Prices, variants and stock</small></span><Icon name="arrow"/></Link><Link href="/admin/orders?status=PENDING"><span><Icon name="orders"/></span><span><strong>Pending orders</strong><small>Review orders awaiting action</small></span><Icon name="arrow"/></Link></div></aside></section>
     </>}
   </AdminShell>;

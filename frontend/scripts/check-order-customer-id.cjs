@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+require.extensions['.ts']=(module,filename)=>module._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,filename);
+const sandboxModule={exports:require('../src/lib/admin/types.ts')};
+const {orderCustomerId}=sandboxModule.exports;
+assert.equal(orderCustomerId({customerID:'DIRECT-123'}),'DIRECT-123');
+assert.equal(orderCustomerId({billingAddress:{idNumber:'900101011234'}}),'900101011234');
+assert.equal(orderCustomerId({billingAddress:JSON.stringify({idNumber:'A1234567'})}),'A1234567');
+assert.equal(orderCustomerId({shippingAddresses:{idNumber:'PASS-88'}}),'PASS-88');
+assert.equal(orderCustomerId({}),'');
+console.log('order NRIC/passport mapping check passed');

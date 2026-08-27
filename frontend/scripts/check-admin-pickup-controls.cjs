@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const source = fs.readFileSync('src/components/admin/OrderDrawer.tsx', 'utf8');
+assert.match(source, /import\s*\{[\s\S]*pickupBundleStatus[\s\S]*pickupStatus[\s\S]*\}\s*from\s*["']@\/lib\/pickup["']/, 'pickup status mapper missing');
+assert.match(source, /orderFulfilmentStatus\(order\)/, 'drawer badge must use pickup-facing status');
+assert.match(source, /orderPickupDate\(order\)/, 'collection date must be shown in admin');
+assert.match(source, /Collection date/, 'collection date label missing');
+assert.match(source, /Pickup status/, 'pickup status control missing');
+assert.match(source, /<option\s+value=["']PENDING_COLLECTION["']\s+disabled>/, 'pending collection display missing');
+assert.match(source, /<option\s+value=["']COMPLETED["']>/, 'completed action missing');
+assert.match(source, /pickupTerminalStatus[\s\S]*?<option value=\{pickupFacingStatus\} disabled>/, 'cancelled/refunded pickup status must be shown read-only');
+assert.match(source, /pickupBundleStatus\(pendingStatus\)/, 'completed must map to Bundle DELIVERED');
+const ordersPage = fs.readFileSync('src/app/admin/orders/page.tsx', 'utf8');
+const dashboard = fs.readFileSync('src/app/admin/page.tsx', 'utf8');
+assert.match(ordersPage, /orderFulfilmentStatus\(order\)/, 'orders list must show pickup-facing status');
+assert.match(dashboard, /orderFulfilmentStatus\(order\)/, 'dashboard must show pickup-facing status');
+console.log('admin pickup controls check passed');

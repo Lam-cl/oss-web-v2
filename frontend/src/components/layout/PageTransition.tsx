@@ -6,6 +6,17 @@ import { AnimatePresence, motion } from 'framer-motion';
 export default function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
+  // Payment outcomes replace one another based on gateway/status evidence.
+  // Keeping the outgoing route mounted for an exit animation can briefly show
+  // the processing spinner after the URL has already become success/failed.
+  if (pathname.startsWith('/payment/')) {
+    return (
+      <div style={{ background: 'var(--bg, #f8fafc)', minHeight: '100vh' }}>
+        {children}
+      </div>
+    );
+  }
+
   return (
     /* overflow:hidden prevents horizontal bleed during slide */
     <div style={{ overflow: 'hidden', position: 'relative' }}>

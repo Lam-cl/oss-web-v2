@@ -38,7 +38,7 @@ export function validateHiddenOptionValueIds(value: unknown) {
     ? (value as { valueIds?: unknown }).valueIds
     : value;
   if (!Array.isArray(input)) throw new Error('Option value IDs are required.');
-  const valueIds = Array.from(new Set(input.map(positiveId))); 
+  const valueIds = Array.from(new Set(input.map(positiveId)));
   if (valueIds.some((id) => !id)) throw new Error('Each hidden option value needs a valid option value ID.');
   if (valueIds.length > 500) throw new Error('Too many hidden option values.');
   return valueIds;

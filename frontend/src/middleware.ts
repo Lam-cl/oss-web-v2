@@ -49,6 +49,31 @@ export async function middleware(req: NextRequest) {
     return withOrigin(response);
   }
 
+  const merchandiseEnabled = process.env.NEXT_PUBLIC_ENABLE_MERCHANDISE?.trim().toLowerCase() === 'true';
+  if (!merchandiseEnabled) {
+    const merchandisePage = pathname === '/merchandise' || pathname.startsWith('/merchandise/')
+      || pathname === '/checkout' || pathname.startsWith('/checkout/');
+    const merchandiseApi = pathname === '/bundle/checkout' || pathname === '/api/bundle/checkout'
+      || pathname === '/bundle/merchandise' || pathname === '/api/bundle/merchandise'
+      || pathname === '/catalogue-products-api' || pathname.startsWith('/catalogue-products-api/')
+      || pathname === '/api/catalogue-products' || pathname.startsWith('/api/catalogue-products/')
+      || pathname === '/shipping-settings-api' || pathname.startsWith('/shipping-settings-api/');
+
+    if (merchandiseApi) {
+      return NextResponse.json(
+        { message: 'Not found.' },
+        { status: 404, headers: { 'cache-control': 'private, no-store, max-age=0' } },
+      );
+    }
+    if (merchandisePage) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/';
+      url.search = '';
+      url.hash = 'shop';
+      return withOrigin(NextResponse.redirect(url, 307));
+    }
+  }
+
   // Preserve the existing protection for direct/specialized purchase links.
   if (
     pathname === '/sim/purchase' &&

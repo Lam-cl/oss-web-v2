@@ -100,5 +100,3 @@ const fs = require('node:fs');
   assert(!source.includes('/.data') && !source.includes("'.data") && !source.includes('".data'), 'auditor must not write .data');
   console.log('product control audit check passed');
 })().catch((error) => { console.error(error); process.exit(1); });
-
-

@@ -14,7 +14,10 @@ export default function Header() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const simID = params.get('simID');
-    setLogoOnlyHeader(pathname === '/sim/purchase' && (simID === 'superlite' || simID === 'superliteplus'));
+    setLogoOnlyHeader(
+      (pathname === '/sim/purchase' && (simID === 'superlite' || simID === 'superliteplus')) ||
+      pathname === '/merdeka-promo'
+    );
     setMobileOpen(false);
   }, [pathname]);
 

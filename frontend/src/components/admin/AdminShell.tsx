@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Icon } from './Icons';
 
@@ -15,7 +15,6 @@ const links = [
 
 export default function AdminShell({ title, eyebrow, actions, children }: { title: string; eyebrow?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<{ email: string; role: string } | null>(null);
   useEffect(() => { fetch('/admin-api/auth/session', { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).then((v) => setUser(v?.user || null)); }, []);
@@ -23,7 +22,7 @@ export default function AdminShell({ title, eyebrow, actions, children }: { titl
 
   async function logout() {
     await fetch('/admin-api/auth/logout', { method: 'POST' });
-    router.replace('/admin/login'); router.refresh();
+    window.location.replace('/admin/login');
   }
 
   const navigation = links.map((link) => {

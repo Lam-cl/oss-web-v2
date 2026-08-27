@@ -17,8 +17,14 @@ export async function POST(request: NextRequest) {
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
       cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
     });
-  } catch { return safeError(502); }
+  } catch (reason) {
+    if (reason instanceof Error && reason.name === 'TimeoutError') {
+      return safeError(504, { message: 'The Bundle API took too long to respond. Please try signing in again.' });
+    }
+    return safeError(502);
+  }
   const payload = await readUpstream(upstream) as Record<string, any> | null;
   if (!upstream.ok || !payload) return safeError(upstream.status, payload);
 

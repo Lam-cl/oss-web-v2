@@ -10,6 +10,8 @@ const confirmation = read('src/app/api/merdeka-promo/confirmation/route.ts');
 const build = read('scripts/build-merdeka-embed.sh');
 const chrome = read('src/embed/MerdekaEmbedChrome.tsx');
 const chromeCss = read('src/embed/MerdekaEmbedChrome.module.css');
+const balamWatchdog = read('public/merdeka-promo-embed/v1/tonewow-balam-launcher-watchdog-v5.js');
+const balamHead = read('public/merdeka-promo-embed/v1/webflow-global-head-balam.html');
 
 assert(js.length > 100_000 && js.length < 350_000, 'Embed bundle size is outside the reviewed range.');
 assert(css.length > 15_000 && css.length < 80_000, 'Embed stylesheet size is outside the reviewed range.');
@@ -24,6 +26,11 @@ assert(snippet.includes('public-page="https://www.tonewow.com/malaysia-promo"'))
 assert(shared.includes("'https://tonewow.com'") && shared.includes("'https://www.tonewow.com'"));
 assert(shared.includes("new URL('https://www.tonewow.com/malaysia-promo')"));
 assert(confirmation.includes('const target = merdekaPublicPage();'));
+for (const value of ['Assistant-Shadow-Host', "mode: 'open'", 'data-tonewow-balam-launcher', 'https://tonewow.xifuhalim.com/images/balam-tonewow-chat.svg', "assetState = 'failed'", "visibility', 'visible'"]) assert(balamWatchdog.includes(value), `Webflow Balam watchdog is missing ${value}.`);
+const watchdogPosition = balamHead.indexOf('tonewow-balam-launcher-watchdog-v5.js');
+const providerPosition = balamHead.indexOf('https://widget.ibalam.ai/assistant');
+assert(watchdogPosition >= 0 && providerPosition > watchdogPosition, 'Webflow Balam watchdog must load before the provider.');
+assert(balamHead.includes('data-balam-assistant="10682d00-7c37-4ec8-95e6-22aeb9e94b49"'), 'Webflow Balam assistant ID changed unexpectedly.');
 for (const route of ['plans','member','checkout','status']) {
   const source = read(`src/app/merdeka-promo-api/${route}/route.ts`);
   assert(source.includes('OPTIONS'), `${route} public alias must export OPTIONS.`);

@@ -88,18 +88,45 @@ export function catalogueChoiceSummary(model: VariantModel) {
   };
 }
 
-export function catalogueHazardReason(model: VariantModel, providerOperationUnresolved: boolean) {
+export function catalogueHazardReason(model: VariantModel) {
   if (!hasValidCatalogueVariants(model)) return 'Complete every active variant before publishing or archiving.';
   const retiredKeys = new Set(model.choices.flatMap((choice) => choice.values.filter((value) => value.retired).map((value) => value.key)));
   const hasInvalidRm0Variant = (model.details?.price ?? 0) > 0
     && model.combinations.some((combination) => combination.price === 0 && combination.valueKeys.every((key) => !retiredKeys.has(key)));
   if (hasInvalidRm0Variant) return 'Set the base price to RM0 or correct the RM0 variant before publishing or archiving.';
-  if (providerOperationUnresolved) return 'Provider operation unresolved. Wait for it to finish, then reload.';
   return null;
 }
 
-export function unresolvedPublication(publication: { phase: string } | null | undefined) {
-  return publication === undefined || publication !== null && publication.phase !== 'complete';
+const RESUMABLE_PUBLICATION_PHASES = new Set([
+  'building',
+  'bundle-published',
+  'activation-uncertain',
+  'activated',
+  'retirement-uncertain',
+  'previous-retired',
+]);
+
+export function publicationRecoveryPresentation(publication: { phase: string } | null | undefined) {
+  if (publication === undefined) return {
+    pending: false,
+    label: 'Publish',
+    disabledReason: 'Provider operation status could not be loaded. Reload before publishing or archiving.',
+  } as const;
+  if (publication === null || publication.phase === 'complete') return {
+    pending: false,
+    label: 'Publish',
+    disabledReason: null,
+  } as const;
+  if (RESUMABLE_PUBLICATION_PHASES.has(publication.phase)) return {
+    pending: true,
+    label: 'Resume publication',
+    disabledReason: null,
+  } as const;
+  return {
+    pending: true,
+    label: 'Resume publication',
+    disabledReason: 'Provider operation state is invalid. Reload or repair its evidence before continuing.',
+  } as const;
 }
 
 export function isSimCatalogueCategory(category: string | undefined) {

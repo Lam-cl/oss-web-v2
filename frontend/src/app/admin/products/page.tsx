@@ -26,9 +26,9 @@ import {
   isSystemCatalogueProduct,
   productSearchText,
   publicationActionPresentation,
+  publicationRecoveryPresentation,
   sanitizeProviderDescription,
   sanitizeProviderTitle,
-  unresolvedPublication,
 } from './productPresentation';
 
 type CatalogueProductRecord = {
@@ -387,8 +387,8 @@ function ProductsContent() {
       });
       await load();
       flash('Product published successfully. It is now visible in OSS.');
-    } catch {
-      flash('The product could not be published. Please review it and try again.', 'error');
+    } catch (problem) {
+      flash(problem instanceof Error ? problem.message : 'The product could not be published. Please review it and try again.', 'error');
     } finally {
       publishingCatalogueIdRef.current = null;
       setPublishingCatalogueId(null);
@@ -484,7 +484,9 @@ function ProductsContent() {
       const stock = productInventory(row.kind === 'catalogue' ? row.catalogue : null, product);
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
-      const providerOperationUnresolved = localDraft && unresolvedPublication(cataloguePublications[row.catalogue.catalogueId]);
+      const publicationRecovery = row.kind === 'catalogue' && localDraft
+        ? publicationRecoveryPresentation(cataloguePublications[row.catalogue.catalogueId])
+        : { pending: false, label: 'Publish', disabledReason: null } as const;
       const simManagedCatalogue = false;
       const genericLifecycleAllowed = genericCatalogueLifecycleAllowed(false);
       const publicationAction = row.kind === 'catalogue' ? publicationActionPresentation({
@@ -493,16 +495,24 @@ function ProductsContent() {
         simManaged: simManagedCatalogue,
         unknownReason: row.catalogue.publicationChangeReason,
       }) : { visible: false } as const;
-      const hazardousActionReason = row.kind === 'catalogue'
+      const contentHazardReason = row.kind === 'catalogue' ? catalogueHazardReason(row.catalogue.model) : null;
+      const publishHazardReason = row.kind === 'catalogue'
         ? publicationAction.visible && publicationAction.disabledReason
           ? publicationAction.disabledReason
-          : catalogueHazardReason(row.catalogue.model, providerOperationUnresolved)
+          : contentHazardReason || publicationRecovery.disabledReason
         : null;
-      const hazardousActionReasonId = row.kind === 'catalogue' ? `catalogue-action-reason-${row.catalogue.catalogueId}` : undefined;
+      const archiveHazardReason = row.kind === 'catalogue'
+        ? contentHazardReason
+          || publicationRecovery.disabledReason
+          || (publicationRecovery.pending ? 'Resume or finish provider publication before archiving.' : null)
+        : null;
+      const publishHazardReasonId = row.kind === 'catalogue' ? `catalogue-publish-reason-${row.catalogue.catalogueId}` : undefined;
+      const archiveHazardReasonId = row.kind === 'catalogue' ? `catalogue-archive-reason-${row.catalogue.catalogueId}` : undefined;
       const canPublish = row.kind === 'catalogue' && canPublishCatalogueProduct(row.catalogue, catalogueMedia[row.catalogue.catalogueId]);
       const publishAvailable = publicationAction.visible;
-      const publishLabel = publicationAction.visible ? publicationAction.label : 'Publish';
-      const hazardousActionDisabled = hazardousActionReason !== null;
+      const publishLabel = publicationRecovery.pending ? publicationRecovery.label : publicationAction.visible ? publicationAction.label : 'Publish';
+      const publishHazardDisabled = publishHazardReason !== null;
+      const archiveHazardDisabled = archiveHazardReason !== null;
       return <tr key={key}>
         <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={adminMediaUrl(product.images[0].url)} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
         <td data-label="Price">{money(price)}</td>
@@ -513,22 +523,23 @@ function ProductsContent() {
           <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue })}><Icon name="edit" /></button>
           {genericLifecycleAllowed && publishAvailable && <button
             className="adm-button secondary"
-            title={hazardousActionReason || `${publishLabel} for ${title} to OSS`}
+            title={publishHazardReason || `${publishLabel} for ${title} to OSS`}
             aria-label={`${publishLabel} for ${title} to OSS`}
-            aria-describedby={hazardousActionReason ? hazardousActionReasonId : undefined}
-            disabled={!canPublish || hazardousActionDisabled || publishingCatalogueId !== null || archivingCatalogueId !== null}
+            aria-describedby={publishHazardReason ? publishHazardReasonId : undefined}
+            disabled={!canPublish || publishHazardDisabled || publishingCatalogueId !== null || archivingCatalogueId !== null}
             onClick={() => void publish(row.catalogue)}
-          >{publishingCatalogueId === row.catalogue.catalogueId ? 'Publishing…' : publishLabel}</button>}
+          >{publishingCatalogueId === row.catalogue.catalogueId ? publicationRecovery.pending ? 'Resuming…' : 'Publishing…' : publishLabel}</button>}
           {genericLifecycleAllowed && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
           {genericLifecycleAllowed && localDraft && <button
             className="adm-button secondary"
-            title={hazardousActionReason || `Archive ${title}`}
+            title={archiveHazardReason || `Archive ${title}`}
             aria-label={`Archive ${title}`}
-            aria-describedby={hazardousActionReason ? hazardousActionReasonId : undefined}
-            disabled={hazardousActionDisabled || archivingCatalogueId !== null || publishingCatalogueId !== null}
+            aria-describedby={archiveHazardReason ? archiveHazardReasonId : undefined}
+            disabled={archiveHazardDisabled || archivingCatalogueId !== null || publishingCatalogueId !== null}
             onClick={() => void archive(row.catalogue)}
           >{archivingCatalogueId === row.catalogue.catalogueId ? 'Archiving…' : 'Archive'}</button>}
-          {genericLifecycleAllowed && hazardousActionReason && publishAvailable && <small id={hazardousActionReasonId} className="adm-action-disabled-reason">{hazardousActionReason}</small>}
+          {genericLifecycleAllowed && publishHazardReason && publishAvailable && <small id={publishHazardReasonId} className="adm-action-disabled-reason">{publishHazardReason}</small>}
+          {genericLifecycleAllowed && archiveHazardReason && archiveHazardReason !== publishHazardReason && localDraft && <small id={archiveHazardReasonId} className="adm-action-disabled-reason">{archiveHazardReason}</small>}
         </> : <button className="adm-icon-btn" title="View legacy product" onClick={() => setLegacyViewer(product!)}><Icon name="arrow" /></button>}</div></td>
       </tr>;
     })}</tbody></table></div><div className="adm-pagination"><span>{(data.meta?.total || data.data.length) + (page === 1 && type === 'MERCHANDISE' ? catalogue.filter((product) => product.currentBundleProductId === null).length : 0)} products · page {page}</span><div><button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>←</button><button disabled={page >= (data.meta?.totalPages || 1)} onClick={() => setPage((current) => current + 1)}>→</button></div></div></>}</section>

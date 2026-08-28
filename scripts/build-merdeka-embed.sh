@@ -6,6 +6,7 @@ npx --yes esbuild@0.25.9 src/embed/merdeka-webflow.tsx \
   --format=iife \
   --platform=browser \
   --target=es2020 \
+  --jsx=automatic \
   --alias:next/image=./src/embed/NextImage.tsx \
   --alias:@=./src \
   --loader:.module.css=local-css \

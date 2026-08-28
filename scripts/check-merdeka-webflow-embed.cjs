@@ -7,11 +7,14 @@ const css = read('public/merdeka-promo-embed/v1/app.css');
 const snippet = read('public/merdeka-promo-embed/v1/webflow-snippet.html');
 const shared = read('src/app/api/merdeka-promo/shared.ts');
 const confirmation = read('src/app/api/merdeka-promo/confirmation/route.ts');
+const build = read('scripts/build-merdeka-embed.sh');
 
 assert(js.length > 100_000 && js.length < 350_000, 'Embed bundle size is outside the reviewed range.');
 assert(css.length > 15_000 && css.length < 80_000, 'Embed stylesheet size is outside the reviewed range.');
 for (const value of ['tonewow-merdeka-promo', '/merdeka-promo-api/plans', '/merdeka-promo-api/member', '/merdeka-promo-api/checkout', '/merdeka-promo-api/status']) assert(js.includes(value), `Embed bundle is missing ${value}.`);
 for (const forbidden of ['index-body.html', 'bijakbuatduit.com', '<iframe']) assert(!js.includes(forbidden) && !snippet.includes(forbidden), `Embed contains forbidden legacy dependency ${forbidden}.`);
+assert(build.includes('--jsx=automatic'), 'Embed build must use the self-contained automatic JSX runtime.');
+assert(!js.includes('React.createElement'), 'Embed bundle must not depend on a global React object.');
 assert(snippet.includes('https://tonewow.xifuhalim.com/merdeka-promo-embed/v1/app.js?v=20260828'));
 assert(snippet.includes('public-page="https://www.tonewow.com/malaysia-promo"'));
 assert(shared.includes("'https://tonewow.com'") && shared.includes("'https://www.tonewow.com'"));

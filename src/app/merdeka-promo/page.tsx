@@ -252,7 +252,7 @@ export default function MerdekaPromoPage() {
             unoptimized
             sizes="(max-width: 700px) 100vw, 48vw"
           />
-          {/* <span className={styles.heroImageBadge}></span> */}
+        
         </div>
       </section>
 

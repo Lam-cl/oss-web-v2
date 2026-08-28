@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readMerdekaPayment } from '@/lib/merdekaPromo';
+import { merdekaCors, merdekaPreflight } from '../shared';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const ref = request.nextUrl.searchParams.get('ref')?.trim() || '';
   const record = await readMerdekaPayment(ref);
-  if (!record) return NextResponse.json({ error: 'Payment reference not found.' }, { status: 404 });
+  if (!record) return merdekaCors(request, NextResponse.json({ error: 'Payment reference not found.' }, { status: 404 }));
 
   const callbackApproved = /^88\b/.test(record.gatewayStatus || '')
     && /^00\b/.test(record.gatewayDescription || '');
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  return merdekaCors(request, NextResponse.json({
     status,
     payment: {
       reference: record.paymentRefNo,
@@ -40,5 +41,7 @@ export async function GET(request: NextRequest) {
       monthlyPrice: record.monthlyPrice,
       amount: record.amount,
     },
-  }, { headers: { 'Cache-Control': 'no-store' } });
+  }, { headers: { 'Cache-Control': 'no-store' } }));
 }
+
+export async function OPTIONS(request: NextRequest) { return merdekaPreflight(request, 'GET, OPTIONS'); }

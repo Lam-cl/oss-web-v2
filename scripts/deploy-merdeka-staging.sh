@@ -10,10 +10,13 @@ APP_URL="${APP_URL:-http://127.0.0.1:3002/merdeka-promo}"
 PROMO_PATHS=(
   "public/images/merdeka-promo"
   "src/app/api/confirmation/route.ts"
+  "public/merdeka-promo-embed"
   "src/app/api/merdeka-promo"
   "src/app/merdeka-promo-api"
   "src/app/merdeka-promo"
+  "src/embed"
   "src/lib/merdekaPromo.ts"
+  "src/lib/merdekaPromoBrowser.ts"
 )
 
 test -d "$LIVE_DIR/.git" || { echo "Live directory is not a Git repository: $LIVE_DIR" >&2; exit 1; }

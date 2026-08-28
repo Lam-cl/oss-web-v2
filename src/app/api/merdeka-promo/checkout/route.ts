@@ -9,7 +9,7 @@ import {
   writeMerdekaPayment,
   type MerdekaPaymentRecord,
 } from '@/lib/merdekaPromo';
-import { merdekaPublicOrigin, merdekaSameOrigin } from '../shared';
+import { merdekaCors, merdekaPreflight, merdekaPublicOrigin, merdekaSameOrigin } from '../shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,15 +28,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const duration = Number(body?.duration);
-    if (!isMerdekaDuration(duration)) return NextResponse.json({ error: 'Select a valid subscription package.' }, { status: 422 });
-    if (body?.acknowledged !== true) return NextResponse.json({ error: 'Please acknowledge the subscription notice.' }, { status: 422 });
+    if (!isMerdekaDuration(duration)) return merdekaCors(request, NextResponse.json({ error: 'Select a valid subscription package.' }, { status: 422 }));
+    if (body?.acknowledged !== true) return merdekaCors(request, NextResponse.json({ error: 'Please acknowledge the subscription notice.' }, { status: 422 }));
 
     const msisdn = normalizeMsisdn(body?.msisdn);
-    if (!msisdn) return NextResponse.json({ error: 'Verify a valid tone wow number first.' }, { status: 422 });
+    if (!msisdn) return merdekaCors(request, NextResponse.json({ error: 'Verify a valid tone wow number first.' }, { status: 422 }));
 
     const [member, plans] = await Promise.all([fetchMerdekaMember(msisdn), fetchMerdekaPlans()]);
     const plan = plans.find((item) => item.id === text(body?.planId, 40));
-    if (!plan) return NextResponse.json({ error: 'The selected FU plan is no longer available.' }, { status: 422 });
+    if (!plan) return merdekaCors(request, NextResponse.json({ error: 'The selected FU plan is no longer available.' }, { status: 422 }));
 
     const fullName = text(body?.fullName) || member.fullName;
     const documentId = text(body?.documentId, 40) || member.documentId;
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const city = text(body?.city, 80);
     const state = text(body?.state, 80);
     if (!fullName || !documentId || !/^\S+@\S+\.\S+$/.test(email) || !phone || !address1 || !/^\d{5}$/.test(postcode) || !city || !state) {
-      return NextResponse.json({ error: 'Complete all required customer and billing details.' }, { status: 422 });
+      return merdekaCors(request, NextResponse.json({ error: 'Complete all required customer and billing details.' }, { status: 422 }));
     }
 
     const amount = calculateMerdekaPrice(plan.monthlyPrice, duration);
@@ -108,10 +108,12 @@ export async function POST(request: NextRequest) {
   failureurl: confirmationUrl.toString(),
 });
 
-    return NextResponse.json({ paymentUrl: `${GATEWAY_URL}?${params.toString()}`, reference: paymentRefNo });
+    return merdekaCors(request, NextResponse.json({ paymentUrl: `${GATEWAY_URL}?${params.toString()}`, reference: paymentRefNo }));
   } catch (error) {
-    return NextResponse.json({
+    return merdekaCors(request, NextResponse.json({
       error: error instanceof Error ? error.message : 'Unable to prepare payment. Please try again.',
-    }, { status: 503 });
+    }, { status: 503 }));
   }
 }
+
+export async function OPTIONS(request: NextRequest) { return merdekaPreflight(request, 'POST, OPTIONS'); }

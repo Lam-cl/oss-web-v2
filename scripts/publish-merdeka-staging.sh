@@ -8,10 +8,13 @@ MESSAGE="${1:-Update Merdeka Promo staging}"
 
 PROMO_PATHS=(
   "public/images/merdeka-promo"
+  "public/merdeka-promo-embed"
   "src/app/api/merdeka-promo"
   "src/app/merdeka-promo-api"
   "src/app/merdeka-promo"
+  "src/embed"
   "src/lib/merdekaPromo.ts"
+  "src/lib/merdekaPromoBrowser.ts"
 )
 
 git -C "$LIVE_DIR" rev-parse --git-dir >/dev/null 2>&1 || { echo "Missing live repository: $LIVE_DIR" >&2; exit 1; }

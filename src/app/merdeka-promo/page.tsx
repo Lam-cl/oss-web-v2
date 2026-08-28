@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
 import type { MerdekaDuration, MerdekaMember, MerdekaPlan } from '@/lib/merdekaPromo';
+import { merdekaApiUrl, merdekaAssetUrl } from '@/lib/merdekaPromoBrowser';
 import styles from './promo.module.css';
 
 type FormState = Omit<MerdekaMember, 'memberId' | 'msisdn' | 'currentPlan'>;
@@ -88,7 +89,7 @@ export default function MerdekaPromoPage() {
     let cancelled = false;
     setPlansLoading(true);
     setPlansError('');
-    fetch('/merdeka-promo-api/plans', { cache: 'no-store' })
+    fetch(merdekaApiUrl('/merdeka-promo-api/plans'), { cache: 'no-store' })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Unable to load plans.');
@@ -131,7 +132,7 @@ export default function MerdekaPromoPage() {
       setVerifyError('');
       setCheckoutError('');
       try {
-        const response = await fetch('/merdeka-promo-api/member', {
+        const response = await fetch(merdekaApiUrl('/merdeka-promo-api/member'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ msisdn }),
@@ -187,7 +188,7 @@ export default function MerdekaPromoPage() {
     setSubmitting(true);
     setCheckoutError('');
     try {
-      const response = await fetch('/merdeka-promo-api/checkout', {
+      const response = await fetch(merdekaApiUrl('/merdeka-promo-api/checkout'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,8 +246,8 @@ export default function MerdekaPromoPage() {
         </div>
         <div className={styles.heroVisual}>
           <Image
-            src="/images/merdeka-promo/merdeka banner.png"
-            alt=""
+            src={merdekaAssetUrl('/images/merdeka-promo/merdeka banner.png')}
+            alt="tone wow Merdeka Promo"
             fill
             priority
             unoptimized

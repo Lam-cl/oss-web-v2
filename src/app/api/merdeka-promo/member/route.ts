@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchMerdekaMember } from '@/lib/merdekaPromo';
-import { merdekaSameOrigin } from '../shared';
+import { merdekaCors, merdekaPreflight, merdekaSameOrigin } from '../shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,15 +20,17 @@ function allowed(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!merdekaSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
-  if (!allowed(request)) return NextResponse.json({ error: 'Too many attempts. Please wait a minute and try again.' }, { status: 429 });
+  if (!allowed(request)) return merdekaCors(request, NextResponse.json({ error: 'Too many attempts. Please wait a minute and try again.' }, { status: 429 }));
 
   try {
     const body = await request.json().catch(() => ({}));
     const member = await fetchMerdekaMember(body?.msisdn);
-    return NextResponse.json({ member }, { headers: { 'Cache-Control': 'no-store' } });
+    return merdekaCors(request, NextResponse.json({ member }, { headers: { 'Cache-Control': 'no-store' } }));
   } catch (error) {
-    return NextResponse.json({
+    return merdekaCors(request, NextResponse.json({
       error: error instanceof Error ? error.message : 'Unable to verify this number.',
-    }, { status: 422, headers: { 'Cache-Control': 'no-store' } });
+    }, { status: 422, headers: { 'Cache-Control': 'no-store' } }));
   }
 }
+
+export async function OPTIONS(request: NextRequest) { return merdekaPreflight(request, 'POST, OPTIONS'); }

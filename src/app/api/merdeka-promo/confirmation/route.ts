@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readMerdekaPayment, writeMerdekaPayment } from '@/lib/merdekaPromo';
-import { merdekaPublicOrigin } from '../shared';
+import { merdekaPublicPage } from '../shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ async function values(request: NextRequest, method: 'GET' | 'POST') {
 async function handle(request: NextRequest, method: 'GET' | 'POST') {
   const result = await values(request, method);
   const record = await readMerdekaPayment(result.ref);
-  const target = new URL('/merdeka-promo/confirmation', merdekaPublicOrigin(request));
+  const target = merdekaPublicPage();
   if (!record) {
     target.searchParams.set('invalid', '1');
     return NextResponse.redirect(target, 303);

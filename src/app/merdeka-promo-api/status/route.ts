@@ -1,1 +1,1 @@
-export { GET, dynamic } from '@/app/api/merdeka-promo/status/route';
+export { GET, OPTIONS, dynamic } from '@/app/api/merdeka-promo/status/route';

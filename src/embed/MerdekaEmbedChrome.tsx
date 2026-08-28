@@ -21,7 +21,13 @@ export default function MerdekaEmbedChrome({ children }: { children: ReactNode }
         <a className={styles.logo} href="https://www.tonewow.com/"><img src={LOGO} alt="tone wow" /></a>
         <nav className={styles.nav} aria-label="Primary navigation">
           {links.map(([label, href]) => <a key={href} href={href}>{label}</a>)}
-          <a className={styles.shop} href="https://shop.tonewow.com/">Shop</a>
+          <a className={`${styles.shop} ${styles.active}`} href="https://shop.tonewow.com/">Shop</a>
+          <a className={styles.cart} href="https://shop.tonewow.com/cart" aria-label="Cart">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+          </a>
         </nav>
         <button className={styles.hamburger} type="button" aria-label="Open menu" onClick={() => setMobileOpen(true)}><span /><span /><span /></button>
       </div>
@@ -29,6 +35,7 @@ export default function MerdekaEmbedChrome({ children }: { children: ReactNode }
         <button className={styles.close} type="button" aria-label="Close menu" onClick={() => setMobileOpen(false)}>×</button>
         {links.map(([label, href]) => <a key={href} href={href}>{label}</a>)}
         <a href="https://shop.tonewow.com/">Shop</a>
+        <a href="https://shop.tonewow.com/cart">Cart</a>
       </nav>
     </header>
     {children}

@@ -60,8 +60,13 @@ export function hasValidCatalogueVariants(model: VariantModel) {
     (tuples, values) => tuples.flatMap((tuple) => values.map((value) => [...tuple, value.key])),
     [[]],
   );
-  const combinations = new Set(model.combinations.map((combination) => JSON.stringify(combination.valueKeys)));
-  return combinations.size === model.combinations.length
+  const activeKeysByChoice = activeChoices.map((values) => new Set(values.map((value) => value.key)));
+  const activeCombinations = model.combinations.filter((combination) =>
+    combination.valueKeys.length === activeKeysByChoice.length
+      && combination.valueKeys.every((key, index) => activeKeysByChoice[index].has(key)),
+  );
+  const combinations = new Set(activeCombinations.map((combination) => JSON.stringify(combination.valueKeys)));
+  return combinations.size === activeCombinations.length
     && combinations.size === expectedTuples.length
     && expectedTuples.every((tuple) => combinations.has(JSON.stringify(tuple)));
 }
@@ -72,9 +77,9 @@ export function catalogueChoiceSummary(model: VariantModel) {
     values: choice.values.filter((value) => !value.retired),
   }));
   if (!activeChoices.length) return { primary: 'Standard', secondary: '1 combination', incomplete: model.combinations.length !== 1 };
-  const activeKeys = new Set(activeChoices.flatMap((choice) => choice.values.map((value) => value.key)));
+  const activeKeysByChoice = activeChoices.map((choice) => new Set(choice.values.map((value) => value.key)));
   const actual = model.combinations.filter((combination) => combination.valueKeys.length === activeChoices.length
-    && combination.valueKeys.every((key) => activeKeys.has(key))).length;
+    && combination.valueKeys.every((key, index) => activeKeysByChoice[index].has(key))).length;
   const expected = activeChoices.reduce((total, choice) => total * choice.values.length, 1);
   return {
     primary: activeChoices.map((choice) => `${choice.name} ${choice.values.length}`).join(' · '),
@@ -94,7 +99,11 @@ export function catalogueHazardReason(model: VariantModel, providerOperationUnre
 }
 
 export function unresolvedPublication(publication: { phase: string } | null | undefined) {
-  return publication === undefined || publication !== null && publication.phase !== 'complete';
+  return publication === undefined;
+}
+
+export function resumablePublication(publication: { phase: string } | null | undefined) {
+  return publication !== undefined && publication !== null && publication.phase !== 'complete';
 }
 
 export function isSimCatalogueCategory(category: string | undefined) {

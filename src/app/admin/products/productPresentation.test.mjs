@@ -7,6 +7,7 @@ import {
   isSystemCatalogueProduct,
   productSearchText,
   publicationActionPresentation,
+  resumablePublication,
   sanitizeProviderDescription,
   sanitizeProviderTitle,
   unresolvedPublication,
@@ -60,11 +61,15 @@ test('variant validation rejects incomplete and duplicate active tuples', () => 
   ] }), false);
 });
 
-test('unknown or incomplete provider publication state is unresolved', () => {
+test('failed publication reads stay blocked while durable incomplete jobs can resume', () => {
   assert.equal(unresolvedPublication(undefined), true);
   assert.equal(unresolvedPublication(null), false);
-  assert.equal(unresolvedPublication({ phase: 'building' }), true);
+  assert.equal(unresolvedPublication({ phase: 'building' }), false);
   assert.equal(unresolvedPublication({ phase: 'complete' }), false);
+  assert.equal(resumablePublication(undefined), false);
+  assert.equal(resumablePublication(null), false);
+  assert.equal(resumablePublication({ phase: 'bundle-published' }), true);
+  assert.equal(resumablePublication({ phase: 'complete' }), false);
 });
 
 test('publication actions follow evidence state and keep SIM Card on the ordinary workflow', () => {

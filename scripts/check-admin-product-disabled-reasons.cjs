@@ -13,7 +13,7 @@ const output = ts.transpileModule(source, {
 }).outputText;
 const mod = { exports: {} };
 new Function('exports', 'require', 'module', output)(mod.exports, require, mod);
-const { catalogueHazardReason } = mod.exports;
+const { catalogueHazardReason, resumablePublication } = mod.exports;
 
 const completeModel = {
   details: { title: 'PRO SIM', price: 10 },
@@ -44,6 +44,9 @@ assert.equal(
   'unresolved provider work has a distinct recovery action',
 );
 assert.equal(catalogueHazardReason(completeModel, false), null, 'ready rows do not show a hazard reason');
+assert.equal(resumablePublication({ phase: 'bundle-published' }), true, 'durable incomplete work is resumable');
+assert.equal(page.includes("'Resume publish'"), true, 'resumable publication has an explicit action label');
+assert.equal(page.includes('archiveHazardReason'), true, 'archive remains independently guarded during resume');
 
 const unknownAction = mod.exports.publicationActionPresentation({ state: 'unknown', localDraft: false, simManaged: false, unknownReason: 'Snapshot missing.' });
 assert.deepEqual(unknownAction, { visible: true, label: 'Publish changes', disabledReason: 'Snapshot missing.' }, 'unknown publication evidence supplies an actionable disabled reason');

@@ -83,7 +83,7 @@ function ConfirmationContent() {
         <div className={styles.confirmActions}>
           {(status === 'error' || status === 'failed') && reference && <button type="button" onClick={() => { setError(''); setResult(null); setRetryKey((key) => key + 1); }}>Check again</button>}
           {status === 'failed' && <Link href="/merdeka-promo">Try payment again</Link>}
-          {status === 'success' && <Link href="/">Back to tone wow</Link>}
+          {status === 'success' && <Link href="/merdeka-promo">Back to Home</Link>}
         </div>
         {status === 'pending' && <small className={styles.pendingNote}>Do not refresh or close this page while we check your transaction.</small>}
       </div>

@@ -9,6 +9,7 @@ APP_URL="${APP_URL:-http://127.0.0.1:3002/merdeka-promo}"
 
 PROMO_PATHS=(
   "public/images/merdeka-promo"
+  "src/app/api/confirmation/route.ts"
   "src/app/api/merdeka-promo"
   "src/app/merdeka-promo-api"
   "src/app/merdeka-promo"

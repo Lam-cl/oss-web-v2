@@ -17,8 +17,8 @@ for (const value of ['tonewow-merdeka-promo', '/merdeka-promo-api/plans', '/merd
 for (const forbidden of ['index-body.html', 'bijakbuatduit.com', '<iframe']) assert(!js.includes(forbidden) && !snippet.includes(forbidden), `Embed contains forbidden legacy dependency ${forbidden}.`);
 assert(build.includes('--jsx=automatic'), 'Embed build must use the self-contained automatic JSX runtime.');
 assert(!js.includes('React.createElement'), 'Embed bundle must not depend on a global React object.');
-for (const value of ['https://shop.tonewow.com/', 'https://shop.tonewow.com/cart', 'aria-label="Cart"']) assert(chrome.includes(value), `Embed header is missing ${value}.`);
-for (const value of ['position:sticky', 'padding:12px 20px', 'max-width:1200px', 'height:32px', 'gap:32px', '@media(max-width:768px)']) assert(chromeCss.includes(value), `Embed header styling is missing ${value}.`);
+for (const forbidden of ['aria-label="Primary navigation"', 'aria-label="Cart"', 'aria-label="Open menu"']) assert(!chrome.includes(forbidden), `Merdeka embed header must remain logo-only: ${forbidden}.`);
+for (const value of ['position:sticky', 'padding:12px 20px', 'max-width:1200px', 'height:32px', 'justify-content:center', '@media(max-width:768px)']) assert(chromeCss.includes(value), `Embed header styling is missing ${value}.`);
 assert(snippet.includes('https://tonewow.xifuhalim.com/merdeka-promo-embed/v1/app.js?v=20260828'));
 assert(snippet.includes('public-page="https://www.tonewow.com/malaysia-promo"'));
 assert(shared.includes("'https://tonewow.com'") && shared.includes("'https://www.tonewow.com'"));

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import styles from './MerdekaEmbedChrome.module.css';
 
 const LOGO = 'https://cdn.prod.website-files.com/697381edd70cb137c12f7e90/6975222aeef428a2420e370c_brand-logo.svg';
@@ -7,36 +7,11 @@ function SocialIcon({ path }: { path: string }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>;
 }
 export default function MerdekaEmbedChrome({ children }: { children: ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const links = [
-    ['Prepaid plans', 'https://www.tonewow.com/Prepaid_Plans'],
-    ['Lifestyle', 'https://www.tonewow.com/Lifestyle'],
-    ['Side hustle', 'https://www.tonewow.com/side-hustle'],
-    ['FAQ', 'https://www.tonewow.com/faq'],
-    ['Login', 'https://www.tonewow.com/login'],
-  ];
   return <div className={styles.frame}>
     <header className={styles.header}>
       <div className={styles.headerInner}>
-        <a className={styles.logo} href="https://www.tonewow.com/"><img src={LOGO} alt="tone wow" /></a>
-        <nav className={styles.nav} aria-label="Primary navigation">
-          {links.map(([label, href]) => <a key={href} href={href}>{label}</a>)}
-          <a className={`${styles.shop} ${styles.active}`} href="https://shop.tonewow.com/">Shop</a>
-          <a className={styles.cart} href="https://shop.tonewow.com/cart" aria-label="Cart">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-            </svg>
-          </a>
-        </nav>
-        <button className={styles.hamburger} type="button" aria-label="Open menu" onClick={() => setMobileOpen(true)}><span /><span /><span /></button>
+        <span className={styles.logo}><img src={LOGO} alt="tone wow" /></span>
       </div>
-      <nav className={`${styles.mobile} ${mobileOpen ? styles.open : ''}`} aria-label="Mobile navigation" aria-hidden={!mobileOpen}>
-        <button className={styles.close} type="button" aria-label="Close menu" onClick={() => setMobileOpen(false)}>×</button>
-        {links.map(([label, href]) => <a key={href} href={href}>{label}</a>)}
-        <a href="https://shop.tonewow.com/">Shop</a>
-        <a href="https://shop.tonewow.com/cart">Cart</a>
-      </nav>
     </header>
     {children}
     <footer className={styles.footer}>

@@ -245,14 +245,14 @@ export default function MerdekaPromoPage() {
         </div>
         <div className={styles.heroVisual}>
           <Image
-            src="/images/merdeka-promo/hero-gen-z-branded.webp"
-            alt="Two Malaysian young adults enjoying tone wow on a smartphone"
+            src="/images/merdeka-promo/merdeka banner.png"
+            alt=""
             fill
             priority
             unoptimized
             sizes="(max-width: 700px) 100vw, 48vw"
           />
-          <span className={styles.heroImageBadge}>One payment. More freedom.</span>
+          <span className={styles.heroImageBadge}></span>
         </div>
       </section>
 

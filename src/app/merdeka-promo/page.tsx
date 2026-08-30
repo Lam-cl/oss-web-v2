@@ -155,6 +155,7 @@ export default function MerdekaPromoPage() {
           postcode: verified.postcode,
           city: verified.city,
           state: verified.state,
+          offeringID: verified.offeringID, 
         });
       } catch (error) {
         if (controller.signal.aborted) return;

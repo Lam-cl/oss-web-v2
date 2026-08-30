@@ -11,7 +11,7 @@ type FormState = Omit<MerdekaMember, 'memberId' | 'msisdn' | 'currentPlan'>;
 
 const emptyForm: FormState = {
   fullName: '', documentId: '', email: '', phone: '',
-  address1: '', address2: '', address3: '', postcode: '', city: '', state: '',
+  address1: '', address2: '', address3: '', postcode: '', city: '', state: '', offeringID: '', 
 };
 
 const PLAN_TONES = [

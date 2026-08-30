@@ -29,6 +29,7 @@ export type MerdekaMember = {
   state: string;
   currentPlan: string | null;
   offeringID: string; 
+  
 };
 
 export type MerdekaPaymentRecord = {
@@ -49,7 +50,9 @@ export type MerdekaPaymentRecord = {
 };
 
 const PLAN_API = 'https://qa.tonegroup.net/twbackend/api/v4/databundle/list?productcode=TWE&documentID=';
-const MEMBER_API = 'https://qa.tonegroup.net/twbackend/api/member/v3/memberProfileDetail';
+// const MEMBER_API = 'https://qa.tonegroup.net/twbackend/api/member/v3/memberProfileDetail';
+
+const MEMBER_API= 'https://www.tonewow.net/gwp/api/member/x3/memberProfileDetail';
 const STORE_TYPE = 'merdeka-promo-payment';
 const STORE_TTL_SECONDS = 7 * 24 * 60 * 60;
 

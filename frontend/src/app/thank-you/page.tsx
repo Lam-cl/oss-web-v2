@@ -105,6 +105,7 @@ function ThankYouContent() {
   const pathname = usePathname();
   const isAdx = pathname.startsWith('/adx/');
   const refNo = searchParams.get('refno') || searchParams.get('order') || '';
+  const isMerdekaPromo = /^16twmp/i.test(refNo);
   const gkashStatus = searchParams.get('status') || '';
   const gkashDesc = searchParams.get('desc') || '';
   const isEsimReturn = searchParams.get('esim') === '1' || searchParams.get('flow') === 'esim';
@@ -332,7 +333,13 @@ function ThankYouContent() {
           <p style={{ fontSize: 14, color: '#94a3b8', marginBottom: 28 }}>
             A confirmation email will be sent shortly.
           </p>
-          <button onClick={() => router.push('/')} style={{
+          <button onClick={() => {
+            if (isMerdekaPromo) {
+              window.location.assign('https://www.tonewow.com/malaysia-promo');
+              return;
+            }
+            router.push('/');
+          }} style={{
             background: 'linear-gradient(135deg, #0074be, #273a89)',
             color: '#fff', border: 'none', borderRadius: 12,
             padding: '14px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer',

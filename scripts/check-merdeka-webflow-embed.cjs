@@ -7,6 +7,8 @@ const css = read('public/merdeka-promo-embed/v1/app.css');
 const snippet = read('public/merdeka-promo-embed/v1/webflow-snippet.html');
 const shared = read('src/app/api/merdeka-promo/shared.ts');
 const confirmation = read('src/app/api/merdeka-promo/confirmation/route.ts');
+const embedConfirmation = read('src/embed/MerdekaEmbedConfirmation.tsx');
+const originalConfirmation = read('src/app/merdeka-promo/confirmation/page.tsx');
 const build = read('scripts/build-merdeka-embed.sh');
 const chrome = read('src/embed/MerdekaEmbedChrome.tsx');
 const chromeCss = read('src/embed/MerdekaEmbedChrome.module.css');
@@ -26,6 +28,9 @@ assert(snippet.includes('public-page="https://www.tonewow.com/malaysia-promo"'))
 assert(shared.includes("'https://tonewow.com'") && shared.includes("'https://www.tonewow.com'"));
 assert(shared.includes("new URL('https://www.tonewow.com/malaysia-promo')"));
 assert(confirmation.includes('const target = merdekaPublicPage();'));
+assert(embedConfirmation.includes("status==='success'&&<a href={merdekaPublicPageUrl()}>Back to Home</a>"), 'Webflow payment success must return to the configured campaign page.');
+assert(!embedConfirmation.includes('href="https://www.tonewow.com/"'), 'Webflow payment success must not return to the generic homepage.');
+assert(originalConfirmation.includes('href="https://www.tonewow.com/malaysia-promo"'), 'Original payment confirmation must return to the Webflow campaign page.');
 for (const value of ['Assistant-Shadow-Host', "mode: 'open'", 'data-tonewow-balam-launcher', 'https://tonewow.xifuhalim.com/images/balam-tonewow-chat.svg', "assetState = 'failed'", "visibility', 'visible'"]) assert(balamWatchdog.includes(value), `Webflow Balam watchdog is missing ${value}.`);
 const watchdogPosition = balamHead.indexOf('tonewow-balam-launcher-watchdog-v5.js');
 const providerPosition = balamHead.indexOf('https://widget.ibalam.ai/assistant');

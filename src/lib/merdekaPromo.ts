@@ -28,6 +28,7 @@ export type MerdekaMember = {
   city: string;
   state: string;
   currentPlan: string | null;
+  offeringID: string; 
 };
 
 export type MerdekaPaymentRecord = {
@@ -145,6 +146,7 @@ export async function fetchMerdekaMember(value: unknown): Promise<MerdekaMember>
     city: clean(data.addressInfo?.addCity),
     state: clean(data.addressInfo?.addState),
     currentPlan: clean(data.mainPlanName) || null,
+    offeringID: clean(data.offeringID),
   };
 }
 

@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { rebindPublishedCatalogueModelVariantIds } from './catalogueVariantBindings';
 import type { NextRequest } from 'next/server';
 import { BUNDLE_API, getAdminSession, requestIsSameOrigin, safeError } from '@/lib/admin/server';
 import { createCatalogueProduct, listCatalogueProducts, readCatalogueProduct, updateCatalogueProduct, type CatalogueProductRecord } from '@/lib/admin/catalogueProduct.server';
@@ -244,7 +245,8 @@ export const catalogueAdminRoute={
         activationOperation=operationId;await persistSnapshot(productId,bindings,fingerprint,operationId);snapshotOperation=operationId;const current=await requireProduct(id);const active=current.bundleVersions.find(version=>version.retiredAt===null);
         if(current.currentBundleProductId===productId&&active?.fingerprint===fingerprint)return;
         if(current.currentBundleProductId!==previousProductId||current.revision!==product.revision)throw new CatalogueAdminRouteError('Catalogue activation conflicts with a newer product edit.',409);
-        const now=new Date().toISOString();await updateCatalogueProduct(id,current.revision,record=>({...record,model:publishModel,status:'published' as const,currentBundleProductId:productId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:productId,fingerprint,publishedAt:now,retiredAt:null}]}));
+        const activatedModel=rebindPublishedCatalogueModelVariantIds(publishModel,bindings);
+        const now=new Date().toISOString();await updateCatalogueProduct(id,current.revision,record=>({...record,model:activatedModel,status:'published' as const,currentBundleProductId:productId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:productId,fingerprint,publishedAt:now,retiredAt:null}]}));
       },
       async readActivation(operationId:string,productId:number){
         activationOperation=operationId;const [job,current]=await Promise.all([readPublicationJob(operationId),requireProduct(id)]);const active=current.bundleVersions.find(version=>version.retiredAt===null);
@@ -256,9 +258,10 @@ export const catalogueAdminRoute={
     if(pendingPublication&&pendingPublication.phase!=='complete'&&pendingPublication.operationId!==operationId){let conflictingDraft:unknown;try{conflictingDraft=await adapter.findDraftByOperation(pendingPublication.operationId);}catch{throw new CatalogueAdminRouteError('Catalogue publication is quarantined: the previous provider operation marker is ambiguous or unavailable.',409);}if(conflictingDraft)throw new CatalogueAdminRouteError(`Catalogue publication is quarantined: retire provider draft ${pendingPublication.draftBundleProductId??'unknown'} for operation ${pendingPublication.operationId} before publishing the changed draft.`,409);}
     const publication=await publishCatalogueProductVersion(publishRequest,adapter);
     if(snapshotOperation!==publication.operationId)await persistSnapshot(publication.bundleProductId,publication.bindings,publication.fingerprint,publication.operationId);
+    const publishedModel=rebindPublishedCatalogueModelVariantIds(publishModel,publication.bindings);
     let updated=await requireProduct(id);
-    if(updated.currentBundleProductId!==publication.bundleProductId||!updated.bundleVersions.some(version=>version.bundleProductId===publication.bundleProductId&&version.fingerprint===publication.fingerprint&&version.retiredAt===null)){
-      updated=await updateCatalogueProduct(id,updated.revision,record=>{const now=new Date().toISOString();return {...record,model:publishModel,status:'published' as const,currentBundleProductId:publication.bundleProductId,bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:publication.bundleProductId,fingerprint:publication.fingerprint,publishedAt:now,retiredAt:null}]};});
+    if(updated.currentBundleProductId!==publication.bundleProductId||!updated.bundleVersions.some(version=>version.bundleProductId===publication.bundleProductId&&version.fingerprint===publication.fingerprint&&version.retiredAt===null)||!isDeepStrictEqual(updated.model,publishedModel)){
+      updated=await updateCatalogueProduct(id,updated.revision,record=>{const now=new Date().toISOString();return {...record,model:publishedModel,status:'published' as const,currentBundleProductId:publication.bundleProductId,bundleVersions:record.bundleVersions.some(version=>version.bundleProductId===publication.bundleProductId&&version.fingerprint===publication.fingerprint&&version.retiredAt===null)?record.bundleVersions:[...record.bundleVersions.map(version=>version.retiredAt===null?{...version,retiredAt:now}:version),{bundleProductId:publication.bundleProductId,fingerprint:publication.fingerprint,publishedAt:now,retiredAt:null}]};});
     }
     if(product.currentBundleProductId!==null){const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);if(adoption?.status==='active'&&adoption.catalogueId===id)await supersedeCatalogueAdoption(product.currentBundleProductId,publication.bundleProductId);}
     await inheritShippingProductGroup({catalogueId:id,previousBundleProductId:product.currentBundleProductId,bundleProductId:publication.bundleProductId,slug:product.slug});

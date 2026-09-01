@@ -11,7 +11,7 @@ assert.match(source, /useCatalogueProductEditor\(/, 'migrated catalogue records 
 assert.match(source, /\/admin-api\/catalogue-products/, 'products page must discover catalogue records from the public frontend admin alias');
 assert.match(source, /currentBundleProductId/, 'catalogue records must be matched to legacy list rows by their returned published product identity');
 assert.match(source, /product\.catalogueId/, 'the editor must open the catalogue ID returned by the catalogue API');
-assert.match(source, /<UnifiedProductEditor[\s\S]*?onSave=\{async \(intent\) => \{[\s\S]*?await save\(catalogueContentIntent\(intent, product!\.model\)\)/, 'existing catalogue content edits preserve operational live inventory');
+assert.match(source, /<UnifiedProductEditor[\s\S]*?onSave=\{async \(intent\) => \{[\s\S]*?await save\(catalogueContentIntent\(intent, product!\.model, inventory\?\.inventory \?\? \[\]\)\)/, 'existing catalogue content edits reconcile current bindings while preserving operational live inventory');
 assert.match(source, /editorKey=\{catalogueId\}/, 'existing editor must identify the controlled product by catalogue ID');
 assert.match(source, /editorKey="new-product"/, 'new-product editor must use a stable identity key');
 assert.match(source, /availableCategories = useMemo\([\s\S]*?product\.model\.details\.category/, 'Products page must derive category options from saved Catalogue products');

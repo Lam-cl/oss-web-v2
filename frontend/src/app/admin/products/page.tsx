@@ -15,6 +15,11 @@ import { adminFetch } from '@/lib/admin/client';
 import { money, Paged, Product } from '@/lib/admin/types';
 import type { ProductEditorSpec } from '@/lib/admin/productEditor';
 import { productInventory } from '@/lib/admin/productStock';
+import {
+  catalogueVariantBindingMap,
+  rebindCatalogueModelVariantIds,
+  type CatalogueVariantBindingRow,
+} from '@/lib/admin/catalogueVariantBindings';
 import { adminMediaUrl } from '@/lib/admin/mediaUrl';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
@@ -96,15 +101,20 @@ type CatalogueInventoryResponse = {
   inventory: Array<{ valueKeys: string[]; variantId: number; inventory: number }>;
 };
 
-function catalogueContentIntent(intent: UnifiedProductEditorSaveIntent, persisted: ProductEditorSpec): UnifiedProductEditorSaveIntent {
+function catalogueContentIntent(
+  intent: UnifiedProductEditorSaveIntent,
+  persisted: ProductEditorSpec,
+  bindings: readonly CatalogueVariantBindingRow[],
+): UnifiedProductEditorSaveIntent {
   const previous = new Map(persisted.combinations.map((combination) => [JSON.stringify(combination.valueKeys), combination]));
+  const rebound = rebindCatalogueModelVariantIds(intent.spec, bindings);
   return {
     ...intent,
     spec: {
-      ...intent.spec,
-      combinations: intent.spec.combinations.map((combination) => {
+      ...rebound,
+      combinations: rebound.combinations.map((combination) => {
         const stored = previous.get(JSON.stringify(combination.valueKeys));
-        return stored?.variantId !== undefined && stored.variantId === combination.variantId
+        return stored
           ? { ...combination, inventory: stored.inventory }
           : combination;
       }),
@@ -159,7 +169,7 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
 
   if (loading || inventoryLoading || !model) return <Skeleton rows={8} />;
   if (inventoryError) return <ErrorState message={inventoryError} retry={() => window.location.reload()} />;
-  const liveInventory = inventory ? Object.fromEntries(inventory.inventory.map((row) => [row.valueKeys.join('|'), row.inventory])) : undefined;
+  const liveInventory = inventory ? catalogueVariantBindingMap(inventory.inventory) : undefined;
   return <UnifiedProductEditor
     editorKey={catalogueId}
     availableCategories={availableCategories}
@@ -175,7 +185,7 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
       setPendingPhotos(nextPending);
     }}
     onSave={async (intent) => {
-      const saved = await save(catalogueContentIntent(intent, product!.model));
+      const saved = await save(catalogueContentIntent(intent, product!.model, inventory?.inventory ?? []));
       if (intent.inventoryChanges.length) {
         try {
           await catalogueRequest(`/${encodeURIComponent(catalogueId)}/inventory`, {

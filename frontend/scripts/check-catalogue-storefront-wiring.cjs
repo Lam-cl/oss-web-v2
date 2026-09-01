@@ -54,6 +54,8 @@ assert.deepEqual(product.features, ['Breathable', 'Machine washable']);
 assert.deepEqual(product.gallery, ['/all.webp', '/black-front.webp', '/black-back.webp', '/white-front.webp']);
 assert.equal(product.options[0].image, '/black-front.webp');
 assert.equal(product.options[1].image, '/white-front.webp');
+assert.equal(product.options[0].swatch, '#111827', 'Catalogue colors must resolve without a matching fallback product');
+assert.equal(product.options[1].swatch, '#ffffff', 'Catalogue colors must not fall back to generic grey');
 assert.equal(merchandise.getMerchandiseGalleryIndexForOption(product, 1), 3);
 assert.equal(merchandise.getMerchandiseOptionIndexForImage(product, '/black-back.webp'), 0);
 assert.equal(merchandise.getMerchandiseOptionIndexForImage(product, '/white-front.webp'), 1);
@@ -114,7 +116,16 @@ assert.deepEqual(hiddenBundle[0].variantInventoryById, { 9001: 1 });
 assert(!JSON.stringify(hiddenBundle).includes('CV-'));
 const retainedLiveOverlay = adapter.adaptCatalogueStorefrontPayload(payload, hiddenBundle)[0];
 assert.equal(retainedLiveOverlay.variantInventoryById[9001], 1, 'projected inventory must resolve through retained live provider bindings');
+assert.equal(retainedLiveOverlay.options[0].swatch, '#111827', 'provider-only Bundle bindings must not erase projected swatches');
 assert.equal(adapter.adaptCatalogueStorefrontPayload({ products: [] }, hiddenBundle).length, 0, 'provider bindings must never render without a valid public projection');
+assert.equal(merchandise.resolveMerchandiseSwatch(' merah '), '#dc2626');
+assert.equal(merchandise.resolveMerchandiseSwatch('HIJAU'), '#315d45');
+assert.equal(merchandise.resolveMerchandiseSwatch('Blue and Pink'), 'linear-gradient(135deg, #2563eb 0 50%, #ec4899 50%)');
+assert.equal(merchandise.resolveMerchandiseSwatch('blue/black'), 'linear-gradient(135deg, #2563eb 0 50%, #111827 50%)');
+assert.equal(merchandise.resolveMerchandiseSwatch('not-a-known-colour'), undefined);
+const unknownColour = structuredClone(payload);
+unknownColour.products[0].choices[0].values[0].label = 'Brand Special';
+assert.equal(adapter.adaptCatalogueStorefrontPayload(unknownColour, fallback)[0].options[0].swatch, merchandise.UNKNOWN_MERCHANDISE_SWATCH, 'unknown colors must render an honest neutral pattern');
 const draftOp = 'a'.repeat(64);
 for (const description of [
   `Safe copy\n[[TW-CATALOGUE-DRAFT:${draftOp}]]`,

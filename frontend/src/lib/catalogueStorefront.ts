@@ -1,6 +1,8 @@
 import {
   merchandiseProducts,
   merchandiseVariantKey,
+  resolveMerchandiseSwatch,
+  UNKNOWN_MERCHANDISE_SWATCH,
   type MerchandiseOption,
   type MerchandiseProduct,
 } from '@/data/merchandise';
@@ -119,14 +121,18 @@ function adaptProduct(value: unknown, fallback: MerchandiseProduct[]): Merchandi
   const enrichment = fallback.find((item) => item.slug === value.slug || item.name.toLowerCase() === title.toLowerCase());
   // ponytail: small storefront list; index fallback by Bundle ID if catalogue size grows.
   const liveProduct = fallback.find((item) => item.apiProductId === bundleProductId);
+  const colourOption = /^colou?r$/i.test(primaryChoice?.name || '');
   const options: MerchandiseOption[] = primaryValues.map((primary) => {
     const assigned = imageRecords.filter((image) => image.assignment === primary.key);
     const optionGallery = imageRecords.filter((image) => image.assignment === 'all' || image.assignment === primary.key).map((image) => image.url);
     const existing = enrichment?.options.find((option) => option.name.toLowerCase() === primary.label.toLowerCase());
+    const swatch = existing?.swatch || (colourOption
+      ? resolveMerchandiseSwatch(primary.label) || UNKNOWN_MERCHANDISE_SWATCH
+      : undefined);
     return {
       name: primary.label,
       image: assigned[0]?.url || optionGallery[0] || allImages[0],
-      ...(existing?.swatch ? { swatch: existing.swatch } : {}),
+      ...(swatch ? { swatch } : {}),
       ...(sizes.length ? { sizes } : {}),
       gallery: optionGallery,
     };

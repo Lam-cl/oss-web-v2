@@ -152,6 +152,12 @@ const SWATCHES: Record<string, string> = {
   green: '#315d45',
   'olive green': '#66744a',
   orange: '#f97316',
+  red: '#dc2626',
+  blue: '#2563eb',
+  yellow: '#facc15',
+  pink: '#ec4899',
+  brown: '#92400e',
+  beige: '#d6c3a5',
   purple: '#8b5cf6',
   'sky blue': '#6ec6e8',
   stoney: '#7d7b78',
@@ -159,6 +165,36 @@ const SWATCHES: Record<string, string> = {
   'blue & black': 'linear-gradient(135deg, #2563eb 0 50%, #111827 50%)',
   'blue & pink': 'linear-gradient(135deg, #2563eb 0 50%, #ec4899 50%)',
 };
+
+const SWATCH_ALIASES: Record<string, string> = {
+  hitam: 'black',
+  putih: 'white',
+  kelabu: 'grey',
+  'abu abu': 'grey',
+  merah: 'red',
+  biru: 'blue',
+  hijau: 'green',
+  kuning: 'yellow',
+  jingga: 'orange',
+  ungu: 'purple',
+  krim: 'cream',
+  perak: 'silver',
+  emas: 'gold',
+};
+
+export const UNKNOWN_MERCHANDISE_SWATCH = 'repeating-linear-gradient(135deg, #f8fafc 0 6px, #cbd5e1 6px 12px)';
+
+function normaliseSwatchLabel(value: string) {
+  return value.trim().toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s*(?:&|\/|\+|\band\b|\bdan\b)\s*/g, ' & ')
+    .replace(/\s+/g, ' ');
+}
+
+export function resolveMerchandiseSwatch(value: string) {
+  const normalised = normaliseSwatchLabel(value);
+  return SWATCHES[SWATCH_ALIASES[normalised] || normalised];
+}
 
 function selectedOptionMap(variant: NonNullable<BundleMerchandiseProduct['productVariants']>[number]) {
   const selected = new Map<string, string>();
@@ -333,6 +369,7 @@ export function mergeBundleMerchandiseProducts(
     const fallbackImage = galleryImages[0] || '/favicon.ico';
     const assignments = apiProduct.imageColorAssignments || {};
     const hasAssignments = Object.keys(assignments).length > 0;
+    const colourOption = /^colou?r$/i.test(primaryOption?.name || '');
     const options: MerchandiseOption[] = primaryValues.map((value) => {
       const assignedGallery = hasAssignments && value.id
         ? imageRecords.filter((image) => assignments[String(image.id)] === 'all' || Number(assignments[String(image.id)]) === Number(value.id)).map((image) => image.url)
@@ -343,7 +380,9 @@ export function mergeBundleMerchandiseProducts(
       return {
         name: value.value,
         image: hasAssignments ? optionGallery[0] || value.imageUrl || fallbackImage : value.imageUrl || fallbackImage,
-        swatch: SWATCHES[value.value.toLowerCase()],
+        swatch: colourOption
+          ? resolveMerchandiseSwatch(value.value) || UNKNOWN_MERCHANDISE_SWATCH
+          : undefined,
         sizes: sizes.length ? sizes : undefined,
         gallery: optionGallery,
       };

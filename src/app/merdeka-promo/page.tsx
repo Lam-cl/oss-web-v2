@@ -239,24 +239,28 @@ export default function MerdekaPromoPage() {
           <span className={styles.eyebrow}>tone wow Merdeka Promo</span>
           <h1>UPGRADE, <br />PAY LESS <br />& GET MORE.</h1>
           <p>Pay 10 months = 11th & 12th month is FREE!<br />Pay 5 months = 6th month is FREE!</p>
-           <p><a href='https://www.tonewow.com/merdekapromo-terms' style={{ color: '#2563eb', textDecoration: 'underline' }}>Terms & Conditions</a></p>
+           
           {/* <div className={styles.heroBenefits}>
             <span><TickIcon /> Save up to 2 months</span>
             <span><TickIcon /> One-time payment</span>
             <span><TickIcon /> Up to 24,000 FREE wowchers</span>
           </div> */}
         </div>
-        <div className={styles.heroVisual}>
-          <Image
-            src={merdekaAssetUrl('/images/merdeka-promo/merdeka banner.png')}
-            alt="tone wow Merdeka Promo"
-            fill
-            priority
-            unoptimized
-            sizes="(max-width: 700px) 100vw, 48vw"
-          />
-        
-        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+  <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9' }}>
+    <Image
+      src={merdekaAssetUrl('/images/merdeka-promo/merdeka banner.png')}
+      alt="tone wow Merdeka Promo"
+      fill
+      priority
+      unoptimized
+      sizes="(max-width: 700px) 100vw, 48vw"
+    />
+  </div>
+  <p style={{ textAlign: 'center', paddingTop: '10px' }}>
+    <a href='https://www.tonewow.com/merdekapromo-terms' style={{ color: '#2563eb', textDecoration: 'underline' }}>Terms & Conditions</a>
+  </p>
+</div>
       </section>
 
       <div className={styles.shell}>

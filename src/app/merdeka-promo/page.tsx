@@ -237,13 +237,14 @@ export default function MerdekaPromoPage() {
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>tone wow Merdeka Promo</span>
-          <h1>More Months.<br />More Value.</h1>
-          <p>Save up to 2 months + earn thousands of wowcher points with selected 6 or 12-month FU plans.</p>
-          <div className={styles.heroBenefits}>
+          <h1>UPGRADE, <br />PAY LESS <br />& GET MORE.</h1>
+          <p>Pay 10 months = 11th & 12th month is FREE!<br />Pay 5 months = 6th month is FREE!</p>
+           <p><a href='https://www.tonewow.com/merdekapromo-terms' style={{ color: '#2563eb', textDecoration: 'underline' }}>Terms & Conditions</a></p>
+          {/* <div className={styles.heroBenefits}>
             <span><TickIcon /> Save up to 2 months</span>
             <span><TickIcon /> One-time payment</span>
             <span><TickIcon /> Up to 24,000 FREE wowchers</span>
-          </div>
+          </div> */}
         </div>
         <div className={styles.heroVisual}>
           <Image
@@ -269,13 +270,26 @@ export default function MerdekaPromoPage() {
               {([6, 12] as MerdekaDuration[]).map((months) => {
                 const active = duration === months;
                 return (
-                  <button key={months} type="button" className={`${styles.durationCard} ${months === 6 ? styles.durationSix : styles.durationTwelve} ${active ? styles.selected : ''}`} onClick={() => setDuration(months)} aria-pressed={active}>
-                    <span className={styles.radio}>{active && <TickIcon />}</span>
-                    <span className={styles.durationDetails}>
-                      <span className={styles.durationCopy}><strong>{months} months</strong></span>
-                      <span className={styles.saveTag}>FREE {months === 6 ? '1 Month' : '2 Months'}</span>
-                    </span>
-                  </button>
+<button
+  key={months}
+  type="button"
+  className={`${styles.durationCard} ${months === 6 ? styles.durationSix : styles.durationTwelve} ${active ? styles.selected : ''}`}
+  onClick={() => setDuration(months)}
+  aria-pressed={active}
+>
+  <span className={styles.radio}>{active && <TickIcon />}</span>
+  <span className={styles.durationDetails}>
+    <span className={styles.durationTop}>
+      <span className={styles.durationCopy}><strong>{months} months</strong></span>
+      <span className={styles.saveTag}>FREE {months === 6 ? '1 Month' : '2 Months'}</span>
+    </span>
+    <span className={styles.promoNote}>
+      {months === 6
+        ? 'Pay 5 months and get your 6th free'
+        : 'Pay 10 months and get your 11th and 12th free'}
+    </span>
+  </span>
+</button>
                 );
               })}
             </div>

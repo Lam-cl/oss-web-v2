@@ -52,3 +52,46 @@
 .planCard.disabled .selectLabel {
   color: #8a93a3;
 }
+.promoNote {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #000
+}
+
+.selected .promoNote {
+  color: #ffffff;
+}
+
+.durationCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.durationDetails {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0; 
+  align-items: flex-start;
+}
+
+.durationTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap; 
+  white-space: nowrap;
+}
+
+.durationCopy {
+  white-space: nowrap;
+}
+
+.saveTag {
+  white-space: nowrap;
+  flex-shrink: 0;
+}

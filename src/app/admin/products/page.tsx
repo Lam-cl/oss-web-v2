@@ -15,6 +15,12 @@ import { adminFetch } from '@/lib/admin/client';
 import { money, Paged, Product } from '@/lib/admin/types';
 import type { ProductEditorSpec } from '@/lib/admin/productEditor';
 import { productInventory } from '@/lib/admin/productStock';
+import {
+  catalogueVariantBindingMap,
+  reconcileCatalogueInventoryChanges,
+  rebindCatalogueModelVariantIds,
+  type CatalogueVariantBindingRow,
+} from '@/lib/admin/catalogueVariantBindings';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
 import {
@@ -95,15 +101,20 @@ type CatalogueInventoryResponse = {
   inventory: Array<{ valueKeys: string[]; variantId: number; inventory: number }>;
 };
 
-function catalogueContentIntent(intent: UnifiedProductEditorSaveIntent, persisted: ProductEditorSpec): UnifiedProductEditorSaveIntent {
+function catalogueContentIntent(
+  intent: UnifiedProductEditorSaveIntent,
+  persisted: ProductEditorSpec,
+  bindings: readonly CatalogueVariantBindingRow[],
+): UnifiedProductEditorSaveIntent {
   const previous = new Map(persisted.combinations.map((combination) => [JSON.stringify(combination.valueKeys), combination]));
+  const rebound = rebindCatalogueModelVariantIds(intent.spec, bindings);
   return {
     ...intent,
     spec: {
-      ...intent.spec,
-      combinations: intent.spec.combinations.map((combination) => {
+      ...rebound,
+      combinations: rebound.combinations.map((combination) => {
         const stored = previous.get(JSON.stringify(combination.valueKeys));
-        return stored?.variantId !== undefined && stored.variantId === combination.variantId
+        return stored
           ? { ...combination, inventory: stored.inventory }
           : combination;
       }),
@@ -115,7 +126,7 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
   catalogueProduct: CatalogueProductRecord;
   availableCategories: string[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (message: string) => void;
 }) {
   const catalogueId = catalogueProduct.catalogueId;
   const { product, media, loading, saving, error, save } = useCatalogueProductEditor(catalogueId);
@@ -158,7 +169,7 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
 
   if (loading || inventoryLoading || !model) return <Skeleton rows={8} />;
   if (inventoryError) return <ErrorState message={inventoryError} retry={() => window.location.reload()} />;
-  const liveInventory = inventory ? Object.fromEntries(inventory.inventory.map((row) => [row.valueKeys.join('|'), row.inventory])) : undefined;
+  const liveInventory = inventory ? catalogueVariantBindingMap(inventory.inventory) : undefined;
   return <UnifiedProductEditor
     editorKey={catalogueId}
     availableCategories={availableCategories}
@@ -174,16 +185,26 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
       setPendingPhotos(nextPending);
     }}
     onSave={async (intent) => {
-      const saved = await save(catalogueContentIntent(intent, product!.model));
-      if (intent.inventoryChanges.length) {
+      let latestInventory = inventory;
+      let inventoryChanges = intent.inventoryChanges;
+      if (inventoryChanges.length) {
+        latestInventory = await catalogueRequest<CatalogueInventoryResponse>(`/${encodeURIComponent(catalogueId)}/inventory`);
+        if (!inventory || latestInventory.bundleProductId !== inventory.bundleProductId) {
+          throw new Error('The active product changed after this editor was opened. Reload before saving.');
+        }
+        inventoryChanges = reconcileCatalogueInventoryChanges(inventoryChanges, latestInventory.inventory);
+      }
+      const saved = await save(catalogueContentIntent(intent, product!.model, latestInventory?.inventory ?? []));
+      if (inventoryChanges.length) {
         try {
-          await catalogueRequest(`/${encodeURIComponent(catalogueId)}/inventory`, {
+          const updatedInventory = await catalogueRequest<CatalogueInventoryResponse>(`/${encodeURIComponent(catalogueId)}/inventory`, {
             method: 'PATCH',
             body: JSON.stringify({
-              bundleProductId: inventory!.bundleProductId,
-              changes: intent.inventoryChanges.map(({ variantId, expectedInventory, inventory: nextInventory }) => ({ variantId, expectedInventory, inventory: nextInventory })),
+              bundleProductId: latestInventory!.bundleProductId,
+              changes: inventoryChanges,
             }),
           });
+          setInventory(updatedInventory);
         } catch (problem) {
           const prefix = saved.product.revision !== product!.revision ? 'Product details were saved, but ' : '';
           const message = problem instanceof Error ? problem.message : 'live stock could not be updated.';
@@ -191,7 +212,12 @@ function ExistingCatalogueEditor({ catalogueProduct, availableCategories, onClos
         }
       }
       setPendingPhotos([]);
-      onSaved();
+      const contentChanged = saved.product.revision !== product!.revision;
+      onSaved(contentChanged && inventoryChanges.length
+        ? 'Product details saved and stock updated live. Publish changes to update the storefront details.'
+        : inventoryChanges.length
+          ? 'Stock updated live. No publication is required for stock-only changes.'
+          : 'Product saved. Publish changes if the product now shows a pending change.');
     }}
     onCancel={onClose}
     saving={saving}
@@ -432,10 +458,10 @@ function ProductsContent() {
           flash('Product added successfully.');
           void load();
         }} />
-      : <ExistingCatalogueEditor catalogueProduct={editor.product} availableCategories={availableCategories} onClose={() => setEditor(undefined)} onSaved={() => {
+      : <ExistingCatalogueEditor catalogueProduct={editor.product} availableCategories={availableCategories} onClose={() => setEditor(undefined)} onSaved={(message) => {
           window.history.replaceState(null, '', '/admin/products');
           setEditor(undefined);
-          flash('Product saved.');
+          flash(message);
           void load();
         }} />}
     {toast && <Toast {...toast} onClose={() => setToast(null)} />}

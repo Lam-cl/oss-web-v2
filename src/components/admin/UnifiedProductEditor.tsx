@@ -3,6 +3,11 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeProductEditorSpec } from '@/lib/admin/productEditor';
 import type { ProductEditorChoice, ProductEditorCombination, ProductEditorSpec } from '@/lib/admin/productEditor';
+import {
+  catalogueCombinationKey,
+  catalogueInventoryChanges,
+  type CatalogueVariantBindingRow,
+} from '@/lib/admin/catalogueVariantBindings';
 import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
 import styles from './UnifiedProductEditor.module.css';
 
@@ -107,7 +112,7 @@ export type UnifiedProductEditorProps = {
   lockedFields?: string[];
   saveMode?: 'product' | 'sim' | 'local-draft';
   model: ProductEditorSpec;
-  liveInventory?: Record<string, number>;
+  liveInventory?: ReadonlyMap<string, CatalogueVariantBindingRow & { inventory: number }>;
   existingPhotos: UnifiedProductEditorExistingPhoto[];
   pendingPhotos: UnifiedProductEditorPendingPhoto[];
   onModelChange: (model: ProductEditorSpec) => void;
@@ -484,13 +489,14 @@ export default function UnifiedProductEditor({
   const activeValues = model.choices.flatMap((choice) => choice.values.filter((value) => !value.retired).map((value) => ({ key: value.key, label: `${choice.name}: ${value.label}` })));
   const matrix = model.choices.length === 2 ? buildStockMatrix(model) : null;
   const shownInventory = (combination: ProductEditorCombination) => {
-    const key = combinationKey(combination.valueKeys);
-    return !touchedInventory.has(key) && liveInventory?.[key] !== undefined
-      ? liveInventory[key]
+    const key = catalogueCombinationKey(combination.valueKeys);
+    const live = liveInventory?.get(key);
+    return !touchedInventory.has(key) && live
+      ? live.inventory
       : combination.inventory;
   };
   const changeInventory = (combination: ProductEditorCombination, value: number | '') => {
-    const key = combinationKey(combination.valueKeys);
+    const key = catalogueCombinationKey(combination.valueKeys);
     setTouchedInventory((current) => new Set(current).add(key));
     updateNumeric(`inventory:${key || 'standard'}`, value, (inventory) => updateCombination(combination.valueKeys, { inventory }));
   };
@@ -655,16 +661,7 @@ export default function UnifiedProductEditor({
     }
     try {
       const intent = buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged);
-      intent.inventoryChanges = intent.spec.combinations.flatMap((combination) => {
-        const key = combinationKey(combination.valueKeys);
-        const expectedInventory = liveInventory?.[key];
-        return touchedInventory.has(key)
-          && combination.variantId !== undefined
-          && expectedInventory !== undefined
-          && combination.inventory !== expectedInventory
-          ? [{ valueKeys: [...combination.valueKeys], variantId: combination.variantId, expectedInventory, inventory: combination.inventory }]
-          : [];
-      });
+      intent.inventoryChanges = catalogueInventoryChanges(intent.spec.combinations, touchedInventory, liveInventory);
       await onSave(intent);
       createdObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
       createdObjectUrls.current.clear();

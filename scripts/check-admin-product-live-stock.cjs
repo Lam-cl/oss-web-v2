@@ -57,7 +57,9 @@ assert.equal(model.combinations[0].inventory, 1, 'live reconciliation never muta
 const page = fs.readFileSync('src/app/admin/products/page.tsx', 'utf8');
 assert.match(page, /productInventory\(/, 'row display and filter share authoritative inventory helper');
 assert.match(page, /catalogue-products.*inventory|inventory.*catalogue-products/s, 'editor loads authoritative inventory through its catalogue binding');
-assert.match(page, /expectedInventory/, 'stock writes retain the exact live value seen when the editor opened');
+const bindings = fs.readFileSync('src/lib/admin/catalogueVariantBindings.ts', 'utf8');
+assert.match(bindings, /expectedInventory/, 'stock writes retain the exact live value seen when the editor opened');
+assert.match(page, /reconcileCatalogueInventoryChanges/, 'save preflights stock against the latest authoritative binding');
 const editor = fs.readFileSync('src/components/admin/UnifiedProductEditor.tsx', 'utf8');
 assert.match(editor, /shownInventory/, 'stock inputs display authoritative provider stock directly');
 assert.match(editor, /touchedInventory/, 'only explicitly edited stock fields may become inventory changes');

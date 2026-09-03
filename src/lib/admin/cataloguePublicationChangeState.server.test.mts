@@ -37,11 +37,9 @@ function fixture(generation = 1) {
     completedSteps: [], resolved: { options: { 'catalogue-variant': 74 }, values: {
       'CV-036661490fced89b7c5c2c3e': 177, 'CV-3ad27df2c76c3d8c7e44d0fa': 178,
     }, images: { [mediaId]: 901 }, variants: { 'v:0': 230, 'v:1': 231 } },
-    // Production jobs bind compiled CV codes. The snapshot variant IDs, not
-    // these provider-only codes, bind back to stable catalogue choice keys.
     bindings: [
-      { valueKeys: ['CV-036661490fced89b7c5c2c3e'], variantId: 230 },
-      { valueKeys: ['CV-3ad27df2c76c3d8c7e44d0fa'], variantId: 231 },
+      { valueKeys: ['blue-black'], variantId: 230 },
+      { valueKeys: ['blue-pink'], variantId: 231 },
     ],
     resultFingerprint64: fingerprint, createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:01:00.000Z',
   };
@@ -118,7 +116,7 @@ test('same-ID SIM evidence permits its preserved legacy variant but remains exac
   evidence.product.currentBundleProductId = 39;
   evidence.product.bundleVersions[0].bundleProductId = 39;
   evidence.product.slug = 'superlite-sim';
-  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM' };
+  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM', minimumOrderQuantity: 2 };
   evidence.product.model.choices[0].values[0].key = 'tone-excel';
   evidence.product.model.choices[0].values[1].key = 'tone-plus';
   evidence.product.model.combinations = [
@@ -126,7 +124,7 @@ test('same-ID SIM evidence permits its preserved legacy variant but remains exac
     { valueKeys: ['tone-plus'], variantId: 210, sku: 'SUPER-TONE PLUS', price: 10, inventory: 44 },
   ];
   evidence.jobs[0].draftBundleProductId = 39;
-  evidence.jobs[0].bindings = [{ valueKeys: ['CV-a'], variantId: 209 }, { valueKeys: ['CV-b'], variantId: 210 }];
+  evidence.jobs[0].bindings = [{ valueKeys: ['tone-excel'], variantId: 209 }, { valueKeys: ['tone-plus'], variantId: 210 }];
   evidence.snapshot.bundleProductId = 39;
   evidence.snapshot.product = {
     ...evidence.snapshot.product, bundleProductId: 39, slug: 'superlite-sim',

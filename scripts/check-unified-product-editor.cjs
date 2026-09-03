@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..');
 const componentPath = path.join(root, 'src/components/admin/UnifiedProductEditor.tsx');
 const normalizerPath = path.join(root, 'src/lib/admin/productEditor.ts');
 const productDescriptionPath = path.join(root, 'src/lib/productDescription.ts');
+const variantBindingsPath = path.join(root, 'src/lib/admin/catalogueVariantBindings.ts');
 const cssPath = path.join(root, 'src/components/admin/UnifiedProductEditor.module.css');
 
 function loadTypescript(file, stubs = {}) {
@@ -36,8 +37,12 @@ function loadTypescript(file, stubs = {}) {
 
 const normalizer = loadTypescript(normalizerPath);
 const productDescription = loadTypescript(productDescriptionPath);
+const variantBindings = loadTypescript(variantBindingsPath, {
+  '@/lib/admin/productEditor': normalizer,
+});
 const component = loadTypescript(componentPath, {
   '@/lib/admin/productEditor': normalizer,
+  '@/lib/admin/catalogueVariantBindings': variantBindings,
   '@/lib/productDescription': productDescription,
   react: {
     useEffect() {},

@@ -40,9 +40,9 @@ function activeVersion(product: CatalogueProductRecord) {
 }
 
 function currentProjection(product: CatalogueProductRecord) {
-  const activeValues = new Set(product.model.choices.flatMap((choice) => (
-    choice.values.filter((value) => !value.retired).map((value) => value.key)
-  )));
+  const activeValuesByChoice = product.model.choices.map((choice) => new Set(
+    choice.values.filter((value) => !value.retired).map((value) => value.key),
+  ));
   const details = {
     title: product.model.details.title,
     price: product.model.details.price,
@@ -59,7 +59,8 @@ function currentProjection(product: CatalogueProductRecord) {
       values: choice.values.filter((value) => !value.retired).map((value) => ({ key: value.key, label: value.label })),
     })),
     combinations: product.model.combinations
-      .filter((combination) => combination.valueKeys.every((key) => activeValues.has(key)))
+      .filter((combination) => combination.valueKeys.length === activeValuesByChoice.length
+        && combination.valueKeys.every((key, index) => activeValuesByChoice[index].has(key)))
       .map((combination) => ({
         valueKeys: combination.valueKeys,
         price: combination.price,
@@ -104,7 +105,8 @@ function expectedSku(product: CatalogueProductRecord, valueKeys: string[], expli
 }
 
 function providerSkusMatch(product: CatalogueProductRecord, snapshot: CataloguePublishedSnapshotManifest, provider: PublicationProviderProduct) {
-  const variants = provider.productVariants || [];
+  const preservedLegacyVariantId = product.currentBundleProductId === 39 ? 106 : product.currentBundleProductId === 40 ? 107 : null;
+  const variants = (provider.productVariants || []).filter((variant) => variant.id !== preservedLegacyVariantId);
   const providerById = new Map(variants.map((variant) => [variant.id, variant]));
   const expectedIds = new Set(snapshot.product.combinations.map((combination) => combination.variantId));
   if (variants.length !== expectedIds.size || variants.some((variant) => !variant.id || !expectedIds.has(variant.id))) return null;
@@ -116,8 +118,10 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
   for (const published of snapshot.product.combinations) {
     const current = currentByTuple.get(JSON.stringify(published.valueKeys));
     const providerVariant = providerById.get(published.variantId);
-    if (!current || typeof providerVariant?.sku !== 'string' || !suffix.test(providerVariant.sku.toUpperCase())) return null;
-    const providerCanonicalSku = providerVariant.sku.toUpperCase().replace(suffix, '');
+    if (!current || typeof providerVariant?.sku !== 'string') return null;
+    const providerSku = providerVariant.sku.toUpperCase();
+    if (preservedLegacyVariantId === null && !suffix.test(providerSku)) return null;
+    const providerCanonicalSku = preservedLegacyVariantId === null ? providerSku.replace(suffix, '') : normalizedSku(providerSku);
     if (providerCanonicalSku !== expectedSku(product, current.combination.valueKeys, current.combination.sku, current.index)) return false;
   }
   return true;

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import { readTokenRecord, writeTokenRecord } from '@/lib/tokenStore';
 
 export const MERDEKA_PLAN_NAMES = ['FU35', 'FU50', 'FU60', 'FU80', 'FU120'] as const;
+
 export const MERDEKA_DURATIONS = [6, 12] as const;
 
 export type MerdekaDuration = (typeof MERDEKA_DURATIONS)[number];
@@ -29,6 +30,7 @@ export type MerdekaMember = {
   state: string;
   currentPlan: string | null;
   offeringID: string; 
+  idType: 'MyKad' | 'Army ID' | 'Passport No' | 'Police ID' | '';
   
 };
 
@@ -47,6 +49,14 @@ export type MerdekaPaymentRecord = {
   gatewayStatus?: string;
   gatewayDescription?: string;
   createdAt: string;
+};
+
+const SST_MONTHLY_PRICE: Record<string, number> = {
+  FU35: 37.30,
+  FU50: 53.00,
+  FU60: 63.93,
+  FU80: 84.80,
+  FU120: 127.20,
 };
 
 const PLAN_API = 'https://qa.tonegroup.net/twbackend/api/v4/databundle/list?productcode=TWE&documentID=';
@@ -75,9 +85,22 @@ export function isMerdekaDuration(value: unknown): value is MerdekaDuration {
   return value === 6 || value === 12;
 }
 
-export function calculateMerdekaPrice(monthlyPrice: number, duration: MerdekaDuration) {
+// export function calculateMerdekaPrice(monthlyPrice: number, duration: MerdekaDuration) {
+//   const multiplier = duration === 6 ? 5 : 10;
+//   return Math.round(monthlyPrice * multiplier * 100) / 100;
+// }
+
+export function calculateMerdekaPrice(
+  plan: MerdekaPlan,
+  duration: MerdekaDuration,
+  idType: MerdekaMember['idType'],
+) {
+  const isPassport = idType === 'Passport No';
+  const unitPrice = isPassport
+    ? (SST_MONTHLY_PRICE[plan.name] ?? plan.monthlyPrice)
+    : plan.monthlyPrice;
   const multiplier = duration === 6 ? 5 : 10;
-  return Math.round(monthlyPrice * multiplier * 100) / 100;
+  return Math.round(unitPrice * multiplier * 100) / 100;
 }
 
 export async function fetchMerdekaPlans(): Promise<MerdekaPlan[]> {
@@ -140,6 +163,7 @@ export async function fetchMerdekaMember(value: unknown): Promise<MerdekaMember>
     memberId,
     fullName,
     documentId: clean(data.documentInfo?.documentID),
+    idType: clean(data.documentInfo?.documentType) as MerdekaMember['idType'],
     email: clean(data.email),
     phone: clean(data.accountInfo?.simphoneNo) || msisdn,
     address1: clean(data.addressInfo?.address1),

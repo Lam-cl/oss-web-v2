@@ -53,8 +53,7 @@ export async function POST(request: NextRequest) {
     if (!fullName || !documentId || !/^\S+@\S+\.\S+$/.test(email) || !phone || !address1 || !/^\d{5}$/.test(postcode) || !city || !state) {
       return merdekaCors(request, NextResponse.json({ error: 'Complete all required customer and billing details.' }, { status: 422 }));
     }
-
-    const amount = calculateMerdekaPrice(plan.monthlyPrice, duration);
+const amount = calculateMerdekaPrice(plan, duration, member.idType);
     const refNo = createMerdekaReference();
     const paymentRefNo = `${PAYMENT_ID}${refNo}`;
     const record: MerdekaPaymentRecord = {

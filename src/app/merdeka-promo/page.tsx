@@ -22,13 +22,30 @@ const PLAN_TONES = [
   { accent: '#132744', header: '#132744', ink: '#ffffff', shape: '#df2935', shapeTwo: '#2f80ed', soft: '#edf1f6' },
 ];
 
+const SST_MONTHLY_PRICE: Record<string, number> = {
+  FU35: 37.30,
+  FU50: 53.00,
+  FU60: 63.93,
+  FU80: 84.80,
+  FU120: 127.20,
+};
+
 function money(value: number) {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(value);
 }
 
-function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null) {
+// function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null) {
+//   if (!plan || !duration) return 0;
+//   return Math.round(plan.monthlyPrice * (duration === 6 ? 5 : 10) * 100) / 100;
+// }
+
+function unitPriceFor(plan: MerdekaPlan, idType: MerdekaMember['idType'] | undefined) {
+  return idType === 'Passport No' ? (SST_MONTHLY_PRICE[plan.name] ?? plan.monthlyPrice) : plan.monthlyPrice;
+}
+
+function totalFor(plan: MerdekaPlan | null, duration: MerdekaDuration | null, idType: MerdekaMember['idType'] | undefined) {
   if (!plan || !duration) return 0;
-  return Math.round(plan.monthlyPrice * (duration === 6 ? 5 : 10) * 100) / 100;
+  return Math.round(unitPriceFor(plan, idType) * (duration === 6 ? 5 : 10) * 100) / 100;
 }
 
 function isPlanEligible(plan: MerdekaPlan, currentPlan: string | null): boolean {
@@ -105,8 +122,8 @@ export default function MerdekaPromoPage() {
     () => plans.find((plan) => plan.id === selectedPlanId) || null,
     [plans, selectedPlanId],
   );
-  const total = totalFor(selectedPlan, duration);
-  const regularTotal = selectedPlan && duration ? selectedPlan.monthlyPrice * duration : 0;
+const total = totalFor(selectedPlan, duration, member?.idType);
+const regularTotal = selectedPlan && duration ? unitPriceFor(selectedPlan, member?.idType) * duration : 0;
   const savings = regularTotal - total;
 
   const changeMsisdn = (value: string) => {

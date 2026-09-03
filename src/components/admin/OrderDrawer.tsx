@@ -43,6 +43,7 @@ const pickupLabels: Record<string, string> = {
   READY_FOR_COLLECTION: "Ready for collection",
   COMPLETED: "Completed",
 };
+const collectionDateEditingEnabled = process.env.NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED === "true";
 type Courier = { id: number; name: string; code: string; isActive: boolean };
 type BillingAddress = {
   fullName: string;
@@ -102,6 +103,8 @@ export default function OrderDrawer({
   const [courierId, setCourierId] = useState("");
   const [trackingNo, setTrackingNo] = useState("");
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  const [collectionDate, setCollectionDate] = useState("");
+  const [collectionDateBusy, setCollectionDateBusy] = useState(false);
   const [courierBusy, setCourierBusy] = useState(false);
   const [presentationIndex, setPresentationIndex] = useState(
     () => indexAdminOrderItemPresentations({ products: [] }),
@@ -113,6 +116,7 @@ export default function OrderDrawer({
     try {
       const value = await adminFetch<Order>(`orders/${id}`);
       setOrder(value);
+      setCollectionDate(orderPickupDate(value));
       const pickupOrder = orderDeliveryOption(value) === "PICKUP";
       setDraftStatus(
         pickupOrder
@@ -216,6 +220,26 @@ export default function OrderDrawer({
       );
     } finally {
       setCourierBusy(false);
+    }
+  }
+
+  async function saveCollectionDate() {
+    if (!order || !collectionDateEditingEnabled || !collectionDate || collectionDate === orderPickupDate(order)) return;
+    setCollectionDateBusy(true);
+    try {
+      await adminFetch(`orders/${id}/collection-date`, {
+        method: "PUT",
+        body: JSON.stringify({
+          collectionDate,
+          expectedCollectionDate: orderPickupDate(order),
+        }),
+      });
+      onSaved("Collection date updated in Bundle. Future Ready for Collection emails will use the new date.");
+      await load();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Unable to update the collection date.");
+    } finally {
+      setCollectionDateBusy(false);
     }
   }
 
@@ -535,14 +559,30 @@ export default function OrderDrawer({
                       </select>
                     </label>
                     {pickup && (
-                      <label className="adm-field">
-                        Collection date
-                        <input
-                          type="date"
-                          value={orderPickupDate(order)}
-                          readOnly
-                        />
-                      </label>
+                      <>
+                        <label className="adm-field">
+                          Collection date
+                          <input
+                            type="date"
+                            value={collectionDate}
+                            disabled={!collectionDateEditingEnabled || collectionDateBusy}
+                            onChange={(event) => setCollectionDate(event.target.value)}
+                          />
+                          {!collectionDateEditingEnabled && <small>Editing will be enabled after Bundle API supports collection dates.</small>}
+                        </label>
+                        {collectionDateEditingEnabled && (
+                          <div className="adm-field adm-field-action">
+                            <button
+                              type="button"
+                              className="adm-button secondary"
+                              disabled={collectionDateBusy || !collectionDate || collectionDate === orderPickupDate(order)}
+                              onClick={() => void saveCollectionDate()}
+                            >
+                              {collectionDateBusy ? "Saving…" : "Save date"}
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                     <label className="adm-field">
                       {pickup ? "Pickup status" : "Order status"}

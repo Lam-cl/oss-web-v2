@@ -182,6 +182,8 @@ export const orderDeliveryOption = (order: Order) => {
 };
 
 export const orderPickupDate = (order: Order) => {
+  const explicit = text(order.collectionDate);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
   const address = record(order.shippingAddresses || order.shippingAddress || order.deliveryAddress);
   return pickupDateFromAddress(address.address || address.address1);
 };

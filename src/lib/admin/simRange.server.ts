@@ -3,6 +3,12 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 const SIM_VALIDATE_BASE = 'https://www.tonewow.net/gwp/api/sim/x2/validate/productcode';
 const TOKEN_TTL_MS = 30 * 60 * 1000;
 const STEM_CONCURRENCY = 4;
+const CANDIDATE_CONCURRENCY = 5;
+const VALIDATION_CONCURRENCY = 8;
+const UPSTREAM_TIMEOUT_MS = 5_000;
+const VALIDATION_DEADLINE_MS = 15_000;
+let activeValidations = 0;
+const validationWaiters: Array<() => void> = [];
 
 export type SimProductCode = 'TWE' | 'TWP';
 
@@ -59,15 +65,36 @@ export function decryptSimAssignmentToken(token: string): AssignmentTokenPayload
 
 function digits(value: unknown) { return String(value ?? '').replace(/\D/g, ''); }
 
-async function validateCandidate(productCode: SimProductCode, prefixId: string, simSerial: string) {
+async function withValidationSlot<T>(run: () => Promise<T>) {
+  if (activeValidations >= VALIDATION_CONCURRENCY) {
+    await new Promise<void>((resolve) => validationWaiters.push(resolve));
+  }
+  activeValidations += 1;
+  try { return await run(); }
+  finally {
+    activeValidations -= 1;
+    validationWaiters.shift()?.();
+  }
+}
+
+async function validateCandidate(productCode: SimProductCode, prefixId: string, simSerial: string, deadline: number) {
   const url = `${SIM_VALIDATE_BASE}/${productCode}/simprefixid/${encodeURIComponent(prefixId)}/simserial/${simSerial}`;
   let response: Response;
   try {
-    response = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': 'ToneWow Merchandise Admin' },
-      cache: 'no-store',
+    response = await withValidationSlot(async () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new SimRangeError('SIM validation timed out. Please try again.', 504);
+      return fetch(url, {
+        headers: { Accept: 'application/json', 'User-Agent': 'ToneWow Merchandise Admin' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(Math.min(UPSTREAM_TIMEOUT_MS, remaining)),
+      });
     });
-  } catch {
+  } catch (reason) {
+    if (reason instanceof SimRangeError) throw reason;
+    if (reason instanceof Error && ['AbortError', 'TimeoutError'].includes(reason.name)) {
+      throw new SimRangeError('SIM validation timed out. Please try again.', 504);
+    }
     throw new SimRangeError('SIM validation service is unavailable.', 502);
   }
   const payload = await response.json().catch(() => null) as Record<string, any> | null;
@@ -83,22 +110,19 @@ async function validateCandidate(productCode: SimProductCode, prefixId: string, 
   } satisfies ValidatedSim;
 }
 
-async function findSerial(productCode: SimProductCode, prefixId: string, stem: string, preferredSerial = '') {
+async function findSerial(productCode: SimProductCode, prefixId: string, stem: string, deadline: number, preferredSerial = '') {
   const preferred = /^\d{11}$/.test(preferredSerial) && preferredSerial.startsWith(stem) ? preferredSerial : '';
   const candidates = [preferred, ...Array.from({ length: 10 }, (_, suffix) => `${stem}${suffix}`)].filter(
     (candidate, index, values) => candidate && values.indexOf(candidate) === index,
   );
-  for (const candidate of candidates) {
-    const result = await validateCandidate(productCode, prefixId, candidate);
-    if (result) return result;
-  }
-  return null;
+  const results = await mapWithConcurrency(candidates, (candidate) => validateCandidate(productCode, prefixId, candidate, deadline), CANDIDATE_CONCURRENCY);
+  return results.find((result) => result !== null) || null;
 }
 
-async function mapWithConcurrency<T, R>(values: T[], worker: (value: T) => Promise<R>) {
+async function mapWithConcurrency<T, R>(values: T[], worker: (value: T) => Promise<R>, concurrency = STEM_CONCURRENCY) {
   const results = new Array<R>(values.length);
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(STEM_CONCURRENCY, values.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
     while (next < values.length) {
       const index = next;
       next += 1;
@@ -113,7 +137,6 @@ export async function validateSimRange(input: {
   orderItemId: number;
   productCode: SimProductCode;
   prefixId: string;
-  fallbackPrefixIds?: string[];
   simPrefix: string;
   startSerial: string;
   endSerial: string;
@@ -128,16 +151,11 @@ export async function validateSimRange(input: {
   if (!/^\d+$/.test(prefixId) || !/^\d{9}$/.test(simPrefix)) throw new SimRangeError('Select a valid SIM prefix.');
   if (!/^\d{10,11}$/.test(startSerial) || !/^\d{10,11}$/.test(endSerial)) throw new SimRangeError('Starting and Ending SN must contain 10 digits. An optional 11th digit is accepted.');
 
-  const fallbackPrefixIds = Array.from(new Set((input.fallbackPrefixIds || []).map(digits).filter((value) => /^\d+$/.test(value) && value !== prefixId)));
+  const deadline = Date.now() + VALIDATION_DEADLINE_MS;
   const firstStem = startSerial.slice(0, 10);
   const lastStem = endSerial.slice(0, 10);
-  let resolvedPrefixId = prefixId;
-  let firstSerial: ValidatedSim | null = null;
-  for (const candidatePrefixId of [prefixId, ...fallbackPrefixIds]) {
-    firstSerial = await findSerial(productCode, candidatePrefixId, firstStem, startSerial);
-    if (firstSerial) { resolvedPrefixId = candidatePrefixId; break; }
-  }
-  if (!firstSerial) throw new SimRangeError('Starting SN was not found for any available SIM prefix ID.', 422);
+  const firstSerial = await findSerial(productCode, prefixId, firstStem, deadline, startSerial);
+  if (!firstSerial) throw new SimRangeError('Starting SN was not found for the selected SIM prefix.', 422);
 
   const firstStemNumber = Number(firstStem);
   const lastStemNumber = Number(lastStem);
@@ -148,7 +166,7 @@ export async function validateSimRange(input: {
   const validated = await mapWithConcurrency(stems, async (stem) => {
     if (stem === firstStem) return firstSerial!;
     const preferred = stem === lastStem ? endSerial : '';
-    const result = await findSerial(productCode, resolvedPrefixId, stem, preferred);
+    const result = await findSerial(productCode, prefixId, stem, deadline, preferred);
     if (!result) throw new SimRangeError(`No valid SIM serial was found for stem ${stem}.`, 422);
     return result;
   });
@@ -161,7 +179,7 @@ export async function validateSimRange(input: {
       orderId: input.orderId,
       orderItemId: input.orderItemId,
       productCode,
-      prefixId: resolvedPrefixId,
+      prefixId,
       simPrefix,
       expiresAt: Date.now() + TOKEN_TTL_MS,
       serials: validated.map(({ simSerial, puk }) => ({ simSerial, puk })),

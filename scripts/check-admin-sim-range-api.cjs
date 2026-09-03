@@ -6,9 +6,15 @@ assert(source.includes('Array.from({ length: 10 }'),'random final-digit search m
 assert(source.includes("/^\\d{10,11}$/"),'10-digit stem input support missing');
 assert(source.includes('preferredSerial'),'optional 11th digit optimisation missing');
 assert(source.includes('STEM_CONCURRENCY = 4'),'validation concurrency guard missing');
+assert(source.includes('CANDIDATE_CONCURRENCY = 5'),'candidate concurrency guard missing');
+assert(source.includes('VALIDATION_CONCURRENCY = 8'),'global provider concurrency guard missing');
+assert(source.includes('VALIDATION_DEADLINE_MS = 15_000'),'server validation deadline missing');
+assert(source.includes('AbortSignal.timeout'),'upstream request timeout missing');
+assert(!source.includes('fallbackPrefixIds'),'validation must never scan an unselected SIM prefix');
 assert(!source.includes('authorization:'),'public SIM validation must not send an access token');
 assert(source.includes("createCipheriv('aes-256-gcm'"),'PUK assignment token must be encrypted');
 assert(source.includes('serials: validated.map(({ simSerial, simCode, simType })'),'browser-safe response must omit PUK');
 assert(route.includes('sim-range-validation')&&route.includes('sim-range-assignments'),'admin range routes missing');
 assert(route.includes('puk: source.puk'),'validated PUK must be forwarded only during Bundle save');
+assert(!route.includes('fallbackPrefixIds: options'),'route must validate only the selected prefix');
 console.log('admin SIM range API check passed');

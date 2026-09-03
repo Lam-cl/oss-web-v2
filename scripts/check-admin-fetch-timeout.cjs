@@ -31,7 +31,8 @@ const { adminFetch, AdminApiError } = loaded.exports;
         && error.status === 504,
     );
     assert(signal instanceof AbortSignal, 'admin requests must receive an AbortSignal');
-    assert.match(fs.readFileSync(file, 'utf8'), /AbortSignal\.timeout\(20_000\)/);
+    assert.equal(signal.aborted, false, 'the request receives a live timeout signal');
+    assert.match(fs.readFileSync(file, 'utf8'), /timeoutMs\s*=\s*20_000/);
     console.log('Admin API timeout check passed');
   } finally {
     global.fetch = originalFetch;

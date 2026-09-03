@@ -5,14 +5,17 @@ export class AdminApiError extends Error {
   }
 }
 
-export async function adminFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
+export type AdminRequestInit = RequestInit & { timeoutMs?: number };
+
+export async function adminFetch<T = any>(path: string, init?: AdminRequestInit): Promise<T> {
   let response: Response;
   try {
+    const { timeoutMs = 20_000, ...requestInit } = init || {};
     response = await fetch(`/admin-api/${path.replace(/^\//, '')}`, {
-      ...init,
+      ...requestInit,
       cache: 'no-store',
-      signal: init?.signal ?? AbortSignal.timeout(20_000),
-      headers: { ...(init?.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...init?.headers },
+      signal: requestInit.signal ?? AbortSignal.timeout(timeoutMs),
+      headers: { ...(requestInit.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...requestInit.headers },
     });
   } catch (problem) {
     if (problem instanceof Error && problem.name === 'TimeoutError') {

@@ -266,6 +266,7 @@ export default function SimRangeAssignment({
             assignmentToken: string;
           }>(`orders/${orderId}/sim-range-validation`, {
             method: "POST",
+            timeoutMs: 30_000,
             body: JSON.stringify({
               orderItemId,
               productCode,

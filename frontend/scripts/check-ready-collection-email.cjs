@@ -245,6 +245,8 @@ const pickup = (status = 'PAID') => ({ id: 42, status, deliveryOption: 'PICKUP' 
       '@/lib/admin/simAssignments': { deriveSimUnits: () => [] },
       '@/lib/admin/simAssignments.server': { SimAssignmentValidationError: class extends Error {} },
       '@/lib/cataloguePublicProjection.server': { readCatalogueSimFulfilmentProducts: async () => [] },
+      '@/lib/pickup': { isKualaLumpurWorkingDay: () => true, malaysiaDate: () => '2026-09-04' },
+      '@/lib/admin/types': { orderDeliveryOption: () => 'PICKUP', orderPickupDate: () => '2026-09-08' },
     });
     const request = () => { const value = new Request('https://admin.test/admin-api/orders/42/ready-for-collection-email', { method: 'POST', headers: { origin: 'https://admin.test', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'READY_FOR_COLLECTION' }) }); Object.defineProperty(value, 'nextUrl', { value: new URL(value.url) }); return value; };
     const context = { params: { path: ['orders', '42', 'ready-for-collection-email'] } };

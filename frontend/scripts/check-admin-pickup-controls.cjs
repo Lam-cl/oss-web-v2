@@ -5,6 +5,12 @@ assert.match(source, /import\s*\{[\s\S]*pickupBundleStatus[\s\S]*pickupStatus[\s
 assert.match(source, /orderFulfilmentStatus\(order\)/, 'drawer badge must use pickup-facing status');
 assert.match(source, /orderPickupDate\(order\)/, 'collection date must be shown in admin');
 assert.match(source, /Collection date/, 'collection date label missing');
+assert.match(source, /NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED/, 'collection date editing must remain capability-gated');
+assert.match(source, /expectedCollectionDate/, 'collection date updates require optimistic concurrency');
+assert.match(source, /NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED\s*!==\s*["']false["']/, 'collection date editing must default on after Bundle API support');
+assert.match(source, /AdminApiError[\s\S]*?status\s*===\s*409[\s\S]*?await load\(\)/, 'stale date conflicts must reload authoritative order data');
+assert.match(source, /orderPickupDate\(order\)\s*\|\|\s*null/, 'an order without a current date must send a null concurrency value');
+assert.match(source, /disabled by configuration/, 'disabled control must explain the kill switch');
 assert.match(source, /Pickup status/, 'pickup status control missing');
 assert.match(source, /<option\s+value=["']PENDING_COLLECTION["']\s+disabled>/, 'pending collection display missing');
 assert.match(source, /<option\s+value=["']COMPLETED["']>/, 'completed action missing');

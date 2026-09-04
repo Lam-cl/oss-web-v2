@@ -10,6 +10,8 @@ import { defaultReadyCollectionEmailStore, orchestrateReadyCollectionEmail, Read
 import { deriveSimUnits } from '@/lib/admin/simAssignments';
 import { assertOrderSimAssignmentsComplete, readOrderSimAssignments, saveOrderSimAssignments, SimAssignmentValidationError } from '@/lib/admin/simAssignments.server';
 import { readCatalogueSimFulfilmentProducts } from '@/lib/cataloguePublicProjection.server';
+import { isKualaLumpurWorkingDay, malaysiaDate } from '@/lib/pickup';
+import { orderDeliveryOption, orderPickupDate } from '@/lib/admin/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,7 @@ const rules: Array<{ pattern: RegExp; methods: string[] }> = [
   { pattern: /^couriers$/, methods: ['GET'] },
   { pattern: /^orders\/\d+$/, methods: ['GET', 'PATCH'] },
   { pattern: /^orders\/\d+\/status$/, methods: ['PUT'] },
+  { pattern: /^orders\/[1-9]\d*\/collection-date$/, methods: ['PUT'] },
   { pattern: /^orders\/[1-9]\d*\/ready-for-collection-email$/, methods: ['POST'] },
   { pattern: /^orders\/\d+\/sim-assignments$/, methods: ['GET', 'PUT'] },
   { pattern: /^orders\/\d+\/sim-range-validation$/, methods: ['POST'] },
@@ -202,6 +205,58 @@ async function proxy(request: NextRequest, context: { params: { path: string[] }
   }
 
   const headers = new Headers({ authorization: `Bearer ${session.token}`, accept: 'application/json' });
+
+  const collectionDateMatch = request.method === 'PUT' ? /^orders\/([1-9]\d*)\/collection-date$/.exec(path) : null;
+  if (collectionDateMatch) {
+    if (process.env.BUNDLE_COLLECTION_DATE_ENABLED === 'false') {
+      return NextResponse.json({ message: 'Collection date editing is disabled by configuration.' }, { status: 503 });
+    }
+    try {
+      const orderId = Number(collectionDateMatch[1]);
+      const body = await request.json() as { collectionDate?: unknown; expectedCollectionDate?: unknown };
+      const collectionDate = String(body.collectionDate || '');
+      const expectedCollectionDate = body.expectedCollectionDate === null ? null : String(body.expectedCollectionDate || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(collectionDate) || collectionDate < malaysiaDate() || !isKualaLumpurWorkingDay(collectionDate)) {
+        return NextResponse.json({ message: 'Choose today or a future Kuala Lumpur working day.' }, { status: 400 });
+      }
+      if (expectedCollectionDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(expectedCollectionDate)) {
+        return NextResponse.json({ message: 'The expected collection date is invalid.' }, { status: 400 });
+      }
+      const orderResponse = await fetch(`${BUNDLE_API}/orders/${orderId}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+      const orderPayload = await readUpstream(orderResponse) as Record<string, any> | null;
+      if (!orderResponse.ok) return safeError(orderResponse.status, orderPayload);
+      const order = orderPayload?.data && typeof orderPayload.data === 'object' ? orderPayload.data : orderPayload;
+      if (!order || orderDeliveryOption(order as any) !== 'PICKUP') {
+        return NextResponse.json({ message: 'Collection date can be changed only for a pickup order.' }, { status: 400 });
+      }
+      const currentCollectionDate = orderPickupDate(order as any) || null;
+      if (currentCollectionDate !== expectedCollectionDate) {
+        return NextResponse.json({
+          message: 'The collection date changed after this order was opened. Review the latest date and try again.',
+          currentCollectionDate,
+        }, { status: 409 });
+      }
+      const updateHeaders = new Headers(headers);
+      updateHeaders.set('content-type', 'application/json');
+      const updateResponse = await fetch(`${BUNDLE_API}/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: updateHeaders,
+        body: JSON.stringify({ collectionDate, expectedCollectionDate: currentCollectionDate }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15_000),
+      });
+      const updatePayload = await readUpstream(updateResponse) as Record<string, any> | null;
+      if (!updateResponse.ok) return safeError(updateResponse.status, updatePayload);
+      const updated = updatePayload?.data && typeof updatePayload.data === 'object' ? updatePayload.data : updatePayload;
+      if (!updated || orderPickupDate(updated as any) !== collectionDate) {
+        return NextResponse.json({ message: 'Bundle API did not confirm the new collection date.' }, { status: 502 });
+      }
+      return NextResponse.json(sanitizePayload(updated), { headers: { 'cache-control': 'no-store' } });
+    } catch (reason) {
+      const status = reason instanceof Error && ['AbortError', 'TimeoutError'].includes(reason.name) ? 504 : 500;
+      return NextResponse.json({ message: status === 504 ? 'Bundle API timed out while updating the collection date.' : 'The collection date could not be updated.' }, { status, headers: { 'cache-control': 'no-store' } });
+    }
+  }
 
   const readyEmailMatch = request.method === 'POST' ? /^orders\/([1-9]\d*)\/ready-for-collection-email$/.exec(path) : null;
   if (readyEmailMatch) {

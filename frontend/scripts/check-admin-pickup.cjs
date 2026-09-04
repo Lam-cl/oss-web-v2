@@ -5,6 +5,7 @@ const admin=compile('src/lib/admin/types.ts',(id)=>['@/lib/pickup','../pickup'].
 const marker='Self Pick Up | Collection date: 2026-08-20';
 assert.equal(admin.orderPickupDate({shippingAddress:{address:marker}}),'2026-08-20');
 assert.equal(admin.orderPickupDate({shippingAddresses:JSON.stringify({address:marker})}),'2026-08-20');
+assert.equal(admin.orderPickupDate({collectionDate:'2026-08-21',shippingAddress:{address:marker}}),'2026-08-21','explicit Bundle collection date must override the legacy address marker');
 assert.equal(admin.orderFulfilmentStatus({status:'PAID',shippingAddress:{address:marker}}),'PENDING COLLECTION');
 assert.equal(admin.orderFulfilmentStatus({status:'DELIVERED',shippingAddress:{address:marker}}),'COMPLETED');
 assert.equal(admin.orderFulfilmentStatus({status:'SHIPPED',shippingAddress:{address:'Somewhere'}}),'SHIPPED');

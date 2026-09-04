@@ -27,4 +27,6 @@ Website feature flags after the Bundle staging contract is verified:
 ```env
 BUNDLE_COLLECTION_DATE_ENABLED=true
 NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED=true
+
+The official Bundle collection-date contract is now available, so editing defaults to enabled. Either flag may be set to `false` as an emergency kill switch.
 ```

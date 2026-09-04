@@ -6,7 +6,7 @@ import {
   indexLegacySimVariantBindings,
   type SimVariantBinding,
 } from "@/lib/admin/simAssignments";
-import { adminFetch } from "@/lib/admin/client";
+import { AdminApiError, adminFetch } from "@/lib/admin/client";
 import {
   indexAdminOrderItemPresentations,
   resolveAdminOrderItemPresentation,
@@ -43,7 +43,7 @@ const pickupLabels: Record<string, string> = {
   READY_FOR_COLLECTION: "Ready for collection",
   COMPLETED: "Completed",
 };
-const collectionDateEditingEnabled = process.env.NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED === "true";
+const collectionDateEditingEnabled = process.env.NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED !== "false";
 type Courier = { id: number; name: string; code: string; isActive: boolean };
 type BillingAddress = {
   fullName: string;
@@ -231,12 +231,13 @@ export default function OrderDrawer({
         method: "PUT",
         body: JSON.stringify({
           collectionDate,
-          expectedCollectionDate: orderPickupDate(order),
+          expectedCollectionDate: orderPickupDate(order) || null,
         }),
       });
       onSaved("Collection date updated in Bundle. Future Ready for Collection emails will use the new date.");
       await load();
     } catch (reason) {
+      if (reason instanceof AdminApiError && reason.status === 409) await load();
       onError(reason instanceof Error ? reason.message : "Unable to update the collection date.");
     } finally {
       setCollectionDateBusy(false);
@@ -568,7 +569,7 @@ export default function OrderDrawer({
                             disabled={!collectionDateEditingEnabled || collectionDateBusy}
                             onChange={(event) => setCollectionDate(event.target.value)}
                           />
-                          {!collectionDateEditingEnabled && <small>Editing will be enabled after Bundle API supports collection dates.</small>}
+                          {!collectionDateEditingEnabled && <small>Collection date editing is disabled by configuration.</small>}
                         </label>
                         {collectionDateEditingEnabled && (
                           <div className="adm-field adm-field-action">

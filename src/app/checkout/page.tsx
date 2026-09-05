@@ -12,6 +12,7 @@ import { lookupMalaysianPostcode } from '@/lib/malaysiaPostcodes';
 import { calculateMerchandiseCourierCharge, type ShippingSettings } from '@/lib/shipping';
 import { isKualaLumpurWorkingDay, localDateToPickupDate, malaysiaDate, minimumPickupDate, pickupAddress, pickupDateToLocalDate } from '@/lib/pickup';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
+import { checkoutTotal } from '@/lib/checkoutTotal';
 
 const verifyBtnStyle: React.CSSProperties = {
   height: 46,
@@ -107,7 +108,8 @@ export default function CheckoutPage() {
   const shippingPending = pickupOption === 'delivery' && (!shippingSettings || !shippingState);
   const shippingUnavailable = pickupOption === 'delivery' && Boolean(shippingSettings && shippingState && courier.unclassified.length);
   const merchandiseSubtotal = getTotal();
-  const grandTotal = Math.max(0, merchandiseSubtotal + shipping - (promo?.discount || 0));
+  const grandTotal = checkoutTotal({ subtotal: merchandiseSubtotal, discount: promo?.discount || 0, pickup: pickupOption === 'self', shippingReady: !shippingPending && !shippingUnavailable, shipping });
+  const totalMessage = shippingSettingsError || (shippingUnavailable ? 'Delivery is unavailable for these items' : !shippingState ? 'Select state to calculate total' : 'Calculating shipping…');
   const itemLabel = (item: (typeof items)[number]) => {
     if (item.selectionRequired) return `${item.name} (${item.selectionRequired})`;
     const selection = [item.variant, item.size].filter(Boolean).join(' · ');
@@ -150,6 +152,10 @@ export default function CheckoutPage() {
     }
     if (stockIssues.length) {
       setError('One or more cart items exceed the currently available stock. Return to cart and adjust the quantity.');
+      return;
+    }
+    if (grandTotal === null) {
+      setError(totalMessage);
       return;
     }
     if (!form.firstName || !form.lastName || !form.email || !form.phone || !form.ic) {
@@ -331,10 +337,11 @@ export default function CheckoutPage() {
             </div>
             {promo && <div className="sidebar-order-row merch-promo-discount"><span>Promo ({promo.code})</span><span>−{formatRM(promo.discount)}</span></div>}
             <div className="sidebar-order-divider" />
-            <div className="sidebar-order-row sidebar-order-total">
-              <span>{shippingPending || shippingUnavailable ? 'Total before shipping' : 'Total'}</span>
+            <div className="sidebar-order-row"><span>Subtotal</span><span>{formatRM(merchandiseSubtotal)}</span></div>
+            {grandTotal !== null ? <div className="sidebar-order-row sidebar-order-total">
+              <span>Total</span>
               <span>{formatRM(grandTotal)}</span>
-            </div>
+            </div> : <p role="status">{totalMessage}</p>}
           </div>
           {renderPromo()}
           <section className="merch-checkout-payment">
@@ -453,7 +460,8 @@ export default function CheckoutPage() {
                 ))}
                 <div className="merch-cart-summary-row"><span>Shipping</span><strong>{shippingPending ? 'Select state' : shippingUnavailable ? 'Unavailable' : shipping === 0 ? 'FREE' : formatRM(shipping)}</strong></div>
                 {promo && <div className="merch-cart-summary-row merch-promo-discount"><span>Promo ({promo.code})</span><strong>−{formatRM(promo.discount)}</strong></div>}
-                <div className="merch-cart-total"><span>{shippingPending || shippingUnavailable ? 'Total before shipping' : 'Total'}</span><strong>{formatRM(grandTotal)}</strong></div>
+                <div className="merch-cart-summary-row"><span>Subtotal</span><strong>{formatRM(merchandiseSubtotal)}</strong></div>
+                {grandTotal !== null ? <div className="merch-cart-total"><span>Total</span><strong>{formatRM(grandTotal)}</strong></div> : <p role="status">{totalMessage}</p>}
                 {renderPromo()}
               </section>
             </div>
@@ -461,7 +469,7 @@ export default function CheckoutPage() {
           <div className="merch-checkout-mobile-pay">
             <button type="button" className="merch-cart-summary-toggle" onClick={() => setSummaryOpen(true)} aria-expanded={summaryOpen}>
               <span>View summary</span>
-              <strong>{formatRM(grandTotal)}</strong>
+              {grandTotal !== null ? <strong>{formatRM(grandTotal)}</strong> : <span>{totalMessage}</span>}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m18 15-6-6-6 6" />
               </svg>

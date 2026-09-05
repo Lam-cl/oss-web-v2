@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const mod = {exports:{}};
+new Function('exports', 'module', ts.transpileModule(fs.readFileSync('src/lib/checkoutTotal.ts','utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod.exports,mod);
+const total=mod.exports.checkoutTotal;
+const base={subtotal:20,discount:0,pickup:false,shippingReady:false,shipping:10};
+assert.equal(total(base),null,'Empty/loading/unavailable shipping must not produce the old RM30 total');
+assert.equal(total({...base,shippingReady:true}),30);
+assert.equal(total({...base,shippingReady:true,shipping:20}),40);
+assert.equal(total({...base,pickup:true}),20,'Pickup ignores a previous delivery quote');
+assert.equal(total({...base,pickup:true,discount:5}),15);
+assert.equal(total({...base,shippingReady:true,discount:5}),25);
+assert.equal(total({...base,shippingReady:true,shipping:0}),20,'Confirmed free shipping is valid');
+assert.equal(total({...base,shippingReady:true,discount:100}),0);
+console.log('Checkout total readiness tests passed');

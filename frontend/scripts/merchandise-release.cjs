@@ -10,10 +10,11 @@ function validateReadiness(plan, now = Date.now()) {
   if (plan.repository !== 'git@github.com:Lam-cl/oss-web-v2.git') throw new Error('Wrong repository');
   if (plan.pushAt !== '2026-09-07T10:30:00+08:00' || plan.deadline !== '2026-09-07T11:00:00+08:00') throw new Error('Wrong release window');
   if (now < Date.parse(plan.pushAt) || now >= Date.parse(plan.deadline)) throw new Error('Outside the approved push window');
-  for (const gate of ['testsPassed', 'productionBuildPassed', 'vercelEnvironmentVerified', 'previewSmokePassed', 'rollbackVerified']) {
+  for (const gate of ['testsPassed', 'productionBuildPassed', 'vercelBuildPassed', 'localSmokePassed', 'balamBrowserPassed', 'rollbackVerified']) {
     if (plan[gate] !== true) throw new Error(`Readiness gate missing: ${gate}`);
   }
-  if (!plan.rollbackDeployment || plan.checkoutMode !== 'closed') throw new Error('The 10:30 release must have a rollback and closed checkout');
+  if (!sha.test(plan.rollbackSha || '') || plan.checkoutMode !== 'closed') throw new Error('The 10:30 release must have a rollback and closed checkout');
+  if (plan.previewSmokePassed !== true && plan.previewProtectionAccepted !== true) throw new Error('Protected preview limitation must be explicitly accepted');
   const verifiedAt = Date.parse(plan.verifiedAt);
   if (!Number.isFinite(verifiedAt) || verifiedAt > now || now - verifiedAt > 12 * 60 * 60 * 1000) throw new Error('Readiness evidence is missing or stale');
 }
@@ -29,6 +30,10 @@ function run() {
   if (git('rev-parse', 'HEAD') !== plan.releaseSha) throw new Error('Worktree is not at the pinned release');
   if (git('status', '--porcelain')) throw new Error('Release worktree has unreviewed changes');
   git('merge-base', '--is-ancestor', plan.expectedMain, plan.releaseSha);
+  git('merge-base', '--is-ancestor', plan.releaseSha, plan.rollbackSha);
+  if (git('rev-parse', `${plan.expectedMain}^{tree}`) !== git('rev-parse', `${plan.rollbackSha}^{tree}`)) throw new Error('Rollback does not restore the verified baseline');
+  const vercel = JSON.parse(execFileSync('gh', ['api', `repos/Lam-cl/oss-web-v2/commits/${plan.releaseSha}/status`], { encoding:'utf8',timeout:60_000 }));
+  if (!vercel.statuses?.some(status => status.context === 'Vercel' && status.state === 'success')) throw new Error('Vercel release build is not successful');
   const remote = git('ls-remote', 'origin', 'refs/heads/main').split(/\s/)[0];
   if (remote === plan.releaseSha) { console.log('Release already pushed; no action'); return; }
   if (remote !== plan.expectedMain) throw new Error('Production main advanced; re-review required');
@@ -36,7 +41,8 @@ function run() {
   // Recheck deadline after network operations. Non-fast-forward pushes are rejected by Git.
   validateReadiness(plan);
   git('push', '--porcelain', 'origin', `${plan.releaseSha}:refs/heads/main`);
-  console.log(`Pushed ${plan.releaseSha}. Vercel build and production smoke verification are still required.`);
+  console.log(`Pushed ${plan.releaseSha}. Starting deployment and production smoke monitoring.`);
+  execFileSync(process.execPath, ['scripts/monitor-merchandise-release.cjs', manifest], {stdio:'inherit',timeout:50*60_000});
 }
 
 module.exports = { validateReadiness };

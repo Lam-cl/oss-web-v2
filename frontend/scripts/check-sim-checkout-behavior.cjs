@@ -8,6 +8,8 @@ const file=path.resolve('src/app/api/bundle/checkout/route.ts');
 const output=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
 const moduleValue={exports:{}};
 const stubs={
+  '@/lib/merchandiseCheckoutPolicy.server':{readMerchandiseCheckoutPolicy:async()=>({enabled:true,paymentOrigin:'https://api-staging.pay.asia',message:''})},
+  '@/lib/merchandiseCheckoutPolicy':{isAllowedMerchandisePaymentUrl:()=>true},
   'next/server':{NextResponse:{json:(body,init={})=>({body,status:init.status||200})}},
   '@/lib/minimumOrderQuantity':{getProductMinimumOrderQuantity:()=>1},
   '@/lib/productSetup':{isProductSetupDraft:()=>false},

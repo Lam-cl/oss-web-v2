@@ -40,6 +40,7 @@ function useBalamToneWowTheme(pathname:string){
     if(CHAT_PROVIDER!=='balam')return;
     let stopped=false;
     let shadowObserver:MutationObserver|null=null;
+    let observedShadow:ShadowRoot|null=null;
     let hostObserver:MutationObserver|null=null;
     const sync=()=>{
       const host=document.getElementById('Assistant-Shadow-Host') as HTMLElement|null;
@@ -72,7 +73,9 @@ function useBalamToneWowTheme(pathname:string){
       main?.style.setProperty('bottom',pathname.startsWith('/cart')||pathname.startsWith('/checkout')?'calc(82px + env(safe-area-inset-bottom))':'max(12px, 2%)','important');
       sync();
       if(installToneWowLauncher(shadow))host.style.setProperty('visibility','visible','important');
-      if(!shadowObserver){
+      if(observedShadow!==shadow){
+        shadowObserver?.disconnect();
+        observedShadow=shadow;
         shadowObserver=new MutationObserver(()=>{sync();installToneWowLauncher(shadow)});
         shadowObserver.observe(shadow,{childList:true,subtree:true});
       }

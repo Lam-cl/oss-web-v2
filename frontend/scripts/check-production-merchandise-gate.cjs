@@ -1,11 +1,23 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
 
 const middleware = fs.readFileSync('src/middleware.ts', 'utf8');
 const tabs = fs.readFileSync('src/components/home/CategoryTabs.tsx', 'utf8');
 const productionEnv = fs.readFileSync('.env.production', 'utf8');
 
-assert.match(productionEnv, /^NEXT_PUBLIC_ENABLE_MERCHANDISE=false$/m, 'production merchandise flag must remain disabled');
+assert.match(productionEnv, /^NEXT_PUBLIC_ENABLE_MERCHANDISE=true$/m, 'production catalogue must be enabled');
+assert.match(productionEnv, /^MERCHANDISE_CHECKOUT_MODE=closed$/m, 'checkout must stay closed for the backend cutover');
+assert.match(productionEnv, /^GKASH_ENVIRONMENT=production$/m);
+const source = ts.transpileModule(fs.readFileSync('src/lib/features.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
+for (const [flag, expected] of [['true', true], ['false', false], ['', false], [' TRUE ', true]]) {
+  const exports = {};
+  vm.runInNewContext(source, { exports, process: { env: { NEXT_PUBLIC_ENABLE_MERCHANDISE: flag } } });
+  assert.equal(exports.isMerchandiseEnabled(), expected);
+}
 assert.match(tabs, /disabled=\{!merchandiseEnabled\}/, 'homepage merchandise tab must respect the disabled flag');
 assert.match(tabs, /merchandiseEnabled\s*\?\s*'Merchandise'\s*:\s*'Coming Soon'/, 'disabled tab must say Coming Soon');
 assert.match(middleware, /pathname === '\/merchandise'/, 'direct merchandise pages must be gated');

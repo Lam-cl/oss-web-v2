@@ -1,1 +1,1 @@
-export { POST } from '../../api/bundle/checkout/route';
+export { GET, POST } from '../../api/bundle/checkout/route';

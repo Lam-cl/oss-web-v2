@@ -1,3 +1,4 @@
+// Campaign-only: run from a frontend containing /merdeka-promo. Not a production storefront test.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const page = fs.readFileSync('src/app/merdeka-promo/page.tsx', 'utf8');

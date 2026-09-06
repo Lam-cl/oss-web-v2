@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Tone WOW chat</title>
+  <desc id="desc">A white chat bubble with a yellow WOW accent</desc>
+  <path fill="#fff" d="M12 13.5h34a8 8 0 0 1 8 8v20a8 8 0 0 1-8 8H29.8L18.2 57v-7.5H12a8 8 0 0 1-8-8v-20a8 8 0 0 1 8-8Z"/>
+  <path fill="#1A56DB" d="M17 27.5h24a2.5 2.5 0 1 1 0 5H17a2.5 2.5 0 1 1 0-5Zm0 9h15a2.5 2.5 0 1 1 0 5H17a2.5 2.5 0 1 1 0-5Z"/>
+  <path fill="#FBBF24" d="m50.5 4 2.9 6.6L60 13.5l-6.6 2.9-2.9 6.6-2.9-6.6-6.6-2.9 6.6-2.9L50.5 4Z"/>
+</svg>

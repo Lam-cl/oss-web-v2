@@ -204,7 +204,7 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
   const checkout = fs.readFileSync(path.join(root, 'src/app/checkout/page.tsx'), 'utf8');
   assert(checkout.includes('selectionRequired'), 'checkout must block stale Standard carts');
   const route = fs.readFileSync(path.join(root, 'src/app/api/bundle/checkout/route.ts'), 'utf8');
-  assert(route.includes('projectedVariants') && route.includes('legacyVariants'), 'checkout server must reject stale/wrong product+variant pairs across Catalogue and legacy merchandise');
+  require('node:child_process').execFileSync(process.execPath, ['scripts/check-sim-checkout-behavior.cjs'], { stdio: 'inherit' });
 
   console.log('SIM Tone Excel/Tone Plus structural migration and application check passed');
 })().catch((error) => { console.error(error); process.exit(1); });

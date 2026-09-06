@@ -1562,7 +1562,9 @@ body:has(.merch-checkout-page) #fc_frame {
   color: #0f172a;
 }
 
-body:has(.merch-catalog) .referral-floating-widget {
+body.merchandise-active .referral-floating-widget,
+body.merchandise-active #fc_widget,
+body.merchandise-active #fc_frame {
   display: none !important;
   pointer-events: none !important;
 }
@@ -2533,7 +2535,7 @@ body:has(.merch-catalog) .referral-floating-widget {
 
   .merch-floating-cart {
     position: fixed;
-    right: 97px;
+    right: 16px;
     bottom: calc(18px + env(safe-area-inset-bottom));
     z-index: 1100;
     display: grid;

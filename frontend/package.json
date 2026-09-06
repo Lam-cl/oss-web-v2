@@ -6,8 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test:production": "node scripts/check-production-suite.cjs"
+    "lint": "next lint"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

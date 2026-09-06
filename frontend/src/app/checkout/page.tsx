@@ -13,7 +13,6 @@ import { calculateMerchandiseCourierCharge, type ShippingSettings } from '@/lib/
 import { isKualaLumpurWorkingDay, localDateToPickupDate, malaysiaDate, minimumPickupDate, pickupAddress, pickupDateToLocalDate } from '@/lib/pickup';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
 import { checkoutTotal } from '@/lib/checkoutTotal';
-import { CHECKOUT_PAUSED_MESSAGE } from '@/lib/merchandiseCheckoutPolicy';
 
 const verifyBtnStyle: React.CSSProperties = {
   height: 46,
@@ -59,7 +58,6 @@ export default function CheckoutPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [checkoutAvailability, setCheckoutAvailability] = useState({ enabled: false, message: 'Checking payment availability…' });
   const [paymentData, setPaymentData] = useState<{
     paymentUrl: string;
     paymentParams: Record<string, string>;
@@ -79,24 +77,6 @@ export default function CheckoutPage() {
   const [promoMessage, setPromoMessage] = useState('');
 
   useEffect(() => setPortalReady(true), []);
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    const refresh = async () => {
-      try {
-        const response = await fetch('/bundle/checkout', { cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('Availability unavailable');
-        const value = await response.json();
-        if (active) setCheckoutAvailability({ enabled: value.enabled === true, message: typeof value.message === 'string' ? value.message : CHECKOUT_PAUSED_MESSAGE });
-      } catch {
-        if (active) setCheckoutAvailability({ enabled: false, message: CHECKOUT_PAUSED_MESSAGE });
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(refresh, 30_000);
-    window.addEventListener('focus', refresh);
-    return () => { active = false; controller.abort(); window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, []);
   useEffect(() => { fetch('/shipping-settings-api', { cache: 'no-store' }).then((response) => response.ok ? response.json() : Promise.reject()).then(setShippingSettings).catch(() => setShippingSettingsError('Courier settings are temporarily unavailable. Please try again.')); }, []);
 
   useEffect(() => {
@@ -162,10 +142,6 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!checkoutAvailability.enabled) {
-      setError(checkoutAvailability.message);
-      return;
-    }
     if (!shippingSettings || shippingSettingsError) {
       setError(shippingSettingsError || 'Loading courier settings. Please wait.');
       return;
@@ -343,7 +319,6 @@ export default function CheckoutPage() {
   const sec: React.CSSProperties = { fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 16 };
   return (
     <div className="merch-checkout-page">
-      {!checkoutAvailability.enabled && <p role="status" style={{ padding: '16px', background: '#fff7ed', color: '#7c2d12' }}>{checkoutAvailability.message}</p>}
       <div className="merch-checkout-layout">
 
         {/* ── SIDEBAR ── */}
@@ -375,7 +350,7 @@ export default function CheckoutPage() {
             {ENABLED_PAYMENT_METHODS.has('2') && <label className={paymentMethodId === '2' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="2" checked={paymentMethodId === '2'} onChange={() => setPaymentMethodId('2')} />Credit / Debit Card</label>}
             {ENABLED_PAYMENT_METHODS.has('3') && <label className={paymentMethodId === '3' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="3" checked={paymentMethodId === '3'} onChange={() => setPaymentMethodId('3')} />eWallet</label>}
             <div className="merch-checkout-payment-terms">By placing an order you agree to our <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>.</div>
-            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={!checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
+            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </section>
@@ -499,7 +474,7 @@ export default function CheckoutPage() {
                 <path d="m18 15-6-6-6 6" />
               </svg>
             </button>
-            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={!checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
+            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </div>

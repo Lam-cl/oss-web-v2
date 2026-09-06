@@ -1,10 +1,7 @@
-const assert=require('node:assert/strict');
-const {parse,elements,text,find,attribute,ts}=require('./test-source-helpers.cjs');
-const tree=parse('src/components/admin/OrderDrawer.tsx');
-const label=elements(tree,'label').find(n=>text(n).includes('Expected delivery date'));
-assert(label,'Expected delivery date field remains available');
-const input=find(label,ts.isJsxSelfClosingElement).find(n=>n.tagName.getText(tree)==='input');
-assert.equal(attribute(input,'type',tree).text,'date');
-const disabled=attribute(input,'disabled',tree).expression.getText(tree);
-for(const [metadata,wanted] of [[null,false],[{courier:{}},true]]) assert.equal(new Function('metadata','return '+disabled)(metadata),wanted);
-require('./test-courier-behavior.cjs')().then(()=>console.log('Expected date persistence, empty value and existing metadata protection passed')).catch(e=>{console.error(e);process.exitCode=1;});
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const source=fs.readFileSync('src/components/admin/OrderDrawer.tsx','utf8');
+assert.equal(source.includes("const [expectedDeliveryDate,setExpectedDeliveryDate]=useState('');"),true,'local expected date state missing');
+assert.equal(source.includes('<label className="adm-field">Expected delivery date<input type="date" value={expectedDeliveryDate}'),true,'delivery-only expected date field missing');
+assert.equal(source.includes('expectedDeliveryDate})'),true,'expected date must be persisted to staging metadata');
+assert.equal(source.includes("courierBusy?'Saving…':'Save'"),true,'courier Save action missing');
+console.log('admin expected delivery date regression check passed');

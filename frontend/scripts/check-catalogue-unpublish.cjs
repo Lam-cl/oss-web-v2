@@ -4,7 +4,13 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const ts = require('typescript');
 const root = process.cwd();
-const {compile}=require('./test-source-helpers.cjs');
+function compile(rel, injected = {}) {
+  const file = path.join(root, rel);
+  const out = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+  const module = { exports: {} };
+  new Function('exports','require','module','__filename','__dirname',out)(module.exports, id => id in injected ? injected[id] : require(id), module, file, path.dirname(file));
+  return module.exports;
+}
 const response = (body, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const next = { NextResponse: { json: (body, init = {}) => response(body, init.status || 200) } };
 const model = { details:{title:'Mug',price:10,description:'',category:'Cups'}, choices:[], combinations:[{valueKeys:[],price:10,inventory:1}], existingImages:[] };

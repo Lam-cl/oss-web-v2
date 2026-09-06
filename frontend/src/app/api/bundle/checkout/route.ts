@@ -15,10 +15,9 @@ import {
 } from "@/lib/admin/orderMetadata.server";
 import { readCataloguePublicProjection } from "@/lib/cataloguePublicProjection.server";
 import { mergeBundleMerchandiseProducts, type BundleMerchandiseProduct } from "@/data/merchandise";
-import { readMerchandiseCheckoutPolicy } from "@/lib/merchandiseCheckoutPolicy.server";
-import { isAllowedMerchandisePaymentUrl } from "@/lib/merchandiseCheckoutPolicy";
 
 const BUNDLE_API = "https://bundleapi.tonewow.com/api";
+const GKASH_STAGING_HOST = "api-staging.pay.asia";
 const SHIPPING_FEE_UNIT_RM = 10;
 const SHIPPING_FEE_SLUG = "flat-rate-delivery-fee";
 
@@ -345,13 +344,6 @@ export function bundleCheckoutPayload(input: {
   };
 }
 
-export async function GET(request: NextRequest) {
-  const { enabled, message } = await readMerchandiseCheckoutPolicy(request);
-  return NextResponse.json({ enabled, message }, {
-    headers: { 'Cache-Control': 'private, no-store, max-age=0', Vary: 'Cookie' },
-  });
-}
-
 export async function POST(request: NextRequest) {
   try {
     if (!isSameOrigin(request)) {
@@ -359,14 +351,6 @@ export async function POST(request: NextRequest) {
         { error: "Invalid checkout origin" },
         { status: 403 },
       );
-    }
-
-    // Reject before any Bundle order/stock mutation, not just before gateway redirect.
-    const checkoutPolicy = await readMerchandiseCheckoutPolicy(request);
-    if (!checkoutPolicy.enabled) {
-      return NextResponse.json({ error: checkoutPolicy.message, code: 'MERCHANDISE_CHECKOUT_PAUSED' }, {
-        status: 503, headers: { 'Cache-Control': 'private, no-store, max-age=0' },
-      });
     }
 
     const checkoutData = await request.json();
@@ -562,13 +546,23 @@ export async function POST(request: NextRequest) {
     const paymentUrl =
       typeof data.paymentUrl === "string" ? data.paymentUrl : "";
     const paymentParams = paymentParamsFromResponse(data.paymentParams);
+    let paymentHost = "";
+    let paymentProtocol = "";
+    try {
+      const parsedPaymentUrl = new URL(paymentUrl);
+      paymentHost = parsedPaymentUrl.hostname;
+      paymentProtocol = parsedPaymentUrl.protocol;
+    } catch {
+      paymentHost = "";
+    }
     if (
       !paymentUrl ||
       !paymentParams ||
-      !isAllowedMerchandisePaymentUrl(paymentUrl, checkoutPolicy)
+      paymentProtocol !== "https:" ||
+      paymentHost !== GKASH_STAGING_HOST
     ) {
       return NextResponse.json(
-        { error: "Payment service configuration does not match this storefront. Please contact support before retrying." },
+        { error: "GKash is not configured correctly for staging" },
         { status: 502 },
       );
     }

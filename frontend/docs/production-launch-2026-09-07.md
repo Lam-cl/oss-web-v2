@@ -2,6 +2,11 @@
 
 ## Status: prepared locally, NOT deployed or scheduled
 
+Update: the 12 regression findings below have been addressed/classified. See
+`regression-hardening-2026-09-07.md` for the 118-pass result and discovered application fixes.
+The user has no Vercel access; use GitHub auto-deploy and an additive Git rollback rather than
+requiring dashboard access. Protected preview smoke/environment overrides remain explicitly unverified.
+
 Target repository: `Lam-cl/oss-web-v2`, production branch `main`.
 Release branch: `release/merchandise-launch-20260907`.
 Baseline: `bb18a9341c00b8c5a49d70e1dbe15080a89ec9c4` (remote main verified before preparation).

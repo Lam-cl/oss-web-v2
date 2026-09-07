@@ -192,7 +192,10 @@ export async function initiateBundleGuestPayment(data: BundleGuestCheckout): Pro
     body: JSON.stringify(data),
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Unable to initiate merchandise payment');
+  if (!response.ok) throw Object.assign(new Error(result.error || 'Unable to initiate merchandise payment'), {
+    code: result.code,
+    orderId: result.orderId,
+  });
   return result;
 }
 

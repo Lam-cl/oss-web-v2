@@ -58,6 +58,7 @@ export default function CheckoutPage() {
     shippingAddress: '', shippingCity: '', shippingState: '', shippingPostcode: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [createdOrderBlocked, setCreatedOrderBlocked] = useState(false);
   const [error, setError] = useState('');
   const [checkoutAvailability, setCheckoutAvailability] = useState({ enabled: false, message: 'Checking payment availability…' });
   const [paymentData, setPaymentData] = useState<{
@@ -162,6 +163,7 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createdOrderBlocked) return;
     if (!checkoutAvailability.enabled) {
       setError(checkoutAvailability.message);
       return;
@@ -291,6 +293,7 @@ export default function CheckoutPage() {
         paymentParams: payment.paymentParams || {},
       });
     } catch (err: any) {
+      if (err.code === 'ORDER_METADATA_SAVE_FAILED') setCreatedOrderBlocked(true);
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
@@ -375,7 +378,7 @@ export default function CheckoutPage() {
             {ENABLED_PAYMENT_METHODS.has('2') && <label className={paymentMethodId === '2' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="2" checked={paymentMethodId === '2'} onChange={() => setPaymentMethodId('2')} />Credit / Debit Card</label>}
             {ENABLED_PAYMENT_METHODS.has('3') && <label className={paymentMethodId === '3' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="3" checked={paymentMethodId === '3'} onChange={() => setPaymentMethodId('3')} />eWallet</label>}
             <div className="merch-checkout-payment-terms">By placing an order you agree to our <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>.</div>
-            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={!checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
+            <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={createdOrderBlocked || !checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </section>
@@ -499,7 +502,7 @@ export default function CheckoutPage() {
                 <path d="m18 15-6-6-6 6" />
               </svg>
             </button>
-            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={!checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
+            <button type="submit" form="checkout-form" className="btn btn-primary merch-checkout-pay" disabled={createdOrderBlocked || !checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}
             </button>
           </div>

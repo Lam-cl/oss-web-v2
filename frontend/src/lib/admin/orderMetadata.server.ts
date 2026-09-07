@@ -11,16 +11,39 @@ export const ORDER_METADATA_FILE = path.join(process.cwd(), '.data', 'order-meta
 export class OrderMetadataError extends Error {}
 let writeQueue:Promise<void>=Promise.resolve();
 
-function assertEnabled(){if(process.env.ENABLE_LOCAL_ORDER_METADATA!=='true')throw new OrderMetadataError('Local order metadata is disabled.');}
+function assertEnabled(file=ORDER_METADATA_FILE){
+  if(useRemote(file))return;
+  if(process.env.VERCEL==='1'||process.env.VERCEL_ENV)throw new OrderMetadataError('Remote order metadata storage is required on Vercel.');
+  if(process.env.ENABLE_LOCAL_ORDER_METADATA!=='true')throw new OrderMetadataError('Local order metadata is disabled.');
+}
 const empty=():Store=>({version:1,orders:{}});
 function validStore(value:unknown):Store{const store=value as Store;if(store?.version!==1||!store.orders||typeof store.orders!=='object'||Array.isArray(store.orders))throw new OrderMetadataError('Order metadata storage is corrupt.');return store}
 async function readStore(file:string):Promise<Store>{try{return validStore(JSON.parse(await readFile(file,'utf8')))}catch(reason:any){if(reason?.code==='ENOENT')return empty();throw reason instanceof OrderMetadataError?reason:new OrderMetadataError('Order metadata storage is corrupt.')}}
 async function writeStore(value:Store,file:string){await mkdir(path.dirname(file),{recursive:true});const temp=`${file}.${process.pid}.${Date.now()}.tmp`;try{await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,{encoding:'utf8',mode:0o600});await rename(temp,file)}catch(reason){try{await unlink(temp)}catch{}throw reason}}
 const useRemote=(file:string)=>file===ORDER_METADATA_FILE&&dataApiEnabled();
-async function loadStore(file:string){return useRemote(file)?validStore(await readRemoteSingleton<Store>('order-metadata',empty)):readStore(file)}
-async function mutateStore<T>(file:string,operation:(store:Store)=>Promise<T>|T):Promise<T>{if(!useRemote(file)){const store=await readStore(file);const result=await operation(store);await writeStore(store,file);return result}let result!:T;await mutateRemoteSingleton<Store>('order-metadata',empty,async value=>{const store=validStore(value);result=await operation(store);return store});return result}
+async function loadStore(file:string){assertEnabled(file);return useRemote(file)?validStore(await readRemoteSingleton<Store>('order-metadata',empty)):readStore(file)}
+async function mutateStore<T>(file:string,operation:(store:Store)=>Promise<T>|T):Promise<T>{assertEnabled(file);if(!useRemote(file)){const store=await readStore(file);const result=await operation(store);await writeStore(store,file);return result}let result!:T;await mutateRemoteSingleton<Store>('order-metadata',empty,async value=>{const store=validStore(value);result=await operation(store);return store});return result}
 function serialized<T>(operation:()=>Promise<T>):Promise<T>{const result=writeQueue.then(operation,operation);writeQueue=result.then(()=>undefined,()=>undefined);return result}
 const clean=(value:unknown)=>String(value??'').trim();
+
+/** Read-only preflight, not a guarantee that a subsequent remote write will succeed. */
+export async function assertOrderMetadataReady(){await loadStore(ORDER_METADATA_FILE);}
+
+/** One remote CAS mutation keeps billing and payment reference together. */
+export async function saveCheckoutMetadata(orderId:number,input:Record<string,unknown>,reference:unknown,file=ORDER_METADATA_FILE){
+  assertEnabled(file);
+  const billingAddress:BillingAddress={fullName:clean(input.fullName),email:clean(input.email),phone:clean(input.phone||input.phoneNumber),address:clean(input.address),city:clean(input.city),state:clean(input.state),country:clean(input.country)||'Malaysia',postalCode:clean(input.postalCode)};
+  if(!Number.isInteger(orderId)||orderId<=0)throw new OrderMetadataError('Order ID is invalid.');
+  if(!billingAddress.fullName||!billingAddress.email||!billingAddress.phone||!billingAddress.address||!billingAddress.city||!billingAddress.state||!/^\d{5}$/.test(billingAddress.postalCode))throw new OrderMetadataError('Billing address is incomplete.');
+  const referenceNumber=clean(reference);
+  if(referenceNumber&&(referenceNumber.length>128||!/^[A-Za-z0-9_-]+$/.test(referenceNumber)))throw new OrderMetadataError('Payment reference is invalid.');
+  return serialized(()=>mutateStore(file,store=>{
+    const previous=store.orders[String(orderId)]||{updatedAt:''};
+    const savedAt=new Date().toISOString();
+    store.orders[String(orderId)]={...previous,billingAddress,...(referenceNumber?{paymentReference:{referenceNumber,savedAt}}:{}),updatedAt:savedAt};
+    return store.orders[String(orderId)];
+  }));
+}
 export async function readOrderMetadata(orderId:number,file=ORDER_METADATA_FILE){assertEnabled();const store=await loadStore(file);return store.orders[String(orderId)]||{updatedAt:''}}
 export async function saveBillingAddress(orderId:number,input:Record<string,unknown>,file=ORDER_METADATA_FILE){assertEnabled();const billingAddress:BillingAddress={fullName:clean(input.fullName),email:clean(input.email),phone:clean(input.phone||input.phoneNumber),address:clean(input.address),city:clean(input.city),state:clean(input.state),country:clean(input.country)||'Malaysia',postalCode:clean(input.postalCode)};if(!billingAddress.fullName||!billingAddress.email||!billingAddress.phone||!billingAddress.address||!billingAddress.city||!billingAddress.state||!/^\d{5}$/.test(billingAddress.postalCode))throw new OrderMetadataError('Billing address is incomplete.');return serialized(()=>mutateStore(file,store=>{const previous=store.orders[String(orderId)]||{updatedAt:''};store.orders[String(orderId)]={...previous,billingAddress,updatedAt:new Date().toISOString()};return store.orders[String(orderId)]}))}
 export async function savePaymentReference(orderId:number,value:unknown,file=ORDER_METADATA_FILE){assertEnabled();const referenceNumber=clean(value);if(!Number.isInteger(orderId)||orderId<=0||!referenceNumber||referenceNumber.length>128||!/^[A-Za-z0-9_-]+$/.test(referenceNumber))throw new OrderMetadataError('Payment reference is invalid.');return serialized(()=>mutateStore(file,store=>{const previous=store.orders[String(orderId)]||{updatedAt:''};const savedAt=new Date().toISOString();store.orders[String(orderId)]={...previous,paymentReference:{referenceNumber,savedAt},updatedAt:savedAt};return store.orders[String(orderId)]}))}

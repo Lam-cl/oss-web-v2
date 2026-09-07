@@ -10,8 +10,8 @@ import {
   pickupDateFromAddress,
 } from "@/lib/pickup";
 import {
-  saveBillingAddress,
-  savePaymentReference,
+  assertOrderMetadataReady,
+  saveCheckoutMetadata,
 } from "@/lib/admin/orderMetadata.server";
 import { readCataloguePublicProjection } from "@/lib/cataloguePublicProjection.server";
 import { mergeBundleMerchandiseProducts, type BundleMerchandiseProduct } from "@/data/merchandise";
@@ -532,6 +532,12 @@ export async function POST(request: NextRequest) {
       expectedAmount,
     });
 
+    try {
+      await assertOrderMetadataReady();
+    } catch {
+      return NextResponse.json({ error: 'Checkout storage is temporarily unavailable. No order was created. Please try again later.', code: 'ORDER_METADATA_UNAVAILABLE' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    }
+
     const response = await fetch(`${BUNDLE_API}/products/checkout`, {
       method: "POST",
       headers: {
@@ -604,9 +610,15 @@ export async function POST(request: NextRequest) {
     const referenceNumber = String(
       order.cartId ?? order.cartID ?? data.cartId ?? data.cartID ?? "",
     ).trim();
-    await saveBillingAddress(numericOrderId, billingAddress);
-    if (referenceNumber)
-      await savePaymentReference(numericOrderId, referenceNumber);
+    try {
+      await saveCheckoutMetadata(numericOrderId, billingAddress, referenceNumber);
+    } catch {
+      return NextResponse.json({
+        error: `Order #${numericOrderId} was created, but its checkout details could not be saved. Do not submit another order. Contact support and quote this order number.`,
+        code: 'ORDER_METADATA_SAVE_FAILED',
+        orderId: String(numericOrderId),
+      }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+    }
     if (referenceNumber) {
       const checkoutOrigin = new URL(String(request.headers.get("origin"))).origin;
       const returnUrl = new URL("/bundle/gkash-return", checkoutOrigin);

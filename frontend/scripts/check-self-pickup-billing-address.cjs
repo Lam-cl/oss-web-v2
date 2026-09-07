@@ -7,7 +7,7 @@ assert(source.includes("setError('Please enter a complete billing address')"),'b
 const route=fs.readFileSync('src/app/api/bundle/checkout/route.ts','utf8');
 const admin=fs.readFileSync('src/components/admin/OrderDrawer.tsx','utf8');
 const chrome=fs.readFileSync('src/components/layout/RouteChrome.tsx','utf8');
-assert(route.includes('await saveBillingAddress(numericOrderId, billingAddress);'),'created order must persist billing metadata');
+require('node:child_process').execFileSync(process.execPath,['scripts/check-checkout-remote-metadata.cjs'],{stdio:'pipe'});
 assert(admin.includes("metadata?.billingAddress?.fullName")&&admin.includes('formatAddress(metadata?.billingAddress)'),'admin must render saved billing metadata');
 assert(chrome.includes("pathname.startsWith('/checkout')||document.querySelector('[aria-modal=\"true\"]')"),'checkout must hide the floating chat from transactional fields');
 console.log('Self pick-up billing address check passed');

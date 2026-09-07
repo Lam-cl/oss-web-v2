@@ -26,9 +26,9 @@ function visit(node) {
 visit(tree);
 assert.equal(paymentButtons.length, 2, 'Desktop and mobile payment controls must both be tested');
 for (const expression of paymentButtons) {
-  const ready = { submitting: false, merchandiseLoading: false, stockIssues: [], shippingPending: false, shippingUnavailable: false, checkoutAvailability: { enabled: true } };
+  const ready = { createdOrderBlocked: false, submitting: false, merchandiseLoading: false, stockIssues: [], shippingPending: false, shippingUnavailable: false, checkoutAvailability: { enabled: true } };
   assert.equal(vm.runInNewContext(expression, ready), false, 'Ready checkout can be submitted');
-  for (const blocked of [{shippingPending:true}, {shippingUnavailable:true}, {submitting:true}, {merchandiseLoading:true}, {stockIssues:[{}]}, {checkoutAvailability:{enabled:false}}]) {
+  for (const blocked of [{createdOrderBlocked:true}, {shippingPending:true}, {shippingUnavailable:true}, {submitting:true}, {merchandiseLoading:true}, {stockIssues:[{}]}, {checkoutAvailability:{enabled:false}}]) {
     assert.equal(vm.runInNewContext(expression, {...ready,...blocked}), true, 'Unsafe checkout must stay disabled');
   }
 }

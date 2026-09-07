@@ -8,7 +8,13 @@ const tabs = fs.readFileSync('src/components/home/CategoryTabs.tsx', 'utf8');
 const productionEnv = fs.readFileSync('.env.production', 'utf8');
 
 assert.match(productionEnv, /^NEXT_PUBLIC_ENABLE_MERCHANDISE=true$/m, 'production catalogue must be enabled');
-assert.match(productionEnv, /^MERCHANDISE_CHECKOUT_MODE=closed$/m, 'checkout must stay closed for the backend cutover');
+const config = Object.fromEntries(productionEnv.split(/\r?\n/).filter(line => /^[A-Z_]+=/.test(line)).map(line => { const i=line.indexOf('=');return [line.slice(0,i),line.slice(i+1)]; }));
+const policyExports = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/merchandiseCheckoutPolicy.ts','utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText, {exports:policyExports,URL});
+const livePolicy=policyExports.merchandiseCheckoutPolicy({...config,VERCEL_ENV:'production'});
+assert.equal(livePolicy.enabled,true,'approved production checkout must be enabled');
+assert.equal(livePolicy.paymentOrigin,'https://api.gkash.my','must match observed Bundle production redirect');
+assert.equal(policyExports.isAllowedMerchandisePaymentUrl('https://api-staging.pay.asia',livePolicy),false,'staging redirects remain blocked');
 assert.match(productionEnv, /^GKASH_ENVIRONMENT=production$/m);
 const source = ts.transpileModule(fs.readFileSync('src/lib/features.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS },

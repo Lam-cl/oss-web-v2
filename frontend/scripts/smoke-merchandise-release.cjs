@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const assert = require('node:assert/strict');
 
-async function smoke(origin) {
+async function smoke(origin, { checkoutEnabled = false } = {}) {
   const url = new URL(origin);
   if (url.origin !== origin || (url.protocol !== 'https:' && url.hostname !== '127.0.0.1')) throw new Error('Use an exact HTTPS origin (or local loopback)');
   const get = async path => {
@@ -14,7 +14,7 @@ async function smoke(origin) {
   assert.equal((await settings.json()).showMerchandise,true,'Merchandise is overridden or disabled');
   for (const path of ['/bundle/checkout','/api/bundle/checkout']) {
     const result=await get(path);assert.equal(result.status,200);
-    assert.equal((await result.json()).enabled,false,'Pre-cutover checkout must be closed');
+    assert.equal((await result.json()).enabled,checkoutEnabled,'Checkout availability must match the approved release');
     assert.match(result.headers.get('cache-control'),/no-store/);
   }
   const admin=await get('/admin');assert([302,303,307,308].includes(admin.status));
@@ -26,7 +26,7 @@ async function smoke(origin) {
   assert.equal((await get('/shipping-settings-api')).status,200);
   const icon=await get('/images/balam-tonewow-chat.svg');assert.equal(icon.status,200);
   assert.match(icon.headers.get('content-type'),/image\/svg\+xml/);
-  console.log('Read-only catalogue/admin/closed-checkout/asset smoke passed');
+  console.log(`Read-only catalogue/admin/${checkoutEnabled ? 'open' : 'closed'}-checkout/asset smoke passed`);
 }
 module.exports={smoke};
-if(require.main===module)smoke(process.argv[2]).catch(error=>{console.error(error.message);process.exitCode=1;});
+if(require.main===module)smoke(process.argv[2],{checkoutEnabled:process.argv.includes('--open')}).catch(error=>{console.error(error.message);process.exitCode=1;});

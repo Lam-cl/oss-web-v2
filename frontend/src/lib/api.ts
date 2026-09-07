@@ -172,7 +172,6 @@ export interface BundleGuestCheckout {
   isGuest: true;
   deliveryOption: 'DELIVER' | 'PICKUP';
   agentId?: string;
-  paymentMethodId: '16' | '2' | '3';
   voucherCode?: string;
   expectedTotal: number;
 }

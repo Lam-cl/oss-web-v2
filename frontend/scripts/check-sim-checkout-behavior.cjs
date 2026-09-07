@@ -55,7 +55,7 @@ global.fetch=async()=>({ok:true,json:async()=>({data:products})});
   assert.equal(checkoutCalls,0,'ambiguous shipping-fee variants must fail before upstream checkout');
   const billingAddress={firstName:'Ada',lastName:'Lovelace',fullName:'Ada Lovelace',email:'a@test',phone:'1',phoneNumber:'1',address:'A',city:'KL',state:'KL',country:'Malaysia',postalCode:'50000',idNumber:'ID'};
   const payload=api.bundleCheckoutPayload({checkoutData:{billingAddress:{idNumber:'ID'},description:'SIM order',notes:'note'},upstreamItems:calculated.upstreamItems,billingAddress,shippingAddress:billingAddress,customerName:'Ada Lovelace',customerEmail:'a@test',customerPhone:'1',deliveryOption:'PICKUP',paymentMethodId:'16',voucherCode:'',expectedAmount:20});
-  assert.deepEqual(payload,{customerName:'Ada Lovelace',customerEmail:'a@test',customerPhone:'1',customerType:'retail',customerID:'ID',description:'SIM order',items:[{productId:39,variantId:120,quantity:2}],billingAddress,shippingAddress:billingAddress,isGuest:true,deliveryOption:'PICKUP',agentId:undefined,paymentMethodId:'16',voucherCode:undefined,expectedTotal:20,shippingCost:0,notes:'note'});
+  assert.deepEqual(payload,{customerName:'Ada Lovelace',customerEmail:'a@test',customerPhone:'1',customerType:'retail',customerID:'ID',description:'SIM order',items:[{productId:39,variantId:120,quantity:2}],billingAddress,shippingAddress:billingAddress,isGuest:true,deliveryOption:'PICKUP',agentId:undefined,voucherCode:undefined,expectedTotal:20,shippingCost:0,notes:'note'});
   assert.equal(JSON.stringify(payload).includes('FormData'),false);
   console.log('SIM checkout authoritative pair, stock and exact JSON payload checks passed');
 })().catch(error=>{console.error(error);process.exit(1)});

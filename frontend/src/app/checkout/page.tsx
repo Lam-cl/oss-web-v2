@@ -31,10 +31,6 @@ const verifyBtnStyle: React.CSSProperties = {
   minWidth: 46,
 };
 
-const ENABLED_PAYMENT_METHODS = new Set(
-  (process.env.NEXT_PUBLIC_MERCH_PAYMENT_METHODS || '16').split(',').map((value) => value.trim()),
-);
-
 export default function CheckoutPage() {
   const items = useCartStore((s) => s.items);
   const getTotal = useCartStore((s) => s.getTotal);
@@ -73,7 +69,6 @@ export default function CheckoutPage() {
   const pickupMinimumDate = minimumPickupDate(malaysiaDate());
   const pickupMinimumLocalDate = pickupDateToLocalDate(pickupMinimumDate)!;
   const selectedPickupDate = pickupDateToLocalDate(form.pickupDate);
-  const [paymentMethodId, setPaymentMethodId] = useState<'16' | '2' | '3'>('16');
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<{ code: string; discount: number } | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
@@ -263,7 +258,6 @@ export default function CheckoutPage() {
         shippingAddress: bundleShippingAddress,
         isGuest: true,
         deliveryOption: pickupOption === 'self' ? 'PICKUP' : 'DELIVER',
-        paymentMethodId,
         voucherCode: promo?.code,
         expectedTotal: grandTotal,
       });
@@ -374,9 +368,7 @@ export default function CheckoutPage() {
           {renderPromo()}
           <section className="merch-checkout-payment">
             <h4>Payment Method</h4>
-            <label className={paymentMethodId === '16' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="16" checked={paymentMethodId === '16'} onChange={() => setPaymentMethodId('16')} />Online Banking (FPX)</label>
-            {ENABLED_PAYMENT_METHODS.has('2') && <label className={paymentMethodId === '2' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="2" checked={paymentMethodId === '2'} onChange={() => setPaymentMethodId('2')} />Credit / Debit Card</label>}
-            {ENABLED_PAYMENT_METHODS.has('3') && <label className={paymentMethodId === '3' ? 'active' : ''}><input type="radio" name="merchPaymentMethod" value="3" checked={paymentMethodId === '3'} onChange={() => setPaymentMethodId('3')} />eWallet</label>}
+            <p>Continue to the payment gateway to complete your payment.</p>
             <div className="merch-checkout-payment-terms">By placing an order you agree to our <strong>Terms &amp; Conditions</strong> and <strong>Privacy Policy</strong>.</div>
             <button type="submit" form="checkout-form" className="btn merch-checkout-pay merch-checkout-sidebar-pay" disabled={createdOrderBlocked || !checkoutAvailability.enabled || submitting || merchandiseLoading || stockIssues.length > 0 || shippingPending || shippingUnavailable}>
               {submitting ? 'Processing...' : 'Pay Now'}

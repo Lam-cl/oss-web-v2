@@ -301,7 +301,6 @@ export function bundleCheckoutPayload(input: {
   customerEmail: string;
   customerPhone: string;
   deliveryOption: string;
-  paymentMethodId: string;
   voucherCode: string;
   expectedAmount: number;
 }) {
@@ -314,7 +313,6 @@ export function bundleCheckoutPayload(input: {
     customerEmail,
     customerPhone,
     deliveryOption,
-    paymentMethodId,
     voucherCode,
     expectedAmount,
   } = input;
@@ -333,7 +331,6 @@ export function bundleCheckoutPayload(input: {
     isGuest: true,
     deliveryOption,
     agentId: checkoutData.agentId || undefined,
-    paymentMethodId,
     voucherCode: voucherCode || undefined,
     expectedTotal: expectedAmount,
     shippingCost: 0,
@@ -433,13 +430,6 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const paymentMethodId = String(checkoutData.paymentMethodId || "");
-    if (!["16", "2", "3"].includes(paymentMethodId)) {
-      return NextResponse.json(
-        { error: "Select a valid payment method" },
-        { status: 400 },
-      );
-    }
     const voucherCode = String(checkoutData.voucherCode || "")
       .trim()
       .toUpperCase();
@@ -527,7 +517,6 @@ export async function POST(request: NextRequest) {
       customerEmail,
       customerPhone,
       deliveryOption,
-      paymentMethodId,
       voucherCode,
       expectedAmount,
     });

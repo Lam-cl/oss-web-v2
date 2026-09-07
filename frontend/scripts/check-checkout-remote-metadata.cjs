@@ -29,16 +29,23 @@ async function main(){
   });
   global.fetch=async(url,options)=>{
    if(String(url).includes('/products?'))return Response.json({data:[{id:1,name:'Test cap',price:39,productVariants:[{id:2,price:39,inventory:10}]},{id:3,slug:'flat-rate-delivery-fee',price:10,productVariants:[{id:4,price:10,inventory:100}]}]});
-   assert.equal(String(url),'https://bundleapi.tonewow.com/api/products/checkout');assert.equal(options.method,'POST');creates++;
+   assert.equal(String(url),'https://bundleapi.tonewow.com/api/products/checkout');assert.equal(options.method,'POST');
+   const upstream=JSON.parse(options.body);assert(!Object.hasOwn(upstream,'paymentMethodId'),'gateway chooses payment method, including for legacy browsers');assert(!Object.hasOwn(upstream,'paymentType'),'do not invent an upstream payment type');creates++;
    return Response.json({orderId:'99',order:{id:99,totalAmount:49},cartId:'TEST-REF',paymentUrl:'https://api.gkash.my/api/paymentform.aspx',paymentParams:{v_cartid:'TEST-REF',v_amount:'49.00'}});
   };
   const address={fullName:'QA Test',address:'Test address',city:'Kuala Lumpur',state:'W.P. Kuala Lumpur',postalCode:'50000'};
-  const payload={customerName:'QA Test',customerEmail:'qa@example.com',customerPhone:'01112345678',billingAddress:address,shippingAddress:address,deliveryOption:'DELIVER',items:[{productId:1,variantId:2,quantity:1}],paymentMethodId:'16',expectedTotal:49};
+  const payload={customerName:'QA Test',customerEmail:'qa@example.com',customerPhone:'01112345678',billingAddress:address,shippingAddress:address,deliveryOption:'DELIVER',items:[{productId:1,variantId:2,quantity:1}],expectedTotal:49};
   const request=()=>new Request('https://shop.tonewow.com/bundle/checkout',{method:'POST',headers:{origin:'https://shop.tonewow.com',host:'shop.tonewow.com','content-type':'application/json'},body:JSON.stringify(payload)});
   const ok=await route.POST(request());assert.equal(ok.status,200,JSON.stringify(await ok.clone().json()));
   const success=await ok.json();assert.equal(success.orderId,'99');assert(success.paymentParams.returnurl.includes('orderId=99'));
   assert.equal(creates,1);assert.equal(writes,1,'billing and reference saved in one mutation');
   assert.equal(database.orders['99'].billingAddress.fullName,'QA Test');assert.equal(database.orders['99'].paymentReference.referenceNumber,'TEST-REF');assert.equal(database.orders['99'].courier.trackingNo,'KEEP');
+  assert.equal(success.paymentParams.v_cartid,'TEST-REF');assert.equal(success.paymentParams.v_amount,'49.00');
+  for(const legacyId of ['16','2','3','unexpected']){
+   payload.paymentMethodId=legacyId;
+   const legacy=await route.POST(request());assert.equal(legacy.status,200,'legacy browser payment method must be ignored');
+  }
+  delete payload.paymentMethodId;
   for(const scenario of ['missing','unavailable','corrupt']){
    creates=0;remote=scenario!=='missing';readFails=scenario==='unavailable';corrupt=scenario==='corrupt';
    const r=await route.POST(request());assert.equal(r.status,503);const data=await r.json();assert.equal(data.code,'ORDER_METADATA_UNAVAILABLE');assert(!data.error.includes('private'));assert.equal(creates,0);

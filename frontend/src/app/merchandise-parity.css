@@ -304,6 +304,28 @@ body:has(.merch-checkout-page) #fc_frame {
   font-weight: 850;
 }
 
+/* Checkout controls shared by the desktop sidebar and mobile summary sheet. */
+.merch-checkout-promo { margin-top: 14px; }
+.merch-checkout-promo > label { display: block; margin-bottom: 8px; color: #0f172a; font-size: 13px; font-weight: 800; }
+.merch-checkout-promo > div { display: flex; gap: 8px; }
+.merch-checkout-promo input { width: 100%; min-width: 0; height: 42px; padding: 0 12px; color: #0f172a; background: #fff; border: 1px solid #dbe2ea; border-radius: 7px; font-size: 12px; text-transform: uppercase; }
+.merch-checkout-promo button { height: 42px; padding: 0 18px; color: #fff; background: #eab308; border: 0; border-radius: 7px; font-size: 12px; font-weight: 750; cursor: pointer; }
+.merch-checkout-promo button:disabled { opacity: .55; cursor: not-allowed; }
+.merch-checkout-promo small { display: block; margin-top: 7px; color: #94a3b8; font-size: 10px; }
+.merch-checkout-promo small.is-success, .merch-promo-discount { color: #047857; }
+.merch-checkout-promo small.is-error { color: #dc2626; }
+.merch-cart-summary-sheet .merch-checkout-promo { padding-top: 14px; border-top: 1px solid #e2e8f0; }
+.merch-checkout-payment { margin-top: 14px; padding: 22px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+.merch-checkout-payment h4 { margin: 0 0 14px; color: #0f172a; font-size: 15px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+.merch-checkout-payment > label { display: flex; min-height: 46px; margin-top: 8px; padding: 10px 12px; align-items: center; gap: 10px; color: #0f172a; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-weight: 650; }
+.merch-checkout-payment > label.active { background: #eff6ff; border: 2px solid #2563eb; }
+.merch-checkout-payment > label.disabled { color: #64748b; cursor: not-allowed; }
+.merch-checkout-payment input { width: 18px; height: 18px; margin: 0; accent-color: #2563eb; }
+.merch-checkout-payment small { margin-left: auto; color: #94a3b8; font-size: 10px; }
+.merch-checkout-payment-terms { margin-top: 14px; padding: 12px; color: #64748b; background: #f8fafc; border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.merch-checkout-sidebar-pay { width: 100%; margin-top: 14px; color: #fff; background: #eab308; border: 0; border-radius: 999px; }
+.merch-checkout-sidebar-pay:hover:not(:disabled) { background: #ca8a04; }
+
 .merch-checkout-mobile-pay {
   display: none;
 }

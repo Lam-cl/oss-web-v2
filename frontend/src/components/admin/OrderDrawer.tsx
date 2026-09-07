@@ -45,6 +45,9 @@ const pickupLabels: Record<string, string> = {
   COMPLETED: "Completed",
 };
 const collectionDateEditingEnabled = process.env.NEXT_PUBLIC_BUNDLE_COLLECTION_DATE_ENABLED !== "false";
+type DetailPart = "metadata" | "couriers" | "sims" | "catalogue";
+type DetailState = { status: "loading" | "ready" | "error"; error?: string };
+const loadingDetails = (): Record<DetailPart, DetailState> => ({ metadata: { status: "loading" }, couriers: { status: "loading" }, sims: { status: "loading" }, catalogue: { status: "loading" } });
 type Courier = { id: number; name: string; code: string; isActive: boolean };
 type BillingAddress = {
   fullName: string;
@@ -107,16 +110,87 @@ export default function OrderDrawer({
   const [collectionDate, setCollectionDate] = useState("");
   const [collectionDateBusy, setCollectionDateBusy] = useState(false);
   const [courierBusy, setCourierBusy] = useState(false);
+  const [detailState, setDetailState] = useState(loadingDetails);
+  const [orderError, setOrderError] = useState("");
+  const loadGeneration = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
+  const partVersions = useRef<Record<DetailPart, number>>({ metadata: 0, couriers: 0, sims: 0, catalogue: 0 });
+  const courierEdited = useRef({ courier: false, tracking: false, date: false });
+  const loadedDetails = useRef<{ metadata?: FulfilmentMetadata; couriers?: Courier[] }>({});
   const [presentationIndex, setPresentationIndex] = useState(
     () => indexAdminOrderItemPresentations({ products: [] }),
   );
   const [simVariantBindings, setSimVariantBindings] =
     useState<SimVariantBinding>({});
 
-  async function load() {
+  function hydrateCourier(value: Order) {
+    const saved = loadedDetails.current.metadata;
+    const choices = loadedDetails.current.couriers || [];
+    if (!courierEdited.current.courier) {
+      const selected = Number((value as any).courierId || (value as any).courier?.id || choices.find(item => item.name === saved?.courier?.service)?.id || 0);
+      setCourierId(selected ? String(selected) : "");
+    }
+    if (!courierEdited.current.tracking) setTrackingNo(String(value.trackingCode || saved?.courier?.trackingNo || ""));
+    if (!courierEdited.current.date) setExpectedDeliveryDate(saved?.courier?.expectedDeliveryDate || "");
+  }
+
+  async function loadPart(part: DetailPart, value: Order, generation = loadGeneration.current) {
+    const version = ++partVersions.current[part];
+    const controller = loadController.current;
+    const current = () => generation === loadGeneration.current && version === partVersions.current[part] && !controller?.signal.aborted;
+    if (!current()) return;
+    setDetailState(previous => ({ ...previous, [part]: { status: "loading" } }));
+    const signal = AbortSignal.any([controller!.signal, AbortSignal.timeout(20_000)]);
     try {
-      const value = await adminFetch<Order>(`orders/${id}`);
+      if (part === "metadata") {
+        const result = await adminFetch<FulfilmentMetadata>(`orders/${value.id}/fulfilment-metadata`, { signal });
+        if (!current()) return;
+        loadedDetails.current.metadata = result;
+        setMetadata(result);
+        hydrateCourier(value);
+      } else if (part === "couriers") {
+        const result = await adminFetch<Courier[]>("couriers", { signal });
+        if (!current()) return;
+        if (!Array.isArray(result) || !result.length) throw new Error("No courier services are available.");
+        loadedDetails.current.couriers = result;
+        setCouriers(result);
+        hydrateCourier(value);
+      } else if (part === "sims") {
+        const result = await adminFetch<SimAssignmentResponse>(`orders/${value.id}/sim-assignments`, { signal });
+        if (!current()) return;
+        if (!Number.isInteger(result.totalUnits) || result.totalUnits < 0 || !Array.isArray(result.assignments)) throw new Error("SIM fulfilment returned invalid data.");
+        setSimData(result.totalUnits > 0 ? { ...result, assignments: result.assignments.map(unit => ({ ...unit, simPrefix: unit.simPrefix || "", simSerial: unit.simSerial || "" })) } : null);
+      } else {
+        const response = await fetch(CATALOGUE_STOREFRONT_ENDPOINT, { cache: "no-store", signal });
+        if (!response.ok) throw new Error("Catalogue details could not be loaded.");
+        const projection = await response.json();
+        if (!current()) return;
+        setPresentationIndex(indexAdminOrderItemPresentations(projection));
+        setSimVariantBindings(indexLegacySimVariantBindings(projection));
+      }
+      if (current()) setDetailState(previous => ({ ...previous, [part]: { status: "ready" } }));
+    } catch (reason) {
+      if (current()) setDetailState(previous => ({ ...previous, [part]: { status: "error", error: reason instanceof Error ? reason.message : "Unable to load details." } }));
+    }
+  }
+
+  async function load() {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const generation = ++loadGeneration.current;
+    setOrderError("");
+    setOrder(null);
+    setMetadata(null);
+    setSimData(null);
+    setCouriers([]);
+    loadedDetails.current = {};
+    setDetailState(loadingDetails());
+    try {
+      const value = await adminFetch<Order>(`orders/${id}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) });
+      if (generation !== loadGeneration.current || controller.signal.aborted) return;
       setOrder(value);
+      hydrateCourier(value);
       setCollectionDate(orderPickupDate(value));
       const pickupOrder = orderDeliveryOption(value) === "PICKUP";
       setDraftStatus(
@@ -126,62 +200,26 @@ export default function OrderDrawer({
             ? value.status
             : "",
       );
-      const [savedMetadata, savedSims, liveCouriers, projection] =
-        await Promise.all([
-          adminFetch<FulfilmentMetadata>(`orders/${id}/fulfilment-metadata`),
-          adminFetch<SimAssignmentResponse>(`orders/${id}/sim-assignments`),
-          adminFetch<Courier[]>("couriers"),
-          fetch(CATALOGUE_STOREFRONT_ENDPOINT, { cache: "no-store" }).then(
-            (response) => (response.ok ? response.json() : { products: [] }),
-          ),
-        ]);
-      setPresentationIndex(indexAdminOrderItemPresentations(projection));
-      setSimVariantBindings(indexLegacySimVariantBindings(projection));
-      setMetadata(savedMetadata);
-      setSimData(
-        savedSims.totalUnits > 0
-          ? {
-              ...savedSims,
-              assignments: savedSims.assignments.map((unit) => ({
-                ...unit,
-                simPrefix: unit.simPrefix || "",
-                simSerial: unit.simSerial || "",
-              })),
-            }
-          : null,
-      );
-      setCouriers(liveCouriers);
-      const bundleCourierId = Number(
-        (value as any).courierId ||
-          (value as any).courier?.id ||
-          liveCouriers.find(
-            (courier) => courier.name === savedMetadata.courier?.service,
-          )?.id ||
-          0,
-      );
-      setCourierId(bundleCourierId ? String(bundleCourierId) : "");
-      setTrackingNo(
-        String(
-          (value as any).trackingCode ||
-            savedMetadata.courier?.trackingNo ||
-            "",
-        ),
-      );
-      setExpectedDeliveryDate(
-        savedMetadata.courier?.expectedDeliveryDate || "",
-      );
+      for (const part of ["metadata", "couriers", "sims", "catalogue"] as const) void loadPart(part, value, generation);
     } catch (reason) {
-      onError(
-        reason instanceof Error ? reason.message : "Unable to load order.",
-      );
+      if (generation === loadGeneration.current && !controller.signal.aborted) setOrderError(reason instanceof Error ? reason.message : "Unable to load order.");
     }
   }
   useEffect(() => {
     setReadyEmailOutcome(null);
+    setPendingStatus(null);
+    courierEdited.current = { courier: false, tracking: false, date: false };
+    setPresentationIndex(indexAdminOrderItemPresentations({ products: [] }));
+    setSimVariantBindings({});
     load();
+    return () => { ++loadGeneration.current; loadController.current?.abort(); };
   }, [id]);
 
   async function saveCourier() {
+    if (detailState.couriers.status !== "ready" || detailState.metadata.status !== "ready") {
+      onError("Wait for courier services and order metadata to load before saving.");
+      return;
+    }
     if (!order || !courierId || !trackingNo.trim()) {
       onError("Select a courier service and enter a tracking number.");
       return;
@@ -248,6 +286,11 @@ export default function OrderDrawer({
   async function statusUpdate() {
     if (statusOperationRef.current) return;
     if (!order || !pendingStatus) return;
+    if (pendingStatus === "SHIPPED" && detailState.sims.status !== "ready") {
+      setPendingStatus(null);
+      onError("Complete the SIM fulfilment check before shipping. Retry if the check failed.");
+      return;
+    }
     if (
       pendingStatus === "CANCELLED" &&
       !["PENDING", "PROCESSING", "PAID"].includes(
@@ -347,6 +390,15 @@ export default function OrderDrawer({
     "COMPLETED",
   ].includes(pickupFacingStatus));
 
+  function detailNotice(part: DetailPart, label: string) {
+    const state = detailState[part];
+    if (state.status === "ready") return null;
+    return <div className="adm-hint" role={state.status === "error" ? "alert" : "status"} data-detail={part}>
+      {state.status === "loading" ? `Loading ${label}…` : `${label}: ${state.error}`}
+      {state.status === "error" && order && <button type="button" className="adm-button secondary" onClick={() => void loadPart(part, order)}>Retry {label}</button>}
+    </div>;
+  }
+
   return (
     <div className="adm-drawer-wrap">
       <button className="adm-modal-backdrop" onClick={onClose} />
@@ -364,7 +416,7 @@ export default function OrderDrawer({
           </button>
         </header>
         <div className="adm-drawer-body">
-          {!order ? (
+          {orderError ? <div role="alert">{orderError}<button type="button" className="adm-button secondary" onClick={() => void load()}>Retry order</button></div> : !order ? (
             <Skeleton rows={7} />
           ) : (
             <>
@@ -454,7 +506,10 @@ export default function OrderDrawer({
                   )}
                 </div>
               </section>
-              {simData && simData.totalUnits > 0 && (
+              {detailNotice("metadata", "order metadata")}
+              {detailNotice("catalogue", "catalogue details")}
+              {detailNotice("sims", "SIM fulfilment")}
+              {detailState.sims.status === "ready" && simData && simData.totalUnits > 0 && (
                 <SimRangeAssignment
                   orderId={id}
                   data={simData}
@@ -468,12 +523,14 @@ export default function OrderDrawer({
               {!pickup && (
                 <section className="adm-section">
                   <h3 className="adm-section-title">Courier</h3>
+                  {detailNotice("couriers", "courier services")}
                   <div className="adm-form-grid">
                     <label className="adm-field">
                       Courier service
                       <select
                         value={courierId}
-                        onChange={(event) => setCourierId(event.target.value)}
+                        disabled={detailState.couriers.status !== "ready"}
+                        onChange={(event) => { courierEdited.current.courier = true; setCourierId(event.target.value); }}
                       >
                         <option value="" disabled>
                           Select courier
@@ -489,7 +546,7 @@ export default function OrderDrawer({
                       Tracking number
                       <input
                         value={trackingNo}
-                        onChange={(event) => setTrackingNo(event.target.value)}
+                        onChange={(event) => { courierEdited.current.tracking = true; setTrackingNo(event.target.value); }}
                       />
                     </label>
                     <label className="adm-field">
@@ -497,9 +554,9 @@ export default function OrderDrawer({
                       <input
                         type="date"
                         value={expectedDeliveryDate}
-                        disabled={Boolean(metadata?.courier)}
+                        disabled={detailState.metadata.status !== "ready" || Boolean(metadata?.courier)}
                         onChange={(event) =>
-                          setExpectedDeliveryDate(event.target.value)
+                          { courierEdited.current.date = true; setExpectedDeliveryDate(event.target.value); }
                         }
                       />
                     </label>
@@ -507,7 +564,7 @@ export default function OrderDrawer({
                       <button
                         type="button"
                         className="adm-button courier-save"
-                        disabled={courierBusy}
+                        disabled={courierBusy || detailState.couriers.status !== "ready" || detailState.metadata.status !== "ready"}
                         onClick={saveCourier}
                       >
                         {courierBusy ? "Saving…" : "Save"}
@@ -641,6 +698,7 @@ export default function OrderDrawer({
               className="adm-button"
               disabled={
                 busy ||
+                (draftStatus === "SHIPPED" && (detailState.sims.status !== "ready" || Boolean(simData?.totalUnits && simData.assignedUnits !== simData.totalUnits))) ||
                 pickupTerminalStatus ||
                 !draftStatus ||
                 draftStatus ===

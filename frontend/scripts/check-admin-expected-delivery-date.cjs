@@ -6,5 +6,5 @@ assert(label,'Expected delivery date field remains available');
 const input=find(label,ts.isJsxSelfClosingElement).find(n=>n.tagName.getText(tree)==='input');
 assert.equal(attribute(input,'type',tree).text,'date');
 const disabled=attribute(input,'disabled',tree).expression.getText(tree);
-for(const [metadata,wanted] of [[null,false],[{courier:{}},true]]) assert.equal(new Function('metadata','return '+disabled)(metadata),wanted);
+for(const [metadata,status,wanted] of [[null,'ready',false],[{courier:{}},'ready',true],[null,'loading',true],[null,'error',true]]) assert.equal(new Function('metadata','detailState','return '+disabled)(metadata,{metadata:{status}}),wanted);
 require('./test-courier-behavior.cjs')().then(()=>console.log('Expected date persistence, empty value and existing metadata protection passed')).catch(e=>{console.error(e);process.exitCode=1;});

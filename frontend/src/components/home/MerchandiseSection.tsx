@@ -13,7 +13,6 @@ import {
   type MerchandiseProduct,
 } from '@/data/merchandise';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
-import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
 import { formatRM } from '@/lib/utils';
 import { incrementOrderQuantity, minimumOrderError, minimumOrderLabel } from '@/lib/minimumOrderQuantity';
 import { useCartStore } from '@/store/cartStore';
@@ -110,9 +109,9 @@ export default function MerchandiseSection() {
     loading: productsLoading,
     error: productsError,
     retry: retryProducts,
-  } = useMerchandiseProducts();
-  const [catalogueProducts, setCatalogueProducts] = useState<MerchandiseProduct[] | null>(null);
-  const merchandiseProducts = catalogueProducts || stagingProducts;
+    isCurrent: productsAreCurrent,
+  } = useMerchandiseProducts({ displayCache: true });
+  const merchandiseProducts = stagingProducts;
   const items = useCartStore((state) => state.items);
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
@@ -138,14 +137,19 @@ export default function MerchandiseSection() {
   const sizeGuideHistoryRef = useRef(false);
 
   useEffect(() => {
-    if (productsLoading) return;
-    let active = true;
-    setCatalogueProducts(null);
-    fetchCatalogueStorefrontProducts(stagingProducts).then((products) => {
-      if (active) setCatalogueProducts(products);
-    });
-    return () => { active = false; };
-  }, [productsLoading, stagingProducts]);
+    // Keep an open dialog attached to the latest product and named choice.
+    if (!selectedProduct || productsLoading || productsError) return;
+    const next = merchandiseProducts.find(product => product.id === selectedProduct.id);
+    if (!next) { setSelectedProduct(null); return; }
+    if (next === selectedProduct) return;
+    const optionName = selectedProduct.options[optionIndex]?.name;
+    const nextIndex = next.options.findIndex(option => option.name === optionName);
+    setSelectedProduct(next);
+    setOptionIndex(Math.max(0, nextIndex));
+    if (nextIndex < 0) setOptionExplicitlySelected(false);
+    const sizes = next.options[Math.max(0, nextIndex)]?.sizes || next.sizes || [];
+    if (selectedSize && !sizes.includes(selectedSize)) setSelectedSize('');
+  }, [merchandiseProducts, productsLoading, productsError, selectedProduct, optionIndex, selectedSize]);
 
   useEffect(() => {
     setPortalReady(true);
@@ -436,6 +440,11 @@ export default function MerchandiseSection() {
   };
 
   const handleAddToCart = () => {
+    if (!productsAreCurrent()) {
+      setError('Please refresh merchandise before updating your cart.');
+      retryProducts();
+      return;
+    }
     if (!selectedProduct || !selectedOption) return;
     const visibleSource = Array.from(document.querySelectorAll<HTMLElement>('[data-fly-source]'))
       .find((element) => {
@@ -542,18 +551,15 @@ export default function MerchandiseSection() {
         ))}
       </div>
 
-      {productsLoading && merchandiseProducts.length === 0 && (
-        <div className="merch-api-notice" role="status">Loading merchandise...</div>
-      )}
-      {productsError && merchandiseProducts.length === 0 && (
+      {productsError && (
         <div className="merch-api-notice is-error" role="alert">
           <span>{productsError}</span>
           <button type="button" onClick={retryProducts}>Retry</button>
         </div>
       )}
 
-      <div className="merch-catalog-grid">
-        {productsLoading && Array.from({ length: 8 }, (_, index) => (
+      <div className="merch-catalog-grid" aria-busy={productsLoading} aria-label="Merchandise products">
+        {productsLoading && merchandiseProducts.length === 0 && Array.from({ length: 8 }, (_, index) => (
           <div key={`merch-skeleton-${index}`} className="merch-product-skeleton" aria-hidden="true" />
         ))}
         {filteredProducts.map((product, productIndex) => {
@@ -940,7 +946,7 @@ export default function MerchandiseSection() {
                   <button
                     type="button"
                     className="btn btn-primary merch-add-button"
-                    disabled={quantity === 0 && selectedVariantInCart === 0}
+                    disabled={productsLoading || Boolean(productsError) || (quantity === 0 && selectedVariantInCart === 0)}
                     onClick={handleAddToCart}
                   >
                     {quantity === 0 ? 'Remove from Cart' : <>Add to Cart · {formatRM(selectedVariantPrice * quantity)}</>}
@@ -1003,7 +1009,7 @@ export default function MerchandiseSection() {
                   <button
                     type="button"
                     className="btn btn-primary merch-add-button"
-                    disabled={quantity === 0 && selectedVariantInCart === 0}
+                    disabled={productsLoading || Boolean(productsError) || (quantity === 0 && selectedVariantInCart === 0)}
                     onClick={handleAddToCart}
                   >
                     {quantity === 0 ? 'Remove from Cart' : <>Add to Cart · {formatRM(selectedVariantPrice * quantity)}</>}

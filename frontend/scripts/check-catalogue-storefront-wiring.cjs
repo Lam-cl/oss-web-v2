@@ -153,9 +153,8 @@ const section = fs.readFileSync('src/components/home/MerchandiseSection.tsx', 'u
 const hook = fs.readFileSync('src/hooks/useMerchandiseProducts.ts', 'utf8');
 const detail = fs.readFileSync('src/app/merchandise/[slug]/page.tsx', 'utf8');
 const cartEditor = fs.readFileSync('src/components/merchandise/CartMerchandiseEditor.tsx', 'utf8');
-assert(section.includes('fetchCatalogueStorefrontProducts'), 'home catalogue must consume the public projection');
-assert(hook.includes("import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';"), 'shared merchandise loader must resolve the public Catalogue projection');
-assert(hook.indexOf('await fetchCatalogueStorefrontProducts') < hook.indexOf('reconcileMerchandiseCatalog(nextProducts)'), 'cart reconciliation must use current Catalogue Bundle IDs before checkout');
+// Loader/adaptation ordering and hook reconciliation are exercised by the loading behavior test.
+require('node:child_process').execFileSync(process.execPath, ['scripts/check-merchandise-loading.cjs'], { stdio: 'pipe' });
 assert(section.indexOf('<summary>Description</summary>') < section.indexOf('<summary>Product details</summary>'), 'product modal must render Product details as a separate section below Description');
 assert(cartEditor.indexOf('<summary>Description</summary>') < cartEditor.indexOf('<summary>Product details</summary>'), 'cart editor must keep Product details below Description');
 assert(section.includes("new Set(merchandiseProducts.map((product) => product.category))"), 'OSS category tabs must derive from live Catalogue categories');

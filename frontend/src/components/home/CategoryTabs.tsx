@@ -6,6 +6,7 @@ import SIMSection from './SIMSection';
 import MerchandiseSection from './MerchandiseSection';
 import type { AppSettings } from '@/lib/api';
 import { isDevicesEnabled, isMerchandiseEnabled } from '@/lib/features';
+import { prefetchMerchandiseProducts } from '@/lib/loadMerchandiseProducts';
 
 type TabKey = 'devices' | 'sim' | 'merchandise';
 
@@ -66,6 +67,16 @@ export default function CategoryTabs({ settings }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('sim');
 
   useEffect(() => {
+    if (!merchandiseEnabled || (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return;
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(() => prefetchMerchandiseProducts(), { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(prefetchMerchandiseProducts, 1500);
+    return () => clearTimeout(id);
+  }, [merchandiseEnabled]);
+
+  useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
     if (requestedTab === 'merchandise' && merchandiseEnabled) {
       setActiveTab('merchandise');
@@ -95,6 +106,9 @@ export default function CategoryTabs({ settings }: Props) {
         </button>
         <button
           disabled={!merchandiseEnabled}
+          onMouseEnter={() => merchandiseEnabled && prefetchMerchandiseProducts()}
+          onFocus={() => merchandiseEnabled && prefetchMerchandiseProducts()}
+          onTouchStart={() => merchandiseEnabled && prefetchMerchandiseProducts()}
           onClick={() => merchandiseEnabled && setActiveTab('merchandise')}
           className={`category-tab ${activeTab === 'merchandise' ? 'active' : ''}`}
           style={!merchandiseEnabled ? { cursor: 'not-allowed', opacity: 0.6 } : undefined}

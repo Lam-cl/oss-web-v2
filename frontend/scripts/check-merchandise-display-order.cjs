@@ -1,0 +1,23 @@
+const assert = require('node:assert/strict');
+const {compile,parse,find,ts} = require('./test-source-helpers.cjs');
+const {orderMerchandiseForAll} = compile('src/lib/merchandiseDisplayOrder.ts');
+const ids = ['26872431-982f-4ba5-bf84-51a9585a6e0b','e6c11fca-97bf-4aa6-a644-e52d25d98895','39a00000-0000-4000-8000-000000000039','40a00000-0000-4000-8000-000000000040','d8ddbba5-c901-4a50-ae7f-bbd66fc424c3'];
+const apiIds=[137,132,138,139,144];
+const rest=[{id:'flyers',category:'Print',inventory:8},{id:'bottle',category:'Drinkware',price:30}];
+const featured=ids.map((id,index)=>Object.freeze({id,apiProductId:900+index,name:'Renamed '+index,category:'Test',variantIds:{black:40+index},inventory:12,price:39}));
+const input=Object.freeze([rest[0],featured[4],featured[2],rest[1],featured[1],featured[3],featured[0]]);
+const before=[...input];const ordered=orderMerchandiseForAll(input);
+assert.deepEqual(ordered,[...featured,...rest]);assert.deepEqual(input,before);assert.notEqual(ordered,input);
+for(const item of ordered)assert(input.includes(item),'retain original objects, prices and bindings');
+assert.deepEqual(orderMerchandiseForAll([rest[0],featured[3],rest[1],featured[0]]),[featured[0],featured[3],...rest]);
+assert.deepEqual(orderMerchandiseForAll(rest),rest);assert.deepEqual(orderMerchandiseForAll([]),[]);
+const fallback=[...apiIds].reverse().map(apiProductId=>({id:String(apiProductId),apiProductId}));
+assert.deepEqual(orderMerchandiseForAll(fallback).map(p=>p.apiProductId),apiIds);
+// Execute the actual category selector: priority applies to All only.
+const tree=parse('src/components/home/MerchandiseSection.tsx');
+const node=find(tree,n=>ts.isVariableDeclaration(n)&&n.name.getText(tree)==='filteredProducts')[0];
+const callback=node.initializer.arguments[0].getText(tree);
+const select=new Function('activeCategory','merchandiseProducts','orderMerchandiseForAll',`return (${callback})();`);
+assert.deepEqual(select('All',input,orderMerchandiseForAll),ordered);
+assert.deepEqual(select('Test',input,orderMerchandiseForAll),input.filter(p=>p.category==='Test'));
+console.log('All merchandise order: featured identities, renamed/republished products, fallback, missing products, stable remainder, immutable data and unchanged category filters passed');

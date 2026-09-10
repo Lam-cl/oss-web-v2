@@ -1,5 +1,4 @@
 import HeroCarousel from '@/components/home/HeroCarousel';
-import PopupBanner from '@/components/home/PopupBanner';
 import CategoryTabs from '@/components/home/CategoryTabs';
 import ReferralCapture from '@/components/referral/ReferralCapture';
 import { getSettings, type AppSettings } from '@/lib/api';
@@ -31,7 +30,6 @@ export default async function HomePage() {
 
   return (
     <div className="has-hero">
-      <PopupBanner />
       <ReferralCapture />
       <HeroCarousel banners={banners} />
       <CategoryTabs settings={settings} />

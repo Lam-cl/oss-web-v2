@@ -534,7 +534,7 @@ function SIMPurchaseWizard() {
     return true;
   };
 
-  const goNext = () => {
+const goNext = () => {
     if (step === 0 && simType === 'esim' && !esimConfirmed) {
       setError('Please confirm that your device supports e-SIM before proceeding.');
       return;
@@ -546,15 +546,24 @@ function SIMPurchaseWizard() {
     if (!canGoNext() || step >= 3) return;
     setError('');
     setDirection(1);
+    if (isSuperlitePlusMode && step === 0) {
+      setStep(3);
+      return;
+    }
     setStep(step + 1);
   };
 
   const goBack = () => {
-    if (directCheckout || isSuperlitePlusMode) return;
+    if (directCheckout) return;
     if (searchParams.get('special') === '1') { router.push('/'); return; }
     if (step === 3 && selectedNumber) {
       setSelectedNumber(null);
       localStorage.removeItem('tw_selected_number');
+    }
+    if (isSuperlitePlusMode) {
+      if (step === 3) { setDirection(-1); setStep(0); return; }
+      if (step === 0) { router.back(); return; }
+      return;
     }
     if (isSuperliteMode && step === 1) return;
     if (step === 0) { router.back(); return; }

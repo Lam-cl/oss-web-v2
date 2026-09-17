@@ -68,7 +68,7 @@ export async function middleware(req: NextRequest) {
     if (!valid) {
       const url = req.nextUrl.clone();
       url.searchParams.delete('dataPlanID');
-      // url.searchParams.delete('simID'); testlukman
+      url.searchParams.delete('simID');
       url.searchParams.delete('token');
       return withOrigin(NextResponse.redirect(url));
     }

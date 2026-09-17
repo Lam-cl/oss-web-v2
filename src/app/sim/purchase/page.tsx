@@ -351,9 +351,8 @@ function SIMPurchaseWizard() {
   }, [apiPlans, searchParams, router]);
 
   /* ── Superlite / Superlite+ gated modes via ?simID= ── */
-  useEffect(() => {
+    useEffect(() => {
     if (!isSuperliteMode) return;
-    setSimType('physical');
 
     if (isSuperlitePlusMode) {
       const fu35 = FU_PLANS.find(p => p.id.replace(/\s+/g, '').toLowerCase() === 'fu35');
@@ -361,10 +360,10 @@ function SIMPurchaseWizard() {
         setSelectedDataPlan(fu35);
         setExpandedPlanId(fu35.id);
       }
-      if (step !== 3) setStep(3);
-      return;
+      return; // stays on Step 0 so user can pick Physical/eSIM themselves
     }
 
+    setSimType('physical');
     if (step === 0) setStep(1);
   }, [isSuperliteMode, isSuperlitePlusMode, FU_PLANS, selectedDataPlan?.id, selectedDataPlan?.price, selectedDataPlan?.data, step]);
 

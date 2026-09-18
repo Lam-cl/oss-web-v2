@@ -1127,7 +1127,7 @@ if (!canGoNext() || step >= 4) return;
   };
   const isStepActive = (i: number) => i === step;
   const canNavigateToStep = (i: number) => !directCheckout && !isAdxDirectFlow && isStepCompleted(i) && !selectedNumber && !(readyBundle && i !== 0 && i !== 1);
-  const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 4);
+const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 1);
   const showOrderDetailsShipping = step === 4 && simType !== 'esim';
   const resolvedPackageBenefits = (choice: PackageChoice) => {
     if (choice === 'superlite' || choice === 'lite') return PACKAGE_OPTIONS[choice].benefits;

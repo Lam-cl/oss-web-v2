@@ -515,7 +515,7 @@ function SIMPurchaseWizard() {
     }
     if (selectedDataPlan) {
       const key = selectedDataPlan.id.replace(/\s+/g, '').toLowerCase();
-      if (isSuperlitePlusMode) return 33;
+      if (isSuperlitePlusMode) return simType === 'esim' ? 46 : 33;
       if (purchaseMode === 'superlite') return SUPERLITE_FU_PLAN_IDS[key] || 28;
       const ids = FU_PLAN_IDS[key];
       if (ids) return simType === 'esim' ? ids.esim : ids.physical;

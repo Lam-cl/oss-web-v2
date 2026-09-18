@@ -13,6 +13,13 @@ import { getBundleProducts, verifyPromoter, getSettings, getDataPlans, saveRefAl
 import { formatRM } from '@/lib/utils';
 import { MALAYSIAN_STATES, getNestApiBaseUrl } from '@/lib/constants';
 import { isEsimEnabled } from '@/lib/features';
+import {
+  buildMemberID,
+  normalizeReferralCode,
+  readReferralContext,
+  saveReferralContext,
+  type ReferralPrefix,
+} from '@/lib/referral';
 import type { NumberResult } from '@/types';
 import { rememberAdxPurchase } from '@/lib/adxPurchaseTracking';
 
@@ -21,14 +28,18 @@ import { rememberAdxPurchase } from '@/lib/adxPurchaseTracking';
    ═══════════════════════════════════════════════ */
 const STEPS = [
   'Choose SIM',
+  'Choose SIM Type',
   'Choose Plan',
   'Insurance',
   'Complete Order',
 ];
 
-const STAGING_MODE = false; // staging sends RM1 regardless of actual total — flip to true for testing
 const DEFAULT_BASE_SIM_PRICE = 19.50;
-const OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const PRODUCTION_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp'';
+const STAGING_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
+const STAGING_PAYMENT_HOSTS = new Set(['tonewow-v2.xifuhalim.com']);
+const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
+const ESIM_ORDER_COOKIE = 'tw_esim_refno';
 
 const PAYMENT_METHODS = [
   { id: '16', label: 'Online Banking (FPX)' },
@@ -38,10 +49,21 @@ const PAYMENT_METHODS = [
 
 const ESIM_COMPATIBLE_DEVICES_URL = 'https://www.tonewow.com/esim-devices';
 const NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon SIM activation. Subscribe to any FU plan within 7 days to get the 20GB bonus.';
+const SUPERLITE_NO_ADD_ON_TOOLTIP = 'FREE 2GB welcome data upon registration.';
 const BASIC_TAKAFUL_TOOLTIP = 'Granted when you subscribe to any FU Data Plan within 7 days after activation.';
 const SUPERLITE_BASIC_TOOLTIP = 'Minimum reload of RM30/month required.';
 
+function getOssPaymentUrl() {
+  const overrideUrl = process.env.NEXT_PUBLIC_OSS_PAYMENT_URL?.trim();
+  if (overrideUrl) return overrideUrl;
+  return STAGING_PAYMENT_HOSTS.has(window.location.hostname)
+    ? STAGING_OSS_PAYMENT_URL
+    : PRODUCTION_OSS_PAYMENT_URL;
+}
+
 type PurchaseMode = 'lite' | 'superlite' | 'superliteplus';
+type ReadyBundleMode = 'pro' | 'biz';
+type PackageChoice = 'superlite' | 'lite' | 'pro' | 'biz';
 type InsuranceTier = 'basic' | 'premium' | 'premiumPro' | 'premiumProMax';
 
 type InsuranceOption = {
@@ -75,6 +97,26 @@ const LITE_INSURANCE_OPTIONS: InsuranceOption[] = [
 ];
 
 const SUPERLITE_INSURANCE_OPTIONS: InsuranceOption[] = [
+  {
+    id: 'premiumProMax',
+    apiValue: '3',
+    name: 'Ultra',
+    tagline: 'RM54,000 coverage',
+    price: 25,
+    badge: 'Best Value',
+    benefits: ['PA Takaful RM50,000 (1 Year)', 'Life Insurance RM4,000 (1 Year)'],
+  },
+  {
+    id: 'basic',
+    apiValue: '0',
+    name: 'Basic',
+    tagline: 'RM10,000 coverage',
+    price: 0,
+    benefits: ['PA Takaful RM10,000 (1 Year)'],
+  },
+];
+
+const ADX_SUPERLITE_INSURANCE_OPTIONS: InsuranceOption[] = [
   {
     id: 'premiumProMax',
     apiValue: '3',
@@ -122,16 +164,94 @@ const FU_PLAN_IDS: Record<string, { physical: number; esim: number }> = {
   fu120: { physical: 23, esim: 24 },
 };
 
-const SUPERLITE_FU_PLAN_IDS: Record<string, number> = {
-  fu10: 25,
-  fu20: 26,
-  'fu20+': 27,
-  fu20plus: 27,
-  fu35: 28,
-  fu50: 29,
-  fu60: 30,
-  fu80: 31,
-  fu120: 32,
+const SUPERLITE_FU_PLAN_IDS: Record<string, { physical: number; esim?: number }> = {
+  fu10: { physical: 25, esim: 36 },
+  fu20: { physical: 26, esim: 37 },
+  'fu20+': { physical: 27 },
+  fu20plus: { physical: 27 },
+  fu35: { physical: 28, esim: 38 },
+  fu50: { physical: 29, esim: 39 },
+  fu60: { physical: 30, esim: 40 },
+  fu80: { physical: 31, esim: 41 },
+  fu120: { physical: 32, esim: 42 },
+};
+
+const READY_BUNDLES: Record<ReadyBundleMode, { label: string; price: number; planId: { physical: number; esim: number } }> = {
+  pro: { label: 'Pro', price: 49.50, planId: { physical: 2, esim: 43 } },
+  biz: { label: 'Biz', price: 128, planId: { physical: 3, esim: 44 } },
+};
+
+const PACKAGE_OPTIONS: Record<PackageChoice, {
+  label: string;
+  eyebrow: string;
+  price: string;
+  data: string;
+  tagline: string;
+  benefits: string[];
+  popular?: boolean;
+}> = {
+  superlite: {
+    label: 'SUPERLITE',
+    eyebrow: '',
+    price: 'RM10',
+    data: 'SUPERLITE',
+    tagline: '',
+    benefits: ['2GB Welcome Data', 'Unlimited Calls*', 'Free PA Takaful RM10,000*'],
+  },
+  lite: {
+    label: 'LITE',
+    eyebrow: '',
+    price: 'RM19.50',
+    data: 'LITE',
+    tagline: '',
+    benefits: ['2GB Welcome Data', '20GB* Bonus Data', 'Free PA Takaful RM30,000*'],
+  },
+  pro: {
+    label: 'PRO',
+    eyebrow: '',
+    price: 'RM49.50',
+    data: 'PRO',
+    tagline: '',
+    benefits: ['150GB Data', 'Unlimited Calls', 'FREE PA Takaful RM30,000', 'FREE Life Insurance RM4,000'],
+  },
+  biz: {
+    label: 'BIZ',
+    eyebrow: '',
+    price: 'RM128',
+    data: 'BIZ',
+    tagline: '',
+    benefits: ['500GB Data', 'Unlimited Calls', 'FREE PA Takaful RM50,000', 'FREE Life Insurance RM4,000'],
+    popular: true,
+  },
+};
+
+type PreloadBenefitsResponse = {
+  metadata?: Record<string, { benefits?: string[] }>;
+};
+
+function cleanPackageBenefits(items?: string[]) {
+  return (items || [])
+    .map(item => item.replace(/\s*-\s*validity\s+30\s+days/ig, '').trim())
+    .map(item => /^2GB Data$/i.test(item) ? '2GB Welcome Data' : item)
+    .filter(item => !/^WELCOME DATA$/i.test(item))
+    .filter(item => item && !/subscribe to any plan within 7 days/i.test(item))
+    .filter(item => !/^PlanId\s+\d+/i.test(item))
+    .filter(item => !/^FU\s*\d+$/i.test(item))
+    .filter(item => !/^RM[\d.]+\s*\/\s*\d+\s*Days$/i.test(item))
+    .filter(item => !/^FREE\s+for\s+1\s+month$/i.test(item))
+    .filter(item => !/ready bundle checkout|no setup steps required|choose physical sim or esim/i.test(item))
+    .filter((item, index, arr) => arr.indexOf(item) === index);
+}
+
+const getInitialPackageChoice = (simID: string | null, modeParam: string | null, bundleParam: string | null): PackageChoice | null => {
+  if (bundleParam === 'pro' || bundleParam === 'biz') return bundleParam;
+  if (simID === 'superlite' || simID === 'superliteplus' || modeParam === 'superlite') return 'superlite';
+  return null;
+};
+
+const getInitialStep = (simID: string | null): number => {
+  if (simID === 'superlite' || simID === 'superliteplus') return 1;
+  return 0;
 };
 
 /** Generate 20-char refNo: twoss + 5 random digits + YYMMDDHHmmss */
@@ -147,6 +267,13 @@ const generateRefNo = (): string => {
     String(now.getSeconds()).padStart(2, '0'),
   ].join('');
   return ('twoss' + rand + dt).slice(0, 20);
+};
+
+const rememberEsimOrder = (refNo: string, paymentRefNo: string, email: string) => {
+  const payload = JSON.stringify({ refNo, paymentRefNo, email });
+  localStorage.setItem(ESIM_ORDER_STORAGE_KEY, payload);
+  sessionStorage.setItem(ESIM_ORDER_STORAGE_KEY, payload);
+  document.cookie = `${ESIM_ORDER_COOKIE}=${encodeURIComponent(paymentRefNo)}; Max-Age=86400; Path=/; SameSite=Lax`;
 };
 
 /* Malaysian postcode prefix (2 digits) → [state, city] */
@@ -242,16 +369,68 @@ function SIMPurchaseWizard() {
   const searchParams = useSearchParams();
   const esimEnabled = isEsimEnabled();
   const simID = searchParams.get('simID');
-  const purchaseMode: PurchaseMode = simID === 'superlite' || simID === 'superliteplus' ? simID : 'lite';
+  const modeParam = searchParams.get('mode');
+  const bundleParam = searchParams.get('bundle');
+  const [selectedPackage, setSelectedPackage] = useState<PackageChoice | null>(() => getInitialPackageChoice(simID, modeParam, bundleParam));
+  const [retryPurchaseMode, setRetryPurchaseMode] = useState<PurchaseMode | null>(null);
+  const purchaseMode: PurchaseMode =
+    retryPurchaseMode === 'superliteplus'
+      ? 'superliteplus'
+      : simID === 'superliteplus'
+      ? 'superliteplus'
+      : selectedPackage === 'superlite'
+        ? 'superlite'
+        : 'lite';
+  const readyBundleMode: ReadyBundleMode | null = selectedPackage === 'pro' || selectedPackage === 'biz' ? selectedPackage : null;
+  const readyBundle = readyBundleMode ? READY_BUNDLES[readyBundleMode] : null;
   const isSuperliteMode = purchaseMode === 'superlite' || purchaseMode === 'superliteplus';
   const isSuperlitePlusMode = purchaseMode === 'superliteplus';
-  const isAdxDirectFlow = isSuperliteMode;
-  const [step, setStep] = useState(0);
+  const isSuperliteDirectFlow = simID === 'superlite' || retryPurchaseMode === 'superlite';
+  const isAdxDirectFlow = isSuperliteDirectFlow || isSuperlitePlusMode;
+  const [step, setStep] = useState(() => getInitialStep(simID));
   const [direction, setDirection] = useState(1);
   const [BASE_SIM_PRICE, setBasePrice] = useState(DEFAULT_BASE_SIM_PRICE);
+  const [packageBenefits, setPackageBenefits] = useState<Partial<Record<PackageChoice, string[]>>>({});
 
   useEffect(() => {
     getSettings().then(s => setBasePrice(s.simBasePrice)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (simID || modeParam || bundleParam) return;
+
+    const retryMode = localStorage.getItem('tw_purchase_retry_mode');
+    if (retryMode !== 'superlite' && retryMode !== 'superliteplus') return;
+
+    setRetryPurchaseMode(retryMode);
+    setSelectedPackage('superlite');
+    if (retryMode === 'superliteplus') {
+      setSimType('physical');
+      setStep(4);
+    } else {
+      setStep(1);
+    }
+  }, [simID, modeParam, bundleParam]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('https://api.tonewow.com/static-content/slug/preload-benefits')
+      .then(res => res.ok ? res.json() : null)
+      .then((data: PreloadBenefitsResponse | null) => {
+        if (cancelled || !data?.metadata) return;
+        const liteBenefits = cleanPackageBenefits(data.metadata.LINDUNG_LITE?.benefits);
+        const proBenefits = cleanPackageBenefits(data.metadata.LINDUNG_PRO?.benefits);
+        const bizBenefits = cleanPackageBenefits(data.metadata.LINDUNG_BIZ?.benefits);
+        setPackageBenefits({
+          lite: liteBenefits.length ? liteBenefits : PACKAGE_OPTIONS.lite.benefits,
+          pro: proBenefits.length ? proBenefits : PACKAGE_OPTIONS.pro.benefits,
+          biz: bizBenefits.length ? bizBenefits : PACKAGE_OPTIONS.biz.benefits,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /* ── Special Number (VIP flow) ── */
@@ -267,7 +446,7 @@ function SIMPurchaseWizard() {
 
   // Fetch plans from new API when entering step 1
   const DYNAMIC_PLANS: DataPlan[] = apiPlans.map(p => {
-    const nameRaw = (p.codeData2 || '').trim(); // "FU 35"
+    const nameRaw = (p.codeData2 || '').trim();
     const name = nameRaw.replace(/\s+/g, ''); // "FU35"
     const id = name.toLowerCase(); // "fu35"
     const price = parseFloat(p.codeData3) || 0;
@@ -290,15 +469,19 @@ function SIMPurchaseWizard() {
   });
 
   const FU_PLANS: DataPlan[] = DYNAMIC_PLANS.length > 0 ? DYNAMIC_PLANS : [
+    { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,  data: '500 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true, popular: true },
     { id: 'fu10',  name: 'FU10',  price: 10,  discountedAddon: 8,   data: '12 GB',  validity: '10 Days', calls: '100 Min',    badge5g: true },
     { id: 'fu20',  name: 'FU20',  price: 20,  discountedAddon: 17,  data: '35 GB',  validity: '20 Days', calls: 'Unlimited', badge5g: true },
     { id: 'fu35',  name: 'FU35',  price: 35,  discountedAddon: 30,  data: '150 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu50',  name: 'FU50',  price: 50,  discountedAddon: 45,  data: '300 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
-    { id: 'fu60',  name: 'FU60',  price: 60,  discountedAddon: 55,  data: '500 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true, popular: true },
     { id: 'fu80',  name: 'FU80',  price: 80,  discountedAddon: 75,  data: '650 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
     { id: 'fu120', name: 'FU120', price: 120, discountedAddon: 115, data: '800 GB', validity: '30 Days', calls: '*Unlimited', badge5g: true },
   ];
-  const insuranceOptions = isSuperliteMode ? SUPERLITE_INSURANCE_OPTIONS : LITE_INSURANCE_OPTIONS;
+  const insuranceOptions = isAdxDirectFlow
+    ? ADX_SUPERLITE_INSURANCE_OPTIONS
+    : isSuperliteMode
+      ? SUPERLITE_INSURANCE_OPTIONS
+      : LITE_INSURANCE_OPTIONS;
   const insuranceById = Object.fromEntries(insuranceOptions.map(option => [option.id, option])) as Partial<Record<InsuranceTier, InsuranceOption>>;
 
   useEffect(() => {
@@ -319,10 +502,44 @@ function SIMPurchaseWizard() {
     promoterPrefix: 'TWE', promoterCode: '',
   });
   const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
+  const [adxFlowProof, setAdxFlowProof] = useState('');
+  const [adxProofError, setAdxProofError] = useState('');
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
   const [directCheckout, setDirectCheckout] = useState(false);
   const planAutoSelected = useRef(false);
   const [esimConfirmed, setEsimConfirmed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAdxDirectFlow) {
+      setAdxFlowProof('');
+      setAdxProofError('');
+      return () => { cancelled = true; };
+    }
+
+    setAdxFlowProof('');
+    setAdxProofError('');
+    fetch('/adx-reference/proof', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purchaseMode }),
+    })
+      .then(async response => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.proof) {
+          throw new Error(data?.error || 'ADX checkout session could not be verified.');
+        }
+        if (!cancelled) setAdxFlowProof(data.proof);
+      })
+      .catch(reason => {
+        if (!cancelled) {
+          setAdxProofError(reason instanceof Error ? reason.message : 'ADX checkout session could not be verified.');
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [isAdxDirectFlow, purchaseMode]);
 
   /* ── Direct checkout via ?dataPlanID= ── */
   useEffect(() => {
@@ -346,12 +563,12 @@ function SIMPurchaseWizard() {
     });
     setSimType('physical');
     setDirectCheckout(true);
-    setStep(3);
+    setStep(4);
     router.replace('/sim/purchase');
   }, [apiPlans, searchParams, router]);
 
   /* ── Superlite / Superlite+ gated modes via ?simID= ── */
-    useEffect(() => {
+useEffect(() => {
     if (!isSuperliteMode) return;
 
     if (isSuperlitePlusMode) {
@@ -360,11 +577,10 @@ function SIMPurchaseWizard() {
         setSelectedDataPlan(fu35);
         setExpandedPlanId(fu35.id);
       }
-      return; // stays on Step 0 so user can pick Physical/eSIM themselves
+      return;
     }
 
-    setSimType('physical');
-    if (step === 0) setStep(1);
+    // Keep Step 0 available for SuperLITE so customers can choose Physical SIM or eSIM.
   }, [isSuperliteMode, isSuperlitePlusMode, FU_PLANS, selectedDataPlan?.id, selectedDataPlan?.price, selectedDataPlan?.data, step]);
 
   useEffect(() => {
@@ -372,17 +588,23 @@ function SIMPurchaseWizard() {
     setSelectedInsurance(prev => prev === 'basic' ? 'premium' : prev);
   }, [isSuperliteMode]);
 
-  /* ── Default select + expand FU60 on step 1 (once only) ── */
+  /* ── Default expand featured plan on Choose Plan (once only) ── */
   useEffect(() => {
-    if (step === 1 && !selectedDataPlan && !planAutoSelected.current && FU_PLANS.length > 0 && !isSuperlitePlusMode) {
-      const fu60 = FU_PLANS.find(p => p.popular);
-      if (fu60) { setSelectedDataPlan(fu60); setExpandedPlanId(fu60.id); planAutoSelected.current = true; }
+    if (step === 2 && !selectedDataPlan && !planAutoSelected.current && FU_PLANS.length > 0) {
+      const featuredPlan = FU_PLANS.find(p => p.popular)
+        || FU_PLANS.find(p => p.id.replace(/\s+/g, '').toLowerCase() === 'fu60')
+        || FU_PLANS[0];
+      if (featuredPlan) {
+        setSelectedDataPlan(featuredPlan);
+        setExpandedPlanId(featuredPlan.id);
+        planAutoSelected.current = true;
+      }
     }
-  }, [step, FU_PLANS, selectedDataPlan, isSuperlitePlusMode]);
+  }, [step, FU_PLANS, selectedDataPlan, isSuperliteMode]);
 
   /* ── Default expand Basic insurance on step 2 ── */
   useEffect(() => {
-    if (step === 2 && expandedInsCard === null) {
+    if (step === 3 && expandedInsCard === null) {
       setExpandedInsCard(isSuperliteMode ? 'basic' : 'premium');
     }
   }, [step, expandedInsCard, isSuperliteMode]);
@@ -407,12 +629,17 @@ function SIMPurchaseWizard() {
     const memberID = `${prefix}-${code.trim()}`;
     const result = await verifyPromoter(memberID);
     if (result.valid) {
-      if (result.name) setPromoterName(result.name);
-      else if (prefix === 'TWP') setPromoterName(memberID); // TWP might not return name
-      // TWP: generate referenceID
       if (prefix === 'TWP') {
         const ref = await saveRefAllocation(memberID);
-        if (ref.referenceID) { setTwpReferenceID(ref.referenceID); setAlloReferenceID(ref.referenceID); }
+        if (ref.referenceID) {
+          setTwpReferenceID(ref.referenceID);
+          setAlloReferenceID(ref.referenceID);
+          setPromoterName(result.name || memberID);
+        } else {
+          setPromoterError(ref.error || 'Unable to generate TWP reference ID. Please try again.');
+        }
+      } else {
+        if (result.name) setPromoterName(result.name);
       }
     } else {
       setPromoterError(result.error || 'Not found');
@@ -420,22 +647,115 @@ function SIMPurchaseWizard() {
     setPromoterVerifying(false);
   }, []);
 
-  /* Auto-fill promoter from ?promoter= & ?code= params */
+  /* Auto-fill promoter from URL or persisted homepage referral context */
   useEffect(() => {
-    const p = searchParams.get('promoter');
+    let cancelled = false;
+    const p = searchParams.get('promoter')?.toUpperCase() as ReferralPrefix | undefined;
     const c = searchParams.get('code');
     const referenceID = searchParams.get('referenceID');
+
+    const applyContext = (context: {
+      prefix: ReferralPrefix;
+      code: string;
+      memberID: string;
+      name: string;
+      twpReferenceID?: string;
+      alloReferenceID?: string;
+    }) => {
+      if (cancelled) return;
+      setForm(f => ({ ...f, promoterPrefix: context.prefix, promoterCode: context.code }));
+      setHasReferral(true);
+      setPromoterLocked(true);
+      setPromoterName(context.name || context.memberID);
+      setPromoterError('');
+      setPromoterVerifying(false);
+      setTwpReferenceID(context.twpReferenceID || '');
+      setAlloReferenceID(context.alloReferenceID || '');
+    };
+
+    // Token-gated SuperLITE purchases are a direct channel and must never
+    // inherit an upline from URL parameters or a previous browser session.
+    if (isAdxDirectFlow) {
+      setForm(current => ({
+        ...current,
+        promoterPrefix: 'TWE',
+        promoterCode: '',
+      }));
+      setHasReferral(false);
+      setPromoterLocked(false);
+      setPromoterName('');
+      setPromoterError('');
+      setPromoterVerifying(false);
+      setTwpReferenceID('');
+      setAlloReferenceID('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if ((p === 'TWE' || p === 'TWP') && c) {
+      const code = normalizeReferralCode(p, c);
+      const memberID = buildMemberID(p, code);
+      setForm(f => ({ ...f, promoterPrefix: p, promoterCode: code }));
+      setHasReferral(true);
+      setPromoterLocked(true);
+      setPromoterVerifying(true);
+      setPromoterError('');
+
+      (async () => {
+        const result = await verifyPromoter(memberID);
+        if (cancelled) return;
+
+        if (!result.valid) {
+          setPromoterVerifying(false);
+          setPromoterError(result.error || 'Not found');
+          return;
+        }
+
+        let nextReferenceID = p === 'TWP' ? referenceID || '' : '';
+        if (p === 'TWP' && !nextReferenceID) {
+          const ref = await saveRefAllocation(memberID);
+          if (cancelled) return;
+          if (!ref.referenceID) {
+            setPromoterVerifying(false);
+            setPromoterError(ref.error || 'Unable to generate TWP reference ID. Please try again.');
+            return;
+          }
+          nextReferenceID = ref.referenceID;
+        }
+
+        const context = {
+          prefix: p,
+          code,
+          memberID,
+          name: result.name || memberID,
+          twpReferenceID: nextReferenceID,
+          alloReferenceID: nextReferenceID,
+        };
+        applyContext(context);
+        saveReferralContext({ ...context, capturedAt: Date.now() });
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (referenceID) {
       setTwpReferenceID(referenceID);
       setAlloReferenceID(referenceID);
       return;
     }
-    if (!p || !c) return;
-    setForm(f => ({ ...f, promoterPrefix: p.toUpperCase(), promoterCode: c }));
-    setHasReferral(true);
-    setPromoterLocked(true);
-    doVerifyPromoter(p.toUpperCase(), c);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const context = readReferralContext();
+    if (context) {
+      applyContext(context);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [doVerifyPromoter, isAdxDirectFlow, searchParams]);
 
 
   /* ── Load pre-selected special number (VIP flow) — only when ?special=1 ── */
@@ -446,7 +766,7 @@ function SIMPurchaseWizard() {
       try {
         const num = JSON.parse(savedNumber) as NumberResult;
         setSelectedNumber(num);
-        setStep(3);
+        setStep(4);
       } catch { /* ignore */ }
     }
   }, [searchParams]);
@@ -476,12 +796,12 @@ function SIMPurchaseWizard() {
 
   /* ── Price calculations ── */
   const planAddon = selectedDataPlan?.price || 0;
-  const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceOptions[0];
+  const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceById.basic || insuranceOptions[0];
   const insurancePrice = selectedInsuranceOption.price;
-  const effectiveBasePrice = directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
-  const hasPromoter = !!(form.promoterCode && form.promoterCode.trim());
+  const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
+  const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
   const isBareOrder = !hasPromoter && !selectedDataPlan && insurancePrice === 0 && !selectedNumber;
-  const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : isBareOrder ? 5 : 0;
+  const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : readyBundle ? 0 : isBareOrder ? 5 : 0;
 
   const numberPrice = selectedNumber?.price || 0;
 
@@ -490,22 +810,43 @@ function SIMPurchaseWizard() {
     : effectiveBasePrice + planAddon + insurancePrice + shippingFee;
 
   const selectedNumberCategory = selectedNumber?.category?.toUpperCase() || '';
-  const insuranceApiValue = ['PREMIUM', 'VIP', 'VVIP'].includes(selectedNumberCategory)
+  const insuranceApiValue = readyBundleMode === 'biz'
     ? '3'
-    : selectedInsuranceOption.apiValue;
+    : readyBundleMode === 'pro'
+      ? '2'
+      : ['PREMIUM', 'VIP', 'VVIP'].includes(selectedNumberCategory)
+        ? '3'
+        : selectedInsuranceOption.apiValue;
 
-  const currentRunningTotal = selectedNumber ? numberPrice : effectiveBasePrice + planAddon + insurancePrice;
+  const currentRunningTotal = selectedNumber
+    ? numberPrice
+    : !selectedPackage && !directCheckout
+      ? 0
+      : effectiveBasePrice + planAddon + insurancePrice;
   const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(effectiveBasePrice);
   const simOrderLabel = simType === 'esim'
-    ? 'eSIM'
-    : purchaseMode === 'superliteplus'
+    ? readyBundle
+      ? 'eSIM (' + readyBundle.label + ')'
+      : purchaseMode === 'superliteplus'
+        ? 'eSIM (SuperLITE+)'
+        : purchaseMode === 'superlite'
+          ? 'eSIM (SuperLITE)'
+          : selectedPackage === 'lite'
+            ? 'eSIM (LITE)'
+            : 'eSIM'
+    : readyBundle
+      ? `SIM (${readyBundle.label})`
+      : purchaseMode === 'superliteplus'
       ? 'SIM (SuperLITE+)'
       : purchaseMode === 'superlite'
         ? 'SIM (SuperLITE)'
+        : selectedPackage === 'lite'
+          ? 'SIM (LITE)'
         : 'SIM';
 
   /* ── Determine planid for OSSPayment ── */
   const determinePlanId = (): number => {
+    if (readyBundle) return simType === 'esim' ? readyBundle.planId.esim : readyBundle.planId.physical;
     if (selectedNumber) {
       const cat = selectedNumber.category?.toUpperCase();
       if (cat === 'VVIP') return 7;
@@ -515,57 +856,81 @@ function SIMPurchaseWizard() {
     }
     if (selectedDataPlan) {
       const key = selectedDataPlan.id.replace(/\s+/g, '').toLowerCase();
-      if (isSuperlitePlusMode) return simType === 'esim' ? 46 : 33;
-      if (purchaseMode === 'superlite') return SUPERLITE_FU_PLAN_IDS[key] || 28;
+       if (isSuperlitePlusMode) return simType === 'esim' ? 46 : 33;
+      if (purchaseMode === 'superlite') {
+        const superliteIds = SUPERLITE_FU_PLAN_IDS[key];
+        if (superliteIds) return simType === 'esim' ? superliteIds.esim || 35 : superliteIds.physical;
+        return simType === 'esim' ? 35 : 28;
+      }
       const ids = FU_PLAN_IDS[key];
       if (ids) return simType === 'esim' ? ids.esim : ids.physical;
     }
-    if (purchaseMode === 'superlite') return 34;
+    if (purchaseMode === 'superlite') return simType === 'esim' ? 35 : 34;
     if (simType === 'esim') return 9;
     return 1;
   };
 
+  const selectPackage = (choice: PackageChoice) => {
+    setSelectedPackage(choice);
+    setError('');
+    setDirectCheckout(false);
+    setSelectedDataPlan(null);
+    setExpandedPlanId(null);
+    planAutoSelected.current = false;
+    setSelectedInsurance(choice === 'superlite' ? 'basic' : 'premium');
+    setExpandedInsCard(null);
+    if (choice === 'pro' || choice === 'biz') {
+      setSimType('physical');
+      setEsimConfirmed(false);
+    }
+  };
+
   /* ── Navigation ── */
   const canGoNext = (): boolean => {
-    if (step === 0) return !(hasReferral && !promoterName) && (simType !== 'esim' || esimConfirmed);
-    if (step === 1) return true;
+    if (step === 0) return !!selectedPackage;
+    if (step === 1) return !(!isSuperliteDirectFlow && hasReferral && !promoterName) && (simType !== 'esim' || esimConfirmed);
     if (step === 2) return true;
-    if (step === 3) return !!(form.fullName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
+    if (step === 3) return true;
+    if (step === 4) return !!(form.fullName && form.email && form.phone && form.nric && form.address1 && form.city && form.postcode);
     return true;
   };
 
-const goNext = () => {
-    if (step === 0 && simType === 'esim' && !esimConfirmed) {
+  const goNext = () => {
+    if (step === 0 && !selectedPackage) {
+      setError('Please select a package to continue.');
+      return;
+    }
+    if (step === 1 && simType === 'esim' && !esimConfirmed) {
       setError('Please confirm that your device supports e-SIM before proceeding.');
       return;
     }
-    if (step === 0 && hasReferral && !promoterName) {
+    if (step === 1 && !isSuperliteDirectFlow && hasReferral && !promoterName) {
       setError('Please enter a valid Referral ID before proceeding.');
       return;
     }
-    if (!canGoNext() || step >= 3) return;
+if (!canGoNext() || step >= 4) return;
     setError('');
     setDirection(1);
-    if (isSuperlitePlusMode && step === 0) {
-      setStep(3);
-      return;
-    }
-    setStep(step + 1);
+    setStep(step === 1 && (readyBundle || isSuperlitePlusMode) ? 4 : step + 1);
   };
 
-  const goBack = () => {
+ const goBack = () => {
     if (directCheckout) return;
+    if (isSuperliteDirectFlow && step <= 1) return;
+    if (isSuperlitePlusMode) {
+      if (step === 4) { setDirection(-1); setStep(1); return; }
+      if (step === 1) return; // block going further back than SIM Type step for superliteplus
+    }
     if (searchParams.get('special') === '1') { router.push('/'); return; }
-    if (step === 3 && selectedNumber) {
+    if (readyBundle && step === 4) {
+      setDirection(-1);
+      setStep(1);
+      return;
+    }
+    if (step === 4 && selectedNumber) {
       setSelectedNumber(null);
       localStorage.removeItem('tw_selected_number');
     }
-    if (isSuperlitePlusMode) {
-      if (step === 3) { setDirection(-1); setStep(0); return; }
-      if (step === 0) { router.back(); return; }
-      return;
-    }
-    if (isSuperliteMode && step === 1) return;
     if (step === 0) { router.back(); return; }
     setDirection(-1);
     setStep(step - 1);
@@ -581,7 +946,50 @@ const goNext = () => {
 
       const promoterId = hasPromoter ? `${form.promoterPrefix}-${form.promoterCode}` : '';
       const paymentRefNo = `${paymentMethod}${refNo}`;
-      const totalStr = STAGING_MODE ? '1.00' : String(total);
+      let paymentReferralCode = hasPromoter ? twpReferenceID || promoterId : '';
+      let paymentTwpReferenceID = hasPromoter ? twpReferenceID : '';
+      let paymentAlloReferenceID = hasPromoter ? alloReferenceID : '';
+      let referralContextToken = '';
+
+      if (isAdxDirectFlow) {
+        if (!adxFlowProof) {
+          throw new Error(adxProofError || 'ADX checkout is still being verified. Please wait a moment and try again.');
+        }
+
+        const markerRes = await fetch('/adx-reference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            proof: adxFlowProof,
+            refNo,
+            paymentRefNo,
+            prodDesc: 'OSSPaymentADX',
+            purchaseMode,
+            simType,
+          }),
+        });
+        const markerData = await markerRes.json().catch(() => null);
+        if (!markerRes.ok || !markerData?.success) {
+          throw new Error(markerData?.error || 'Unable to secure the ADX payment route. Please try again.');
+        }
+      }
+
+      if (simType === 'esim' && hasPromoter && form.promoterPrefix === 'TWP') {
+        const contextRes = await fetch('/api/payment-referral/context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refNo: paymentRefNo, memberID: promoterId }),
+        });
+        const contextData = await contextRes.json().catch(() => null);
+        if (!contextRes.ok || !contextData?.token || !contextData?.referenceID) {
+          throw new Error(contextData?.error || 'Unable to secure the TWP referral. Please try again.');
+        }
+        paymentReferralCode = contextData.referenceID;
+        paymentTwpReferenceID = contextData.referenceID;
+        paymentAlloReferenceID = contextData.referenceID;
+        referralContextToken = contextData.token;
+      }
+      const totalStr = String(total);
       const params = new URLSearchParams({
         transactionType: 'OSSPayment',
         documentID: form.nric,
@@ -607,21 +1015,33 @@ const goNext = () => {
         memberId: promoterId,
         shippingFee: String(shippingFee),
         selectedMsisdn: selectedNumber?.phoneNo || '',
-        referralCode: promoterId ? `${promoterId}${twpReferenceID}` : twpReferenceID,
+        referralCode: paymentReferralCode,
         dataPlanID: '0',
         insurance: insuranceApiValue,
         isEsim: simType === 'esim' ? '1' : '0',
-        twpReferenceID,
-        alloReferenceID,
+        esim: simType === 'esim' ? '1' : '0',
+        twpReferenceID: paymentTwpReferenceID,
+        alloReferenceID: paymentAlloReferenceID,
       });
 
       const apiBase = getNestApiBaseUrl();
 
       if (simType === 'esim' || isAdxDirectFlow) {
-        const confirmationUrl = new URL('/api/confirmation', window.location.origin);
+        const confirmationPath = isAdxDirectFlow
+          ? simType === 'esim'
+            ? '/confirmation/adx/esim'
+            : '/confirmation/adx'
+          : '/confirmation/esim';
+        const confirmationUrl = new URL(
+          confirmationPath,
+          window.location.origin,
+        );
         confirmationUrl.searchParams.set('refno', paymentRefNo);
-        if (simType === 'esim') confirmationUrl.searchParams.set('esim', '1');
+        confirmationUrl.searchParams.set('esim', simType === 'esim' ? '1' : '0');
+        confirmationUrl.searchParams.set('prodDesc', isAdxDirectFlow ? 'OSSPaymentADX' : 'OSSPayment');
         if (isAdxDirectFlow) confirmationUrl.searchParams.set('flow', 'adx');
+        else if (simType === 'esim') confirmationUrl.searchParams.set('flow', 'esim');
+        if (referralContextToken) confirmationUrl.searchParams.set('refctx', referralContextToken);
         params.set('returnurl', confirmationUrl.toString());
         params.set('callbackurl', confirmationUrl.toString());
         params.set('failureurl', confirmationUrl.toString());
@@ -633,15 +1053,21 @@ const goNext = () => {
           code: hasPromoter ? form.promoterCode : '',
           name: hasPromoter ? promoterName : '',
           email: form.email,
-          twpReferenceID,
-          alloReferenceID,
+          twpReferenceID: paymentTwpReferenceID,
+          alloReferenceID: paymentAlloReferenceID,
         };
         localStorage.setItem('tw_esim_promoter', JSON.stringify(promoData));
-        localStorage.setItem('tw_esim_order', JSON.stringify({ refNo, paymentRefNo, email: form.email }));
+        rememberEsimOrder(refNo, paymentRefNo, form.email);
         fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
       }
 
       fetch(`${apiBase}/payment/poll/${paymentMethod}${refNo}`, { method: 'POST' }).catch(() => {});
+      const retryUrl = isSuperlitePlusMode
+        ? '/sim/purchase?simID=superliteplus'
+        : isSuperliteDirectFlow
+          ? '/sim/purchase?simID=superlite'
+          : '/sim/purchase';
+      localStorage.setItem('tw_purchase_retry_url', retryUrl);
       if (isAdxDirectFlow) {
         rememberAdxPurchase({
           refNo,
@@ -653,19 +1079,59 @@ const goNext = () => {
           simType,
         });
       }
-      window.location.href = `${OSS_PAYMENT_URL}?${params.toString()}`;
+      if (isSuperlitePlusMode) {
+        localStorage.setItem('tw_purchase_retry_mode', 'superliteplus');
+        localStorage.setItem('tw_purchase_retry_started_at', String(Date.now()));
+      } else if (isSuperliteDirectFlow) {
+        localStorage.setItem('tw_purchase_retry_mode', 'superlite');
+        localStorage.setItem('tw_purchase_retry_started_at', String(Date.now()));
+      } else {
+        localStorage.removeItem('tw_purchase_retry_mode');
+        localStorage.removeItem('tw_purchase_retry_started_at');
+      }
+      window.location.href = `${getOssPaymentUrl()}?${params.toString()}`;
     } catch (err: any) { setError(err.message || 'Something went wrong. Please try again.'); setSubmitting(false); }
   };
 
   /* ── Stepper helpers ── */
-  const isStepCompleted = (i: number) => !directCheckout && ((selectedNumber && i < 3) || i < step);
+  const isStepCompleted = (i: number) => {
+    if (directCheckout) return false;
+    if (readyBundle) return step === 4 ? i < 4 : i < step;
+    return (selectedNumber && i < 4) || i < step;
+  };
   const isStepActive = (i: number) => i === step;
-  const showOrderDetailsShipping = step === 3 && simType !== 'esim';
+  const canNavigateToStep = (i: number) => !directCheckout && !isAdxDirectFlow && isStepCompleted(i) && !selectedNumber && !(readyBundle && i !== 0 && i !== 1);
+  const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 4);
+  const showOrderDetailsShipping = step === 4 && simType !== 'esim';
+  const resolvedPackageBenefits = (choice: PackageChoice) => {
+    if (choice === 'superlite' || choice === 'lite') return PACKAGE_OPTIONS[choice].benefits;
+    return packageBenefits[choice] || PACKAGE_OPTIONS[choice].benefits;
+  };
+  const packageIncludedBenefits = selectedPackage ? resolvedPackageBenefits(selectedPackage) : [];
 
   /* ══════════════════════════════════════════════════════
      SIDEBAR ORDER SUMMARY CONTENT
      ══════════════════════════════════════════════════════ */
   const SidebarOrderContent = () => {
+    const IncludedBenefits = ({ items, subtitle }: { items: string[]; subtitle?: string }) => {
+      if (!items.length) return null;
+      return (
+        <div style={{ marginTop: 10, padding: '12px 14px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="#2563eb"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.4px' }}>What's Included</span>
+          </div>
+          {subtitle && <div style={{ fontSize: 11, fontWeight: 600, color: '#1d4ed8', marginBottom: 4 }}>{subtitle}</div>}
+          {items.map((b, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#1e40af', marginTop: 3 }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="#2563eb"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+              <span>{b}</span>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
     if (selectedNumber) {
       const nb = SPECIAL_NUMBER_BENEFITS[selectedNumber.category?.toUpperCase()];
       return (
@@ -692,6 +1158,13 @@ const goNext = () => {
         </>
       );
     }
+    if (!selectedPackage && !directCheckout) {
+      return (
+        <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.45 }}>
+          Select a package to start your order.
+        </div>
+      );
+    }
     return (
       <>
         <div className="sidebar-order-row">
@@ -704,6 +1177,7 @@ const goNext = () => {
             <span>{formatRM(planAddon)}</span>
           </div>
         )}
+        <IncludedBenefits items={packageIncludedBenefits} />
         {insurancePrice > 0 && (
           <div className="sidebar-order-row">
             <span>{selectedInsuranceOption.name}</span>
@@ -722,6 +1196,80 @@ const goNext = () => {
     );
   };
 
+  const renderPackageCard = (choice: Extract<PackageChoice, 'superlite' | 'lite'>) => {
+    const option = PACKAGE_OPTIONS[choice];
+    const active = selectedPackage === choice;
+    const benefits = resolvedPackageBenefits(choice);
+    return (
+      <div
+        key={choice}
+        className={`fu-plan-card package-choice-card${active ? ' fu-plan-card--selected' : ''}${option.popular ? ' fu-plan-card--popular' : ''}`}
+        onClick={() => selectPackage(choice)}
+        style={{ cursor: 'pointer' }}
+      >
+        <div className="fu-plan-header" style={{ borderRadius: 14 }}>
+          {choice === 'superlite' && <span className="fu-plan-popular-badge">Best Seller</span>}
+          <div className="ins-card-radio-wrap" style={{ alignSelf: 'center' }}>
+            <div className={`sim-type-radio${active ? ' sim-type-radio--active' : ''}`} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="fu-plan-data package-choice-data">{option.data}</p>
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p className="fu-plan-price-col package-choice-price">{option.price}</p>
+          </div>
+        </div>
+        {active && (
+          <div className="fu-plan-body package-choice-body">
+            <div className="fu-plan-features">
+              {benefits.map(benefit => (
+                <div className="fu-plan-feature" key={benefit}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                  <span>{benefit}</span>
+                </div>
+              ))}
+            </div>
+            <div className="fu-plan-total">Selected package</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderReadyBundleCard = (choice: ReadyBundleMode) => {
+    const option = PACKAGE_OPTIONS[choice];
+    const active = selectedPackage === choice;
+    const benefits = resolvedPackageBenefits(choice);
+    return (
+      <div
+        key={choice}
+        className={`ready-bundle-card${active ? ' ready-bundle-card--selected' : ''}${choice === 'biz' ? ' ready-bundle-card--recommended' : ''}`}
+        onClick={() => selectPackage(choice)}
+        style={{ cursor: 'pointer' }}
+      >
+        {choice === 'biz' && <span className="ready-bundle-badge">Recommended</span>}
+        <div className="ready-bundle-head">
+          <div className={`sim-type-radio${active ? ' sim-type-radio--active' : ''}`} />
+          <div className="ready-bundle-title-wrap">
+            <div className="ready-bundle-title-row">
+              <h3>{option.data}</h3>
+              <p className="ready-bundle-price">{option.price}</p>
+            </div>
+          </div>
+        </div>
+        <div className="ready-bundle-features">
+          {benefits.map(benefit => (
+            <div className="ready-bundle-feature" key={benefit}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+              <span>{benefit}</span>
+            </div>
+          ))}
+        </div>
+        {active && <div className="ready-bundle-selected">Selected package</div>}
+      </div>
+    );
+  };
+
   /* ═══════════════════════════════════════════════
      RENDER
      ═══════════════════════════════════════════════ */
@@ -737,7 +1285,7 @@ const goNext = () => {
                 <div className="sidebar-step-row">
                   <div
                     className={`sidebar-step-circle${isStepCompleted(i) ? ' completed' : isStepActive(i) ? ' active' : ''}`}
-                    onClick={() => { if (!directCheckout && !(isSuperliteMode && i === 0) && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
+                    onClick={() => { if (canNavigateToStep(i)) { setDirection(i < step ? -1 : 1); setStep(i); } }}
                   >
                     {isStepCompleted(i) ? '✓' : i + 1}
                   </div>
@@ -756,7 +1304,7 @@ const goNext = () => {
             <div className="sidebar-order-divider" />
             <div className="sidebar-order-row sidebar-order-total">
               <span>Total</span>
-              <span>{formatRM(step === 3 ? total : currentRunningTotal)}</span>
+              <span>{formatRM(step === 4 ? total : currentRunningTotal)}</span>
             </div>
           </div>
         </aside>
@@ -768,7 +1316,7 @@ const goNext = () => {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div
                   className={`mobile-step-circle${isStepCompleted(i) ? ' completed' : isStepActive(i) ? ' active' : ''}`}
-                  onClick={() => { if (!directCheckout && !(isSuperliteMode && i === 0) && isStepCompleted(i) && !selectedNumber) { setDirection(i < step ? -1 : 1); setStep(i); } }}
+                  onClick={() => { if (canNavigateToStep(i)) { setDirection(i < step ? -1 : 1); setStep(i); } }}
                 >
                   {isStepCompleted(i) ? '✓' : i + 1}
                 </div>
@@ -867,10 +1415,42 @@ const goNext = () => {
           style={{ overflow: 'hidden' }}
         >
 
-          {/* ════════════ STEP 0: Choose SIM ════════════ */}
+          {/* ════════════ STEP 0: Choose Package ════════════ */}
           {step === 0 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Choose Your SIM</h2>
+              <p className="package-choice-page-description">Build your own SIM or pick a ready-made bundle.</p>
+
+              <div className="package-choice-section package-choice-section--custom">
+                <div className="package-choice-section-head">
+                  <h3>Customize Your Plan</h3>
+                  <p>Build a plan that fits you</p>
+                </div>
+                <div className="plans-grid-fu">
+                  {renderPackageCard('superlite')}
+                  {renderPackageCard('lite')}
+                </div>
+              </div>
+
+              <div className="package-choice-section">
+                <div className="package-choice-section-head">
+                  <h3>OR Choose Our Bundles</h3>
+                  <p>Everything&apos;s already included. Just pick the bundle that suits your needs.</p>
+                </div>
+                <div className="ready-bundle-grid">
+                  {renderReadyBundleCard('pro')}
+                  {renderReadyBundleCard('biz')}
+                </div>
+              </div>
+
+              {error && <p style={{ color: '#ef4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
+            </div>
+          )}
+
+          {/* ════════════ STEP 1: Choose SIM ════════════ */}
+          {step === 1 && (
+            <div>
+              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Choose Your SIM Type</h2>
               <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Select SIM type and enter referral ID if you have one.</p>
 
               {/* SIM Type Cards */}
@@ -892,7 +1472,6 @@ const goNext = () => {
                     <p className="sim-type-desc">Delivered to your address</p>
                   </div>
                   <div className="sim-type-right">
-                    <p className="sim-type-price">{baseSimDisplay}</p>
                     {simType === 'physical' && <span className="sim-type-selected-badge">Selected</span>}
                   </div>
                 </div>
@@ -918,7 +1497,6 @@ const goNext = () => {
                   <div className="sim-type-right">
                     {esimEnabled ? (
                       <>
-                        <p className="sim-type-price">{baseSimDisplay}</p>
                         {simType === 'esim' && <span className="sim-type-selected-badge">Selected</span>}
                       </>
                     ) : (
@@ -971,77 +1549,84 @@ const goNext = () => {
               )}
               {error && <p style={{ color: '#ef4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
 
-              {/* Referral ID Section */}
-              <div style={{ ...cardStyle, marginTop: 24 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Do you have a Referral ID?</h3>
-                <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Agents and promoters have a referral ID.</p>
+              {!isSuperliteDirectFlow && (
+                <>
+                  {/* Referral ID Section */}
+                  <div style={{ ...cardStyle, marginTop: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Do you have a Referral ID?</h3>
+                    <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Agents and promoters have a referral ID.</p>
 
-                {/* Yes / No toggle */}
-                <div className="referral-toggle">
-                  <button
-                    className={`referral-toggle-btn${hasReferral ? ' active' : ''}`}
-                    onClick={() => setHasReferral(true)}
-                    type="button"
-                    disabled={promoterLocked}
-                  >Yes</button>
-                  <button
-                    className={`referral-toggle-btn${!hasReferral ? ' active' : ''}`}
-                    onClick={() => {
-                      setHasReferral(false);
-                      setForm(p => ({ ...p, promoterCode: '' }));
-                      setPromoterName(''); setPromoterError(''); setTwpReferenceID(''); setAlloReferenceID('');
-                    }}
-                    type="button"
-                    disabled={promoterLocked}
-                  >No</button>
-                </div>
+                    {promoterLocked ? (
+                      <p style={{ fontSize: 12, color: '#2563eb', margin: '0 0 12px', fontWeight: 700 }}>
+                        Referral applied from your link. This referral is locked for this order.
+                      </p>
+                    ) : (
+                      <div className="referral-toggle">
+                        <button
+                          className={`referral-toggle-btn${hasReferral ? ' active' : ''}`}
+                          onClick={() => setHasReferral(true)}
+                          type="button"
+                        >Yes</button>
+                        <button
+                          className={`referral-toggle-btn${!hasReferral ? ' active' : ''}`}
+                          onClick={() => {
+                            setHasReferral(false);
+                            setForm(p => ({ ...p, promoterCode: '' }));
+                            setPromoterName(''); setPromoterError(''); setTwpReferenceID(''); setAlloReferenceID('');
+                          }}
+                          type="button"
+                        >No</button>
+                      </div>
+                    )}
 
-                {hasReferral && (
-                  <div style={{ marginTop: 16 }}>
-                    <label style={labelStyle}>Referral ID</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <select
-                        name="promoterPrefix"
-                        value={form.promoterPrefix}
-                        onChange={e => {
-                          setForm(p => ({ ...p, promoterPrefix: e.target.value }));
-                          if (form.promoterCode.trim()) doVerifyPromoter(e.target.value, form.promoterCode);
-                        }}
-                        style={{ ...inputStyle, width: 90, height: 46 }}
-                        disabled={promoterLocked}
-                      >
-                        <option value="TWE">TWE</option>
-                        <option value="TWP">TWP</option>
-                      </select>
-                      <input
-                        name="promoterCode"
-                        placeholder="e.g. 1234567"
-                        value={form.promoterCode}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setForm(p => ({ ...p, promoterCode: v }));
-                          setPromoterName(''); setPromoterError('');
-                          if (promoterDebounce.current) clearTimeout(promoterDebounce.current);
-                          if (v.trim()) promoterDebounce.current = setTimeout(() => doVerifyPromoter(form.promoterPrefix, v), 600);
-                        }}
-                        style={{ ...inputStyle, flex: 1, height: 46 }}
-                        disabled={promoterLocked}
-                      />
-                    </div>
-                    {promoterVerifying && <p style={{ fontSize: 12, color: '#2563eb', marginTop: 6 }}>Verifying...</p>}
-                    {promoterName && <p style={{ fontSize: 13, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>✓ {promoterName}</p>}
-                    {promoterError && <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>✗ {promoterError}</p>}
-                    {!promoterName && !promoterVerifying && !promoterError && form.promoterCode === '' && (
-                      <p style={{ fontSize: 12, color: '#f59e0b', marginTop: 8, fontWeight: 500 }}>⚠ Referral ID required to proceed.</p>
+                    {hasReferral && (
+                      <div style={{ marginTop: 16 }}>
+                        <label style={labelStyle}>Referral ID</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <select
+                            name="promoterPrefix"
+                            value={form.promoterPrefix}
+                            onChange={e => {
+                              setForm(p => ({ ...p, promoterPrefix: e.target.value }));
+                              if (form.promoterCode.trim()) doVerifyPromoter(e.target.value, form.promoterCode);
+                            }}
+                            style={{ ...inputStyle, width: 90, height: 46 }}
+                            disabled={promoterLocked}
+                          >
+                            <option value="TWE">TWE</option>
+                            <option value="TWP">TWP</option>
+                          </select>
+                          <input
+                            name="promoterCode"
+                            placeholder="e.g. 1234567"
+                            value={form.promoterCode}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setForm(p => ({ ...p, promoterCode: v }));
+                              setPromoterName(''); setPromoterError('');
+                              if (promoterDebounce.current) clearTimeout(promoterDebounce.current);
+                              if (v.trim()) promoterDebounce.current = setTimeout(() => doVerifyPromoter(form.promoterPrefix, v), 600);
+                            }}
+                            style={{ ...inputStyle, flex: 1, height: 46 }}
+                            disabled={promoterLocked}
+                          />
+                        </div>
+                        {promoterVerifying && <p style={{ fontSize: 12, color: '#2563eb', marginTop: 6 }}>Verifying...</p>}
+                        {promoterName && <p style={{ fontSize: 13, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>✓ {promoterName}</p>}
+                        {promoterError && <p style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>✗ {promoterError}</p>}
+                        {!promoterName && !promoterVerifying && !promoterError && form.promoterCode === '' && (
+                          <p style={{ fontSize: 12, color: '#f59e0b', marginTop: 8, fontWeight: 500 }}>⚠ Referral ID required to proceed.</p>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
           )}
 
-          {/* ════════════ STEP 1: Choose Plan ════════════ */}
-          {step === 1 && (
+          {/* ════════════ STEP 2: Choose Plan ════════════ */}
+          {step === 2 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Pick Your Data Plan</h2>
               {!isSuperliteMode && (
@@ -1098,10 +1683,12 @@ const goNext = () => {
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
                               <span>Free 2GB Welcome Data</span>
                             </div>
-                            <div className="fu-plan-feature">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-                              <span>FREE 20GB Bonus Data</span>
-                            </div>
+                            {!isSuperliteMode && (
+                              <div className="fu-plan-feature">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0074be"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                                <span>FREE 20GB Bonus Data</span>
+                              </div>
+                            )}
                             {!isSuperliteMode && (
                               <div className="fu-plan-feature">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d9488"><path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z"/></svg>
@@ -1135,7 +1722,7 @@ const goNext = () => {
                     <div className="sim-type-info">
                       <div className="inline-title-with-info">
                         <p className="sim-type-name">No Add On</p>
-                        <InfoTooltip text={NO_ADD_ON_TOOLTIP} />
+                        <InfoTooltip text={isSuperliteMode ? SUPERLITE_NO_ADD_ON_TOOLTIP : NO_ADD_ON_TOOLTIP} />
                       </div>
                     </div>
                     {!selectedDataPlan && (
@@ -1149,8 +1736,8 @@ const goNext = () => {
             </div>
           )}
 
-          {/* ════════════ STEP 2: Insurance Add-on ════════════ */}
-          {step === 2 && (
+          {/* ════════════ STEP 3: Insurance Add-on ════════════ */}
+          {step === 3 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Enhanced Protection</h2>
               <p style={{ color: '#64748b', marginBottom: selectedDataPlan ? 8 : 24, fontSize: 14 }}>
@@ -1213,8 +1800,8 @@ const goNext = () => {
             </div>
           )}
 
-          {/* ════════════ STEP 3: Complete Your Order ════════════ */}
-          {step === 3 && (
+          {/* ════════════ STEP 4: Complete Your Order ════════════ */}
+          {step === 4 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Complete Your Order</h2>
               <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Fill in your details and checkout securely.</p>
@@ -1222,6 +1809,24 @@ const goNext = () => {
               <div className="purchase-grid-details-checkout">
                 {/* ── LEFT: Customer + Shipping ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {!isSuperliteDirectFlow && hasReferral && promoterName && (
+                    <div className="checkout-referral-card">
+                      <div className="checkout-referral-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 3l7 3v5c0 4.6-2.9 8.8-7 10-4.1-1.2-7-5.4-7-10V6l7-3z" fill="#2563eb" opacity="0.12"/>
+                          <path d="M9 12l2 2 4-5" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div className="checkout-referral-copy">
+                        <p>Referral Applied</p>
+                        <strong>{promoterName}</strong>
+                      </div>
+                      <div className="checkout-referral-code">
+                        {form.promoterPrefix}-{form.promoterCode}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Identity */}
                   <div style={cardStyle}>
                     <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.5 }}>Identity</h3>
@@ -1381,13 +1986,13 @@ const goNext = () => {
           )}
 
           {/* ── Bottom nav ── */}
-          {step < 3 && (
+          {step < 4 && (
             <div className="step-nav" style={{ marginBottom: 32 }}>
-              <button className="btn btn-blue" onClick={goBack}>Back</button>
+              {showBackButton && <button className="btn btn-blue" onClick={goBack}>Back</button>}
               <button className="btn btn-blue" onClick={goNext}>Next</button>
             </div>
           )}
-          {step === 3 && (
+          {step === 4 && showBackButton && (
             <div className="step-nav" style={{ marginBottom: 32 }}>
               <button className="btn btn-blue" onClick={goBack}>Back</button>
             </div>
@@ -1403,7 +2008,7 @@ const goNext = () => {
         <div className="mobile-order-bar" onClick={() => setMobileOrderOpen(!mobileOrderOpen)}>
           <div className="mobile-order-total">
             <span style={{ fontSize: 12, color: '#64748b' }}>Total</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>{formatRM(step === 3 ? total : currentRunningTotal)}</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>{formatRM(step === 4 ? total : currentRunningTotal)}</span>
           </div>
           <button className="mobile-order-toggle">
             {mobileOrderOpen ? 'Hide' : 'View Details'}
@@ -1418,7 +2023,7 @@ const goNext = () => {
             <div className="sidebar-order-divider" />
             <div className="sidebar-order-row sidebar-order-total">
               <span>Total</span>
-              <span>{formatRM(step === 3 ? total : currentRunningTotal)}</span>
+              <span>{formatRM(step === 4 ? total : currentRunningTotal)}</span>
             </div>
           </div>
         )}
@@ -1447,7 +2052,7 @@ const goNext = () => {
           transition: all 0.2s; flex-shrink: 0;
         }
         .sidebar-step-circle.completed { background: #16a34a; color: #fff; cursor: pointer; }
-        .sidebar-step-circle.active { background: #2563eb; color: #fff; }
+        .sidebar-step-circle.active { background: #334EFF; color: #fff; }
         .sidebar-step-label { font-size: 14px; color: #94a3b8; }
         .sidebar-step-label.active { font-weight: 700; color: #1e293b; }
         .sidebar-step-connector {
@@ -1572,9 +2177,9 @@ const goNext = () => {
           opacity: 1; transform: translateX(-50%) translateY(0);
         }
         .sim-type-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
-        .sim-type-price { font-size: 16px; font-weight: 800; color: #2563eb; margin: 0; }
+        .sim-type-price { font-size: 16px; font-weight: 800; color: #334EFF; margin: 0; }
         .sim-type-selected-badge {
-          font-size: 11px; font-weight: 700; color: #2563eb;
+          font-size: 11px; font-weight: 700; color: #334EFF;
           background: #dbeafe; padding: 2px 8px; border-radius: 20px;
         }
         .sim-type-soon-badge {
@@ -1591,10 +2196,248 @@ const goNext = () => {
           padding: 8px 24px; border: none; font-size: 14px; font-weight: 600;
           cursor: pointer; background: #fff; color: #64748b; transition: all 0.15s;
         }
-        .referral-toggle-btn.active { background: #2563eb; color: #fff; }
+        .referral-toggle-btn.active { background: #334EFF; color: #fff; }
         .referral-toggle-btn:first-child { border-right: 1.5px solid #d1d5db; }
 
+        .checkout-referral-card {
+          display: grid;
+          grid-template-columns: 38px minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 12px;
+          padding: 13px 15px;
+          border: 1px solid #bfdbfe;
+          border-left: 4px solid #38bdf8;
+          border-radius: 14px;
+          background: linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%);
+          box-shadow: 0 10px 28px rgba(37, 99, 235, 0.08);
+        }
+        .checkout-referral-icon {
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          background: #dbeafe;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .checkout-referral-copy {
+          min-width: 0;
+        }
+        .checkout-referral-copy p {
+          color: #2563eb;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          line-height: 1;
+          margin: 0 0 5px;
+          text-transform: uppercase;
+        }
+        .checkout-referral-copy strong {
+          display: block;
+          color: #0f172a;
+          font-size: 14px;
+          font-weight: 800;
+          line-height: 1.25;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .checkout-referral-code {
+          color: #1d4ed8;
+          background: #fff;
+          border: 1px solid #dbeafe;
+          border-radius: 9px;
+          font-size: 12px;
+          font-weight: 800;
+          line-height: 1;
+          padding: 8px 10px;
+          white-space: nowrap;
+        }
+
         /* FU Plan Cards */
+        .package-choice-page-description {
+          color: #64748b;
+          font-size: 14px;
+          line-height: 1.5;
+          margin: 0 0 32px;
+        }
+        .package-choice-section {
+          display: grid;
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+        .package-choice-section--custom {
+          margin-bottom: 36px;
+        }
+        .package-choice-section-head h3 {
+          color: #1e293b;
+          font-size: 16px;
+          font-weight: 800;
+          margin: 0 0 4px;
+        }
+        .package-choice-section-head p {
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.45;
+          margin: 0;
+        }
+        .package-choice-card .fu-plan-header {
+          background: #334eff;
+          min-height: 104px;
+        }
+        .package-choice-eyebrow {
+          color: rgba(255,255,255,0.75);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          line-height: 1;
+          margin: 0 0 6px;
+          text-transform: uppercase;
+        }
+        .package-choice-name {
+          color: #fff;
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          margin-bottom: 4px;
+        }
+        .package-choice-data {
+          font-size: 28px;
+          font-weight: 900;
+          line-height: 1;
+        }
+        .package-choice-tagline {
+          color: rgba(255,255,255,0.78);
+          font-size: 12px;
+          line-height: 1.3;
+          margin: 4px 0 0;
+        }
+        .package-choice-price {
+          color: #fff;
+          font-size: 18px;
+        }
+        .package-choice-body {
+          border: 1.5px solid #e2e8f0;
+          border-top: none;
+          border-radius: 0 0 14px 14px;
+        }
+        .ready-bundle-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .ready-bundle-card {
+          position: relative;
+          min-height: 260px;
+          background: #fff;
+          border: 2px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 0 0 14px;
+          overflow: hidden;
+          text-align: left;
+          transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+        .ready-bundle-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        }
+        .ready-bundle-card--selected {
+          border-color: #fce003;
+          box-shadow: 0 0 0 3px rgba(252, 224, 3, 0.25);
+        }
+        .ready-bundle-head {
+          min-height: 118px;
+          background: #ffe000;
+          color: #172033;
+          padding: 18px 16px;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 12px;
+          align-items: center;
+        }
+        .ready-bundle-title-wrap {
+          display: grid;
+          gap: 5px;
+          min-width: 0;
+        }
+        .ready-bundle-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          min-width: 0;
+        }
+        .ready-bundle-head h3 {
+          color: #172033;
+          font-size: 28px;
+          font-weight: 800;
+          line-height: 1;
+          margin: 0;
+        }
+        .ready-bundle-eyebrow {
+          color: rgba(255,255,255,0.75);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          line-height: 1;
+          margin: 0;
+          text-transform: uppercase;
+        }
+        .ready-bundle-price {
+          color: #172033;
+          font-size: 18px;
+          font-weight: 800;
+          line-height: 1;
+          margin: 0;
+          text-align: right;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .ready-bundle-badge {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 1;
+          background: #ff0077;
+          color: #fff;
+          font-size: 10px;
+          font-weight: 800;
+          padding: 5px 10px;
+          border-radius: 0 14px;
+          line-height: 1;
+        }
+        .ready-bundle-tagline {
+          color: #475569;
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.35;
+          margin: 13px 14px 10px;
+        }
+        .ready-bundle-features {
+          display: grid;
+          gap: 7px;
+          padding: 24px 16px 0;
+        }
+        .ready-bundle-feature {
+          display: flex;
+          align-items: flex-start;
+          gap: 7px;
+          color: #334155;
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .ready-bundle-feature svg {
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+        .ready-bundle-selected {
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 800;
+          margin: 11px 14px 0;
+          padding-top: 10px;
+          border-top: 1px solid #e2e8f0;
+        }
         .plans-grid-fu { display: flex; flex-direction: column; gap: 12px; }
         .fu-plan-card {
           position: relative; background: #fff; border: 2px solid #e2e8f0;
@@ -1622,7 +2465,7 @@ const goNext = () => {
         .fu-plan-validity-col { font-size: 11px; color: rgba(255,255,255,0.7); margin: 3px 0 0; }
 
         .fu-plan-header {
-          position: relative; background: #0074be; color: #fff;
+          position: relative; background: #334eff; color: #fff;
           padding: 16px; border-radius: 16px; text-align: left;
           display: flex; align-items: center; gap: 12px;
         }
@@ -1642,7 +2485,7 @@ const goNext = () => {
           border-radius: 50%; background: #fff; display: flex;
           align-items: center; justify-content: center;
         }
-        .fu-plan-check svg { stroke: #0074be; }
+        .fu-plan-check svg { stroke: #334eff; }
         .fu-plan-name { font-size: 14px; font-weight: 500; color: #fff; margin: 0 0 2px; }
         .fu-plan-data { font-size: 28px; font-weight: 700; color: #ffe000; margin: 0; line-height: 1.1; }
         .fu-plan-body { padding: 14px 8px 8px; text-align: left; }
@@ -1680,8 +2523,8 @@ const goNext = () => {
           display: flex; align-items: center; gap: 12px;
         }
         .ins-card-radio-wrap { flex-shrink: 0; }
-        .ins-card-header--basic { background: #0074be; }
-        .ins-card-header--premium { background: #0074be; }
+        .ins-card-header--basic { background: #334EFF; }
+        .ins-card-header--premium { background: #334EFF; }
         .ins-card-badge {
           position: absolute; top: 0; right: 0; background: #ff0077; color: #fff;
           font-size: 10px; font-weight: 800; padding: 4px 10px;
@@ -1718,9 +2561,26 @@ const goNext = () => {
             border-radius: 16px 16px 0 0;
           }
           .purchase-layout { flex-direction: column; padding: 0; gap: 0; min-height: auto; }
-          .purchase-main { padding: 24px 20px 100px; }
+          .purchase-main { box-sizing: border-box; width: 100%; padding: 24px 20px 100px; overflow-x: hidden; }
+          .package-choice-page-description { margin-bottom: 24px; }
+          .package-choice-section--custom { margin-bottom: 28px; }
           .plans-grid-fu { gap: 8px; }
+          .ready-bundle-grid { grid-template-columns: 1fr; gap: 10px; }
+          .ready-bundle-card { width: 100%; min-width: 0; min-height: auto; }
+          .ready-bundle-head { min-height: 92px; padding: 18px 14px; gap: 10px; }
+          .ready-bundle-title-wrap { min-width: 0; }
+          .ready-bundle-title-row { width: 100%; min-width: 0; }
+          .ready-bundle-head h3 { font-size: 24px; }
+          .ready-bundle-price { font-size: 18px; }
+          .ready-bundle-card--recommended .ready-bundle-title-row { padding-top: 6px; }
           .purchase-grid-details-checkout { grid-template-columns: 1fr !important; }
+          .checkout-referral-card {
+            grid-template-columns: 36px minmax(0, 1fr);
+          }
+          .checkout-referral-code {
+            grid-column: 2;
+            justify-self: start;
+          }
         }
         @media (max-width: 480px) {
         }

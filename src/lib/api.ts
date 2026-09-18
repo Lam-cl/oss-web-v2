@@ -1,6 +1,5 @@
 import { getApiBaseUrl, getNestApiBaseUrl, isTgpaymentSameOriginRewrite } from './constants';
 import type { DeviceResponse, Device, Brand, Banner, Plan, NumberResult } from '@/types';
-import { isProductSetupDraft } from './productSetup';
 
 /** tgpayment paths when using `/api-proxy` rewrite (not Nest). */
 async function fetchTgpaymentRewrite<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -136,7 +135,7 @@ const BUNDLE_API = 'https://bundleapi.tonewow.com/api';
 export async function getBundleProducts(limit = 20): Promise<any[]> {
   try {
     const bundleUrl = `${BUNDLE_API}/products?limit=${limit}`;
-    return await proxyGet(bundleUrl).then((data) => (data.data || []).filter((product: any) => !isProductSetupDraft(product)));
+    return await proxyGet(bundleUrl).then((data) => data.data || []);
   } catch {
     return [];
   }
@@ -154,48 +153,10 @@ export async function getBundleProductBySlug(slug: string): Promise<any | null> 
 export async function getBundleProductById(id: number): Promise<any | null> {
   try {
     const bundleUrl = `${BUNDLE_API}/products/${id}`;
-    const product = await proxyGet(bundleUrl);
-    return isProductSetupDraft(product) ? null : product;
+    return await proxyGet(bundleUrl);
   } catch {
     return null;
   }
-}
-
-export interface BundleGuestCheckout {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  description: string;
-  items: Array<{ productId: number; variantId: number; quantity: number }>;
-  billingAddress: Record<string, string>;
-  shippingAddress: Record<string, string>;
-  isGuest: true;
-  deliveryOption: 'DELIVER' | 'PICKUP';
-  agentId?: string;
-  voucherCode?: string;
-  expectedTotal: number;
-}
-
-export async function initiateBundleGuestPayment(data: BundleGuestCheckout): Promise<{
-  success: boolean;
-  orderId?: string;
-  referenceNumber?: string;
-  paymentUrl?: string;
-  paymentParams?: Record<string, string>;
-  redirectMethod?: 'GET' | 'POST';
-  error?: string;
-}> {
-  const response = await fetch('/bundle/checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  const result = await response.json();
-  if (!response.ok) throw Object.assign(new Error(result.error || 'Unable to initiate merchandise payment'), {
-    code: result.code,
-    orderId: result.orderId,
-  });
-  return result;
 }
 
 // ToneWow GWP API
@@ -259,26 +220,18 @@ export async function verifyPromoter(memberID: string): Promise<{ valid: boolean
 }
 
 /** TWP flow — generate referenceID after verification */
-export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string; error?: string }> {
+export async function saveRefAllocation(memberID: string): Promise<{ referenceID?: string }> {
   try {
-    const params = new URLSearchParams({
-      productCode: 'TWP',
-      promoterID: memberID,
-      isPBR: '',
-      isBR: '',
-      isPSC: '',
-      isSC: '',
-    });
-    const q = params.toString();
+    const q = `productCode=TWP&promoterID=${encodeURIComponent(memberID)}`;
     const data = isTgpaymentSameOriginRewrite()
       ? await fetchTgpaymentRewrite(`/saveRefAllocation?${q}`, { method: 'POST', body: '{}' })
       : await proxyPost(`${LEGACY_API}/saveRefAllocation?${q}`, {});
-    if (data.systemCode === '1' && data.data?.length > 0 && data.data[0].referenceID) {
+    if (data.systemCode === '1' && data.data?.length > 0) {
       return { referenceID: data.data[0].referenceID };
     }
-    return { error: data.systemMessage || 'Unable to generate TWP reference ID.' };
+    return {};
   } catch {
-    return { error: 'Unable to generate TWP reference ID. Please try again.' };
+    return {};
   }
 }
 
@@ -324,17 +277,17 @@ export async function verifyTWPMemberReferral(fields: TWPMemberReferralFields): 
     const allocationParams = new URLSearchParams({
       productCode: 'TWP',
       promoterID: cleaned.memberID,
-      isPBR: cleaned.pbrMemberID,
-      isBR: cleaned.brMemberID,
-      isPSC: cleaned.pscMemberID,
-      isSC: cleaned.scMemberID,
     });
+    if (cleaned.pbrMemberID) allocationParams.set('isPBR', cleaned.pbrMemberID);
+    if (cleaned.brMemberID) allocationParams.set('isBR', cleaned.brMemberID);
+    if (cleaned.pscMemberID) allocationParams.set('isPSC', cleaned.pscMemberID);
+    if (cleaned.scMemberID) allocationParams.set('isSC', cleaned.scMemberID);
 
     const allocationData = isTgpaymentSameOriginRewrite()
       ? await fetchTgpaymentRewrite<any>(`/saveRefAllocation?${allocationParams.toString()}`, { method: 'POST', body: '{}' })
       : await proxyPost(`${LEGACY_API}/saveRefAllocation?${allocationParams.toString()}`, {});
 
-    if (allocationData.systemCode === '1' && allocationData.data?.length > 0 && allocationData.data[0].referenceID) {
+    if (allocationData.systemCode === '1' && allocationData.data?.length > 0) {
       return { valid: true, referenceID: allocationData.data[0].referenceID };
     }
     return { valid: false, message: allocationData.systemMessage || 'Failed to generate reference ID. Please try again.' };

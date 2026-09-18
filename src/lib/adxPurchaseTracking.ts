@@ -1,12 +1,7 @@
 'use client';
 
-import { normalizeAdxPaymentRef } from '@/lib/adxPurchaseMarker';
-
 const ADX_PURCHASE_STORAGE_KEY = 'tw_adx_purchase';
 const ADX_TRACKED_PREFIX = 'tw_adx_purchase_tracked:';
-const ADX_OUTCOME_TRACKED_PREFIX = 'tw_adx_payment_outcome_tracked:';
-
-export { normalizeAdxPaymentRef } from '@/lib/adxPurchaseMarker';
 
 export type AdxPurchaseMetadata = {
   refNo: string;
@@ -18,60 +13,45 @@ export type AdxPurchaseMetadata = {
   simType: 'physical' | 'esim';
 };
 
-export type AdxPaymentOutcome = 'failed' | 'pending';
-type TrackingResult = 'tracked' | 'already-tracked' | 'not-ready';
-
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
   }
 }
 
+export function normalizeAdxPaymentRef(value: string) {
+  return value.replace(/^(16|2|3)(twoss)/i, '$2').trim().toLowerCase();
+}
+
 export function rememberAdxPurchase(metadata: AdxPurchaseMetadata) {
-  try {
-    localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
-  } catch {
-    // Payment routing uses signed callback context; browser storage is optional.
-  }
+  localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
 }
 
-export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | null {
-  const normalizedRef = normalizeAdxPaymentRef(refNo);
-  if (!normalizedRef) return null;
-
-  try {
-    const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
-    const metadata = raw ? JSON.parse(raw) as AdxPurchaseMetadata : null;
-    if (
-      metadata
-      && (
-        normalizeAdxPaymentRef(metadata.refNo) === normalizedRef
-        || normalizeAdxPaymentRef(metadata.paymentRefNo) === normalizedRef
-      )
-    ) {
-      return metadata;
-    }
-  } catch {
-    // Ignore invalid or unavailable browser storage.
-  }
-
-  return null;
-}
-
-export function trackAdxPurchase(refNo: string): TrackingResult {
+export function trackAdxPurchase(refNo: string): 'tracked' | 'already-tracked' | 'not-ready' {
   const normalizedRef = normalizeAdxPaymentRef(refNo);
   if (!normalizedRef) return 'not-ready';
 
   const trackedKey = `${ADX_TRACKED_PREFIX}${normalizedRef}`;
+  if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+  if (typeof window.gtag !== 'function') return 'not-ready';
+
+  let metadata: AdxPurchaseMetadata | null = null;
   try {
-    if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
+    const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
+    metadata = raw ? JSON.parse(raw) as AdxPurchaseMetadata : null;
   } catch {
     return 'not-ready';
   }
-  if (typeof window.gtag !== 'function') return 'not-ready';
 
-  const metadata = getMatchingAdxPurchase(refNo);
-  if (!metadata) return 'not-ready';
+  if (
+    !metadata
+    || (
+      normalizeAdxPaymentRef(metadata.refNo) !== normalizedRef
+      && normalizeAdxPaymentRef(metadata.paymentRefNo) !== normalizedRef
+    )
+  ) {
+    return 'not-ready';
+  }
 
   window.gtag('event', 'purchase', {
     transaction_id: metadata.paymentRefNo || refNo,
@@ -87,45 +67,7 @@ export function trackAdxPurchase(refNo: string): TrackingResult {
     }],
   });
 
-  try {
-    localStorage.setItem(trackedKey, '1');
-    localStorage.removeItem(ADX_PURCHASE_STORAGE_KEY);
-  } catch {
-    // Tracking was sent; unavailable storage only prevents client-side deduplication.
-  }
-  return 'tracked';
-}
-
-export function trackAdxPaymentOutcome(refNo: string, outcome: AdxPaymentOutcome): TrackingResult {
-  const normalizedRef = normalizeAdxPaymentRef(refNo);
-  if (!normalizedRef) return 'not-ready';
-
-  const trackedKey = `${ADX_OUTCOME_TRACKED_PREFIX}${outcome}:${normalizedRef}`;
-  try {
-    if (localStorage.getItem(trackedKey) === '1') return 'already-tracked';
-  } catch {
-    return 'not-ready';
-  }
-  if (typeof window.gtag !== 'function') return 'not-ready';
-
-  const metadata = getMatchingAdxPurchase(refNo);
-  if (!metadata) return 'not-ready';
-
-  window.gtag('event', `payment_${outcome}`, {
-    transaction_id: metadata.paymentRefNo || refNo,
-    value: metadata.value,
-    currency: metadata.currency,
-    payment_status: outcome,
-    items: [{
-      item_id: metadata.itemId,
-      item_name: metadata.itemName,
-      item_category: 'ADX SIM',
-      item_variant: metadata.simType,
-      price: metadata.value,
-      quantity: 1,
-    }],
-  });
-
-  try { localStorage.setItem(trackedKey, '1'); } catch { /* tracking was already sent */ }
+  localStorage.setItem(trackedKey, '1');
+  localStorage.removeItem(ADX_PURCHASE_STORAGE_KEY);
   return 'tracked';
 }

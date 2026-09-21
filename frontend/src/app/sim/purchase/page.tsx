@@ -250,7 +250,8 @@ const getInitialPackageChoice = (simID: string | null, modeParam: string | null,
 };
 
 const getInitialStep = (simID: string | null): number => {
-  if (simID === 'superlite' || simID === 'superliteplus') return 1;
+  if (simID === 'superliteplus') return 4;
+  if (simID === 'superlite') return 1;
   return 0;
 };
 
@@ -572,7 +573,7 @@ function SIMPurchaseWizard() {
     if (!isSuperliteMode) return;
 
     if (isSuperlitePlusMode) {
-      
+      setSimType('physical');
       const fu35 = FU_PLANS.find(p => p.id.replace(/\s+/g, '').toLowerCase() === 'fu35');
       if (fu35 && (selectedDataPlan?.id !== fu35.id || selectedDataPlan?.price !== fu35.price || selectedDataPlan?.data !== fu35.data)) {
         setSelectedDataPlan(fu35);
@@ -857,7 +858,7 @@ function SIMPurchaseWizard() {
     }
     if (selectedDataPlan) {
       const key = selectedDataPlan.id.replace(/\s+/g, '').toLowerCase();
-      if (isSuperlitePlusMode) return simType === 'esim' ? 45 : 33;
+      if (isSuperlitePlusMode) return 33;
       if (purchaseMode === 'superlite') {
         const superliteIds = SUPERLITE_FU_PLAN_IDS[key];
         if (superliteIds) return simType === 'esim' ? superliteIds.esim || 35 : superliteIds.physical;
@@ -912,15 +913,13 @@ function SIMPurchaseWizard() {
     if (!canGoNext() || step >= 4) return;
     setError('');
     setDirection(1);
-    setStep(step === 1 && (readyBundle || isSuperlitePlusMode) ? 4 : step + 1);
+    setStep(step === 1 && readyBundle ? 4 : step + 1);
   };
-const goBack = () => {
+
+  const goBack = () => {
     if (directCheckout) return;
     if (isSuperliteDirectFlow && step <= 1) return;
-    if (isSuperlitePlusMode) {
-      if (step === 4) { setDirection(-1); setStep(1); return; }
-      if (step === 1) return;
-    }
+    if (isSuperlitePlusMode && step === 4) return;
     if (searchParams.get('special') === '1') { router.push('/'); return; }
     if (readyBundle && step === 4) {
       setDirection(-1);
@@ -1101,7 +1100,7 @@ const goBack = () => {
   };
   const isStepActive = (i: number) => i === step;
   const canNavigateToStep = (i: number) => !directCheckout && !isAdxDirectFlow && isStepCompleted(i) && !selectedNumber && !(readyBundle && i !== 0 && i !== 1);
-  const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 1);
+  const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 4);
   const showOrderDetailsShipping = step === 4 && simType !== 'esim';
   const resolvedPackageBenefits = (choice: PackageChoice) => {
     if (choice === 'superlite' || choice === 'lite') return PACKAGE_OPTIONS[choice].benefits;

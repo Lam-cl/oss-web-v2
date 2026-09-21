@@ -29,7 +29,9 @@ declare global {
 
 export function rememberAdxPurchase(metadata: AdxPurchaseMetadata) {
   try {
-    localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
+    //zara changes
+    // localStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
+    sessionStorage.setItem(ADX_PURCHASE_STORAGE_KEY, JSON.stringify(metadata));
   } catch {
     // Payment routing uses signed callback context; browser storage is optional.
   }
@@ -40,7 +42,10 @@ export function getMatchingAdxPurchase(refNo: string): AdxPurchaseMetadata | nul
   if (!normalizedRef) return null;
 
   try {
-    const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
+    //zara changes
+    // const raw = localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
+    const raw = sessionStorage.getItem(ADX_PURCHASE_STORAGE_KEY)
+  || localStorage.getItem(ADX_PURCHASE_STORAGE_KEY);
     const metadata = raw ? JSON.parse(raw) as AdxPurchaseMetadata : null;
     if (
       metadata

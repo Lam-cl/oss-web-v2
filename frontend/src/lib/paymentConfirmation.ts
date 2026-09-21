@@ -119,8 +119,9 @@ export async function handlePaymentConfirmation(
       return NextResponse.redirect(bijakBuatDuitReturn, method === 'POST' ? 303 : 307);
     }
   }
-
-  const serverAdxMarker = refno ? await readAdxPaymentReference(refno) : null;
+//zara changes
+  // const serverAdxMarker = refno ? await readAdxPaymentReference(refno) : null;
+  const serverAdxMarker = !forceAdx && refno ? await readAdxPaymentReference(refno) : null;
   const isAdx = forceAdx
     || prodDesc === 'OSSPaymentADX'
     || Boolean(serverAdxMarker);

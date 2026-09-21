@@ -502,44 +502,47 @@ function SIMPurchaseWizard() {
     promoterPrefix: 'TWE', promoterCode: '',
   });
   const [simType, setSimType] = useState<'physical' | 'esim'>('physical');
-  const [adxFlowProof, setAdxFlowProof] = useState('');
-  const [adxProofError, setAdxProofError] = useState('');
+  //zara changes
+//   const [adxFlowProof, setAdxFlowProof] = useState('');
+//   const [adxProofError, setAdxProofError] = useState('');
   const [showEsimSuccess, setShowEsimSuccess] = useState(false);
   const [directCheckout, setDirectCheckout] = useState(false);
   const planAutoSelected = useRef(false);
   const [esimConfirmed, setEsimConfirmed] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
 
-    if (!isAdxDirectFlow) {
-      setAdxFlowProof('');
-      setAdxProofError('');
-      return () => { cancelled = true; };
-    }
+ //zara changes 
+//   useEffect(() => {
+//     let cancelled = false;
 
-    setAdxFlowProof('');
-    setAdxProofError('');
-    fetch('/adx-reference/proof', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ purchaseMode }),
-    })
-      .then(async response => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.proof) {
-          throw new Error(data?.error || 'ADX checkout session could not be verified.');
-        }
-        if (!cancelled) setAdxFlowProof(data.proof);
-      })
-      .catch(reason => {
-        if (!cancelled) {
-          setAdxProofError(reason instanceof Error ? reason.message : 'ADX checkout session could not be verified.');
-        }
-      });
+//     if (!isAdxDirectFlow) {
+//       setAdxFlowProof('');
+//       setAdxProofError('');
+//       return () => { cancelled = true; };
+//     }
 
-    return () => { cancelled = true; };
-  }, [isAdxDirectFlow, purchaseMode]);
+//     setAdxFlowProof('');
+//     setAdxProofError('');
+//     fetch('/adx-reference/proof', {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ purchaseMode }),
+//     })
+//       .then(async response => {
+//         const data = await response.json().catch(() => null);
+//         if (!response.ok || !data?.proof) {
+//           throw new Error(data?.error || 'ADX checkout session could not be verified.');
+//         }
+//         if (!cancelled) setAdxFlowProof(data.proof);
+//       })
+//       .catch(reason => {
+//         if (!cancelled) {
+//           setAdxProofError(reason instanceof Error ? reason.message : 'ADX checkout session could not be verified.');
+//         }
+//       });
+
+//     return () => { cancelled = true; };
+//   }, [isAdxDirectFlow, purchaseMode]);
 
   /* ── Direct checkout via ?dataPlanID= ── */
   useEffect(() => {
@@ -951,28 +954,29 @@ const goBack = () => {
       let paymentAlloReferenceID = hasPromoter ? alloReferenceID : '';
       let referralContextToken = '';
 
-      if (isAdxDirectFlow) {
-        if (!adxFlowProof) {
-          throw new Error(adxProofError || 'ADX checkout is still being verified. Please wait a moment and try again.');
-        }
+      //zara changes
+    //   if (isAdxDirectFlow) {
+    //     if (!adxFlowProof) {
+    //       throw new Error(adxProofError || 'ADX checkout is still being verified. Please wait a moment and try again.');
+    //     }
 
-        const markerRes = await fetch('/adx-reference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            proof: adxFlowProof,
-            refNo,
-            paymentRefNo,
-            prodDesc: 'OSSPaymentADX',
-            purchaseMode,
-            simType,
-          }),
-        });
-        const markerData = await markerRes.json().catch(() => null);
-        if (!markerRes.ok || !markerData?.success) {
-          throw new Error(markerData?.error || 'Unable to secure the ADX payment route. Please try again.');
-        }
-      }
+    //     const markerRes = await fetch('/adx-reference', {
+    //       method: 'POST',
+    //       headers: { 'Content-Type': 'application/json' },
+    //       body: JSON.stringify({
+    //         proof: adxFlowProof,
+    //         refNo,
+    //         paymentRefNo,
+    //         prodDesc: 'OSSPaymentADX',
+    //         purchaseMode,
+    //         simType,
+    //       }),
+    //     });
+    //     const markerData = await markerRes.json().catch(() => null);
+    //     if (!markerRes.ok || !markerData?.success) {
+    //       throw new Error(markerData?.error || 'Unable to secure the ADX payment route. Please try again.');
+    //     }
+    //   }
 
       if (simType === 'esim' && hasPromoter && form.promoterPrefix === 'TWP') {
         const contextRes = await fetch('/api/payment-referral/context', {

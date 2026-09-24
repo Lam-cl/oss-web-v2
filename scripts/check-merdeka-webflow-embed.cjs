@@ -13,6 +13,7 @@ const checkoutRoute = read('src/app/api/merdeka-promo/checkout/route.ts');
 const embedConfirmation = read('src/embed/MerdekaEmbedConfirmation.tsx');
 const originalConfirmation = read('src/app/merdeka-promo/confirmation/page.tsx');
 const build = read('scripts/build-merdeka-embed.sh');
+const deploy = read('scripts/deploy-merdeka-staging.sh');
 const chrome = read('src/embed/MerdekaEmbedChrome.tsx');
 const chromeCss = read('src/embed/MerdekaEmbedChrome.module.css');
 const balamWatchdog = read('public/merdeka-promo-embed/v1/tonewow-balam-launcher-watchdog-v5.js');
@@ -23,6 +24,7 @@ assert(css.length > 15_000 && css.length < 80_000, 'Embed stylesheet size is out
 for (const value of ['tonewow-merdeka-promo', '/merdeka-promo-api/plans', '/merdeka-promo-api/member', '/merdeka-promo-api/checkout', '/merdeka-promo-api/status']) assert(js.includes(value), `Embed bundle is missing ${value}.`);
 for (const forbidden of ['index-body.html', 'bijakbuatduit.com', '<iframe']) assert(!js.includes(forbidden) && !snippet.includes(forbidden), `Embed contains forbidden legacy dependency ${forbidden}.`);
 assert(build.includes('--jsx=automatic'), 'Embed build must use the self-contained automatic JSX runtime.');
+assert(!deploy.includes('src/app/api/confirmation/route.ts'), 'Promo deployment must not overlay the unrelated generic confirmation route.');
 assert(!js.includes('React.createElement'), 'Embed bundle must not depend on a global React object.');
 for (const forbidden of ['aria-label="Primary navigation"', 'aria-label="Cart"', 'aria-label="Open menu"']) assert(!chrome.includes(forbidden), `Merdeka embed header must remain logo-only: ${forbidden}.`);
 for (const value of ['position:sticky', 'padding:12px 20px', 'max-width:1200px', 'height:32px', 'justify-content:center', '@media(max-width:768px)']) assert(chromeCss.includes(value), `Embed header styling is missing ${value}.`);

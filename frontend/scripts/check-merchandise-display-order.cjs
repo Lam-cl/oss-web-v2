@@ -17,7 +17,14 @@ assert.deepEqual(orderMerchandiseForAll(fallback).map(p=>p.apiProductId),apiIds)
 const tree=parse('src/components/home/MerchandiseSection.tsx');
 const node=find(tree,n=>ts.isVariableDeclaration(n)&&n.name.getText(tree)==='filteredProducts')[0];
 const callback=node.initializer.arguments[0].getText(tree);
-const select=new Function('activeCategory','merchandiseProducts','orderMerchandiseForAll',`return (${callback})();`);
-assert.deepEqual(select('All',input,orderMerchandiseForAll),ordered);
-assert.deepEqual(select('Test',input,orderMerchandiseForAll),input.filter(p=>p.category==='Test'));
-console.log('All merchandise order: featured identities, renamed/republished products, fallback, missing products, stable remainder, immutable data and unchanged category filters passed');
+const select=new Function('activeCategory','merchandiseProducts',`return (${callback})();`);
+assert.deepEqual(select('All',ordered),ordered);
+assert.deepEqual(select('Test',input),input.filter(p=>p.category==='Test'));
+const action={id:'160b913b-c01c-424c-92f0-75380e941909',apiProductId:160,name:'Renamed ACTION Shirt'};
+assert.deepEqual(orderMerchandiseForAll([rest[0],action,featured[1],rest[1]]),[featured[1],action,...rest], 'ACTION defaults immediately after BASICS when it is visible');
+const configured=[{catalogueId:featured[1].id,bundleProductId:132},{catalogueId:action.id,bundleProductId:null}];
+const custom=orderMerchandiseForAll([rest[0],action,featured[1],rest[1]],configured);
+assert.deepEqual(custom,[featured[1],action,...rest]);
+assert.deepEqual(orderMerchandiseForAll([rest[0],featured[1],rest[1]],configured),[featured[1],...rest], 'draft product is not introduced');
+assert.deepEqual(orderMerchandiseForAll([rest[0],{id:'new-id',apiProductId:132},action],configured).map(p=>p.apiProductId),[132,160,undefined], 'provider identity works when projection falls back');
+console.log('All merchandise order: saved catalogue identities, draft omission, fallback identities, stable remainder and unchanged category filters passed');

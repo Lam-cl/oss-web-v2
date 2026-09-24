@@ -8,7 +8,7 @@ import { createCatalogueProduct, listCatalogueProducts, readCatalogueProduct, up
 import { listCatalogueMedia, readVerifiedCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
 import { listPublicationJobs, readPublicationJob, type CataloguePublicationJob } from '@/lib/admin/cataloguePublication.server';
 import { CataloguePublishError, cataloguePublicationOperationId, publishCatalogueProductVersion, type CataloguePreparedImageUpload, type CatalogueVariantBinding } from '@/lib/admin/cataloguePublish.server';
-import { createCataloguePublishedSnapshot, readCataloguePublishedSnapshot, type CataloguePublishedProduct } from '@/lib/cataloguePublishedSnapshot.server';
+import { assertPublishedSnapshotMediaReadable, createCataloguePublishedSnapshot, readCataloguePublishedSnapshot, type CataloguePublishedProduct } from '@/lib/cataloguePublishedSnapshot.server';
 import { CatalogueBundleAdapterError, createCatalogueBundleAdapter } from '@/lib/admin/catalogueBundleAdapter.server';
 import { archiveCatalogueProduct, CatalogueArchiveError } from '@/lib/admin/catalogueArchive.server';
 import { enrichCatalogueProductWithAdoption, readCatalogueAdoptionByBundle, rollbackCatalogueAdoption, supersedeCatalogueAdoption } from '@/lib/admin/catalogueAdoption.server';
@@ -234,6 +234,10 @@ export const catalogueAdminRoute={
       await createCataloguePublishedSnapshot({operationId:snapshotOperationId,catalogueId:id,bundleProductId:productId,resultFingerprint64:fingerprint,product:publicProduct,media:snapshotMedia});
       const readback=await readCataloguePublishedSnapshot(snapshotOperationId);
       if(!readback||readback.catalogueId!==id||readback.bundleProductId!==productId||readback.resultFingerprint64!==fingerprint||!isDeepStrictEqual(readback.product,publicProduct))throw new CatalogueAdminRouteError('Published snapshot readback attestation failed.',503);
+      // The manifest can be durable while a published media object is absent or unreadable.
+      // Verify the exact public image bytes before activating the product.
+      try { await assertPublishedSnapshotMediaReadable(readback); }
+      catch { throw new CatalogueAdminRouteError('Published images could not be read back. Product was not activated.',503); }
     };
     let activationOperation:string|null=null,snapshotOperation:string|null=null;
     const local={

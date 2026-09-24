@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readCataloguePublicProjection, readCataloguePublicSnapshotMedia } from '@/lib/cataloguePublicProjection.server';
+import { readMerchandiseOrder } from '@/lib/merchandiseOrder.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +21,11 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-    return NextResponse.json(await readCataloguePublicProjection(), { headers: { 'cache-control': 'no-store' } });
+    const [catalogue, displayOrder] = await Promise.all([
+      readCataloguePublicProjection(),
+      readMerchandiseOrder().catch(() => ({ revision: 0, entries: [] })),
+    ]);
+    return NextResponse.json({ ...catalogue, displayOrder }, { headers: { 'cache-control': 'no-store' } });
   } catch {
     return catalogueId !== null || mediaId !== null
       ? new Response(null, { status: 404 })

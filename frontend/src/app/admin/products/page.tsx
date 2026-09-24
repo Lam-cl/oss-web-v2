@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import AdminShell from '@/components/admin/AdminShell';
 import UnifiedProductEditor from '@/components/admin/UnifiedProductEditor';
 import type {
@@ -481,7 +482,7 @@ function ProductsContent() {
   </AdminShell>;
 
   return <AdminShell title="Products" eyebrow="Catalogue">
-    <div className="adm-page-head"><div><h1>Product catalogue</h1><p>Manage details, photos, choices, prices and inventory.</p></div><button className="adm-button" onClick={openCreate}><Icon name="plus" /><span>Add product</span></button></div>
+    <div className="adm-page-head"><div><h1>Product catalogue</h1><p>Manage details, photos, choices, prices and inventory.</p></div><div style={{ display: 'flex', gap: 8 }}><Link className="adm-button" href="/admin/products/order">Arrange All tab</Link><button className="adm-button" onClick={openCreate}><Icon name="plus" /><span>Add product</span></button></div></div>
     <div className="adm-toolbar"><div className="adm-tabs"><button className={type === 'MOBILE' ? 'active' : ''} onClick={() => { setType('MOBILE'); setPage(1); }}>Mobile</button><button className={type === 'MERCHANDISE' ? 'active' : ''} onClick={() => { setType('MERCHANDISE'); setPage(1); }}>Merchandise</button></div><label className="adm-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, SKU, catalogue UUID or provider ID…" /></label><select aria-label="Stock filter" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'out')}><option value="all">All stock</option><option value="out">Out of stock</option></select></div>
     <section className="adm-panel">{error ? <ErrorState message={error} retry={load} /> : !data || !catalogue ? <Skeleton /> : !rows.length ? <Empty title="No products found" message="Try another search or add a new product." action={<button className="adm-button" onClick={openCreate}>Add product</button>} /> : <><div className="adm-table-wrap"><table className="adm-table"><thead><tr><th>Product</th><th>Price</th><th>Choices</th><th>Inventory</th><th>Status</th><th></th></tr></thead><tbody>{rows.map((row) => {
       const model = row.kind === 'catalogue' ? row.catalogue.model : null;

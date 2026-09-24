@@ -19,6 +19,7 @@ const merchandise = load('src/data/merchandise.ts', {
 const adapter = load('src/lib/catalogueStorefront.ts', {
   '@/data/merchandise': merchandise,
   '@/lib/productDescription': load('src/lib/productDescription.ts'),
+  '@/lib/merchandiseDisplayOrder': load('src/lib/merchandiseDisplayOrder.ts'),
 });
 const fallback = [{ id: 'staging', slug: 'staging', name: 'Staging' }];
 const payload = { products: [{
@@ -101,14 +102,15 @@ assert.equal(adapter.adaptCatalogueStorefrontPayload(legacySimCategory, fallback
 
 const invalid = structuredClone(payload);
 invalid.products[0].combinations.pop();
-assert.strictEqual(adapter.adaptCatalogueStorefrontPayload(invalid, fallback), fallback);
+assert.deepEqual(adapter.adaptCatalogueStorefrontPayload(invalid, fallback), fallback);
 const leaked = structuredClone(payload);
 leaked.products[0].choices[0].values[0].label = 'Black CV-secret';
-assert.strictEqual(adapter.adaptCatalogueStorefrontPayload(leaked, fallback), fallback);
+assert.deepEqual(adapter.adaptCatalogueStorefrontPayload(leaked, fallback), fallback);
 const unboundImage = structuredClone(payload);
 unboundImage.products[0].images[0].assignment = 'missing-value';
-assert.strictEqual(adapter.adaptCatalogueStorefrontPayload(unboundImage, fallback), fallback);
-assert.strictEqual(adapter.adaptCatalogueStorefrontPayload({ products: [] }, fallback), fallback);
+assert.deepEqual(adapter.adaptCatalogueStorefrontPayload(unboundImage, fallback), fallback);
+assert.deepEqual(adapter.adaptCatalogueStorefrontPayload({ products: [] }, fallback), fallback);
+assert.equal(adapter.adaptCatalogueStorefrontPayload({ products: [] }, fallback)[0], fallback[0], 'fallback retains its product objects');
 const hiddenBundle = merchandise.mergeBundleMerchandiseProducts([{ id: 501, title: 'Catalogue Shirt', slug: 'catalogue-shirt', price: 42, images: [{ url: '/image.webp' }], options: [{ name: 'Catalogue Variant', values: [{ value: 'CV-secret' }] }], productVariants: [{ id: 9001, price: 42, inventory: 1 }] }]);
 assert.equal(hiddenBundle.length, 1, 'normalization must retain a non-rendered live provider binding');
 assert.equal(hiddenBundle[0].providerBindingOnly, true);

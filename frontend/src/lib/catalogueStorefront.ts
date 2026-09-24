@@ -7,6 +7,8 @@ import {
   type MerchandiseProduct,
 } from '@/data/merchandise';
 import { parseProductDescription } from '@/lib/productDescription';
+import { orderMerchandiseForAll } from '@/lib/merchandiseDisplayOrder';
+import type { MerchandiseOrderEntry } from '@/lib/merchandiseOrder.server';
 
 export const CATALOGUE_STOREFRONT_ENDPOINT = '/catalogue-products-api';
 
@@ -187,23 +189,25 @@ export function adaptCatalogueStorefrontPayload(payload: unknown, fallback = mer
     ? fallback.filter((product) => !product.providerBindingOnly)
     : fallback;
   const source = records(payload);
-  if (!source?.length) return visibleFallback;
+  if (!source?.length) return orderMerchandiseForAll(visibleFallback);
   const projected = source.map((product) => adaptProduct(product, fallback));
-  if (!projected.every((product): product is MerchandiseProduct => Boolean(product))) return visibleFallback;
+  if (!projected.every((product): product is MerchandiseProduct => Boolean(product))) return orderMerchandiseForAll(visibleFallback);
   const bundleIds = new Set(projected.flatMap((product) => positiveId(product.apiProductId) ? [product.apiProductId] : []));
   const slugs = new Set(projected.map((product) => product.slug));
   const names = new Set(projected.map((product) => product.name.toLowerCase()));
   const legacy = visibleFallback.filter((product) => !bundleIds.has(product.apiProductId ?? -1)
     && !slugs.has(product.slug) && !names.has(product.name.toLowerCase()));
-  return [...projected, ...legacy];
+  const order = row(payload) && row(payload.displayOrder) && Array.isArray(payload.displayOrder.entries)
+    ? payload.displayOrder.entries as MerchandiseOrderEntry[] : undefined;
+  return orderMerchandiseForAll([...projected, ...legacy], order);
 }
 
 export async function fetchCatalogueStorefrontProducts(fallback: MerchandiseProduct[]): Promise<MerchandiseProduct[]> {
   try {
     const response = await fetch(CATALOGUE_STOREFRONT_ENDPOINT, { cache: 'no-store' });
-    if (!response.ok) return fallback.filter((product) => !product.providerBindingOnly);
+    if (!response.ok) return orderMerchandiseForAll(fallback.filter((product) => !product.providerBindingOnly));
     return adaptCatalogueStorefrontPayload(await response.json(), fallback);
   } catch {
-    return fallback.filter((product) => !product.providerBindingOnly);
+    return orderMerchandiseForAll(fallback.filter((product) => !product.providerBindingOnly));
   }
 }

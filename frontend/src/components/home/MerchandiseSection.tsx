@@ -13,7 +13,6 @@ import {
   type MerchandiseProduct,
 } from '@/data/merchandise';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
-import { orderMerchandiseForAll } from '@/lib/merchandiseDisplayOrder';
 import { formatRM } from '@/lib/utils';
 import { incrementOrderQuantity, minimumOrderError, minimumOrderLabel } from '@/lib/minimumOrderQuantity';
 import { useCartStore } from '@/store/cartStore';
@@ -193,7 +192,7 @@ export default function MerchandiseSection() {
   );
   const filteredProducts = useMemo(
     () => activeCategory === 'All'
-      ? orderMerchandiseForAll(merchandiseProducts)
+      ? merchandiseProducts
       : merchandiseProducts.filter((product) => product.category === activeCategory),
     [activeCategory, merchandiseProducts],
   );

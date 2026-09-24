@@ -200,3 +200,15 @@ export async function readCataloguePublishedSnapshotMedia(operationId: string, m
   const body=await readFileSafe(path.join(path.resolve(root),operationId,metadata.file),MAX_ITEM_BYTES); if(body.length!==metadata.bytes||hash(body)!==metadata.sha256||!signature(metadata.contentType,body))throw corrupt(operationId);
   return {...metadata,body};
 }
+
+export async function assertPublishedSnapshotMediaReadable(
+  manifest: CataloguePublishedSnapshotManifest,
+  readMedia: (operationId: string, mediaId: string) => ReturnType<typeof readCataloguePublishedSnapshotMedia> = readCataloguePublishedSnapshotMedia,
+) {
+  for (const image of manifest.media) {
+    const media = await readMedia(manifest.operationId, image.mediaId);
+    if (!media || media.body.length !== image.bytes || media.sha256 !== image.sha256) {
+      throw new Error(`Published image ${image.mediaId} could not be read back.`);
+    }
+  }
+}

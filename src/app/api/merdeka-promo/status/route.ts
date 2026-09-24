@@ -9,27 +9,21 @@ export async function GET(request: NextRequest) {
   const record = await readMerdekaPayment(ref);
   if (!record) return merdekaCors(request, NextResponse.json({ error: 'Payment reference not found.' }, { status: 404 }));
 
-  const callbackApproved = /^88\b/.test(record.gatewayStatus || '')
-    && /^00\b/.test(record.gatewayDescription || '');
-  const callbackFailed = /^(66|11|99)/.test(record.gatewayStatus || '');
-  let status: 'pending' | 'success' | 'failed' = callbackApproved
-    ? 'success'
-    : callbackFailed
-      ? 'failed'
-      : 'pending';
-
-  if (status === 'pending') {
-    try {
-      const upstream = await fetch(`https://www.tonewow.net/tgpayment/getPaymentStatus?refNo=${encodeURIComponent(ref)}`, {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(8_000),
-      });
+  // Do not use return/callback query values as payment evidence. A browser can
+  // alter them, so only the provider's server-side status service is consulted.
+  let status: 'pending' | 'success' | 'failed' = 'pending';
+  try {
+    const upstream = await fetch(`https://www.tonewow.net/tgpayment/getPaymentStatus?refNo=${encodeURIComponent(ref)}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (upstream.ok) {
       const data = await upstream.json();
       const rawStatus = data?.data?.[0]?.status;
       if (rawStatus === '2' || rawStatus === 2) status = 'success';
-    } catch {
-      // The provider status service can lag behind its payment callback.
     }
+  } catch {
+    // A status provider outage is pending, never success or failure.
   }
 
   return merdekaCors(request, NextResponse.json({

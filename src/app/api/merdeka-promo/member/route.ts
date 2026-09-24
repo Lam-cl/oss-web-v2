@@ -1,36 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchMerdekaMember } from '@/lib/merdekaPromo';
 import { merdekaCors, merdekaPreflight, merdekaSameOrigin } from '../shared';
 
 export const dynamic = 'force-dynamic';
 
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
-function allowed(request: NextRequest) {
-  const key = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
-  const now = Date.now();
-  const entry = attempts.get(key);
-  if (!entry || entry.resetAt < now) {
-    attempts.set(key, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= 10;
-}
-
+/**
+ * Origin is not proof that a caller owns an MSISDN. Do not proxy member
+ * profiles until an authenticated backend member-verification contract exists.
+ */
 export async function POST(request: NextRequest) {
-  if (!merdekaSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
-  if (!allowed(request)) return merdekaCors(request, NextResponse.json({ error: 'Too many attempts. Please wait a minute and try again.' }, { status: 429 }));
-
-  try {
-    const body = await request.json().catch(() => ({}));
-    const member = await fetchMerdekaMember(body?.msisdn);
-    return merdekaCors(request, NextResponse.json({ member }, { headers: { 'Cache-Control': 'no-store' } }));
-  } catch (error) {
-    return merdekaCors(request, NextResponse.json({
-      error: error instanceof Error ? error.message : 'Unable to verify this number.',
-    }, { status: 422, headers: { 'Cache-Control': 'no-store' } }));
+  if (!merdekaSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 });
   }
+
+  return merdekaCors(request, NextResponse.json({
+    error: 'Member verification is temporarily unavailable while secure ownership verification is being completed.',
+  }, { status: 503, headers: { 'Cache-Control': 'no-store' } }));
 }
 
-export async function OPTIONS(request: NextRequest) { return merdekaPreflight(request, 'POST, OPTIONS'); }
+export async function OPTIONS(request: NextRequest) {
+  return merdekaPreflight(request, 'POST, OPTIONS');
+}

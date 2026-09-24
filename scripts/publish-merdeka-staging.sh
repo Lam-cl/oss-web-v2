@@ -15,6 +15,7 @@ PROMO_PATHS=(
   "src/embed"
   "src/lib/merdekaPromo.ts"
   "src/lib/merdekaPromoBrowser.ts"
+  "src/lib/tokenStore.ts"
 )
 
 git -C "$LIVE_DIR" rev-parse --git-dir >/dev/null 2>&1 || { echo "Missing live repository: $LIVE_DIR" >&2; exit 1; }

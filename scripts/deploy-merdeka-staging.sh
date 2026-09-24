@@ -16,6 +16,7 @@ PROMO_PATHS=(
   "src/embed"
   "src/lib/merdekaPromo.ts"
   "src/lib/merdekaPromoBrowser.ts"
+  "src/lib/tokenStore.ts"
 )
 
 test -d "$LIVE_DIR/.git" || { echo "Live directory is not a Git repository: $LIVE_DIR" >&2; exit 1; }

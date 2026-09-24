@@ -25,6 +25,7 @@ for (const value of ['tonewow-merdeka-promo', '/merdeka-promo-api/plans', '/merd
 for (const forbidden of ['index-body.html', 'bijakbuatduit.com', '<iframe']) assert(!js.includes(forbidden) && !snippet.includes(forbidden), `Embed contains forbidden legacy dependency ${forbidden}.`);
 assert(build.includes('--jsx=automatic'), 'Embed build must use the self-contained automatic JSX runtime.');
 assert(!deploy.includes('src/app/api/confirmation/route.ts'), 'Promo deployment must not overlay the unrelated generic confirmation route.');
+assert(deploy.includes('src/lib/tokenStore.ts'), 'Promo deployment must include the Merdeka payment store dependency.');
 assert(!js.includes('React.createElement'), 'Embed bundle must not depend on a global React object.');
 for (const forbidden of ['aria-label="Primary navigation"', 'aria-label="Cart"', 'aria-label="Open menu"']) assert(!chrome.includes(forbidden), `Merdeka embed header must remain logo-only: ${forbidden}.`);
 for (const value of ['position:sticky', 'padding:12px 20px', 'max-width:1200px', 'height:32px', 'justify-content:center', '@media(max-width:768px)']) assert(chromeCss.includes(value), `Embed header styling is missing ${value}.`);

@@ -15,6 +15,7 @@ import { enrichCatalogueProductWithAdoption, readCatalogueAdoptionByBundle, roll
 import { saveProductHiddenOptionValues } from '@/lib/productImageColors.server';
 import { evaluatePublicationChangeState, type PublicationProviderProduct } from '@/lib/admin/cataloguePublicationChangeState.server';
 import { inheritShippingProductGroup } from '@/lib/shippingSettings.server';
+import { ensureCatalogueR2Assets } from '@/lib/catalogueR2Assets.server';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_RECORDS = 1000;
@@ -225,7 +226,12 @@ export const catalogueAdminRoute={
     if(product.currentBundleProductId!==null){const live=await activeCatalogueInventory(id,token),byTuple=new Map(live.rows.map(row=>[JSON.stringify(row.valueKeys),row]));publishModel={...product.model,combinations:product.model.combinations.map(combination=>{const current=byTuple.get(JSON.stringify(combination.valueKeys));return current?{...combination,inventory:current.inventory}:combination;})};}
     const publicationProduct={...product,model:publishModel};
     const metadata=await listCatalogueMedia(id);const uploads:Array<CataloguePreparedImageUpload&{body:Uint8Array}>=[];
-    for(const item of metadata.sort((a,b)=>a.order-b.order)){const media=await readVerifiedCatalogueMedia(id,item.mediaId);uploads.push({key:media.mediaId,name:media.originalName,contentType:media.contentType,order:media.order,body:media.body,sha256:media.sha256});}
+    for(const item of metadata.sort((a,b)=>a.order-b.order)){
+      const media=await readVerifiedCatalogueMedia(id,item.mediaId);
+      try { await ensureCatalogueR2Assets({catalogueId:id,sha256:media.sha256,body:media.body}); }
+      catch (error) { throw new CatalogueAdminRouteError(`R2 image preparation failed for ${media.originalName}: ${error instanceof Error ? error.message : 'unknown error'}. Product was not published.`,503); }
+      uploads.push({key:media.mediaId,name:media.originalName,contentType:media.contentType,order:media.order,body:media.body,sha256:media.sha256});
+    }
     const publishRequest={catalogueId:id,spec:publishModel,uploads,previousBundleProductId:product.currentBundleProductId,versionOrdinal:product.bundleVersions.length+1};
     const pendingPublication=await latestPublication(id),operationId=cataloguePublicationOperationId(publishRequest);
     const persistSnapshot=async(productId:number,bindings:CatalogueVariantBinding[],fingerprint:string,snapshotOperationId:string)=>{

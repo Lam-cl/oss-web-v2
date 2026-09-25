@@ -16,7 +16,7 @@ type Row = Record<string, unknown>;
 type ChoiceValue = { key: string; label: string };
 type Choice = { key: string; name: string; values: ChoiceValue[] };
 type Combination = { valueKeys: string[]; variantId: number; price: number; inventory: number };
-type ImageRecord = { url: string; order: number; assignment: string };
+type ImageRecord = { url: string; thumbnailUrl?: string; order: number; assignment: string };
 
 const row = (value: unknown): value is Row => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const positiveId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
@@ -90,7 +90,8 @@ function imagesFor(product: Row): ImageRecord[] | null {
     const assignment = typeof image.assignment === 'string' ? image.assignment : 'all';
     const order = typeof image.order === 'number' && Number.isSafeInteger(image.order) ? image.order : index;
     if (!url || order < 0) return null;
-    images.push({ url, assignment, order });
+    const thumbnailUrl = typeof image.thumbnailUrl === 'string' && image.thumbnailUrl ? image.thumbnailUrl : undefined;
+    images.push({ url, ...(thumbnailUrl ? { thumbnailUrl } : {}), assignment, order });
   }
   return images.sort((left, right) => left.order - right.order);
 }
@@ -172,6 +173,7 @@ function adaptProduct(value: unknown, fallback: MerchandiseProduct[]): Merchandi
     options,
     ...(sizes.length ? { sizes } : {}),
     gallery: allImages,
+    thumbnail: imageRecords[0].thumbnailUrl,
     features: productContent.details.length ? productContent.details : enrichment?.features,
     unitLabel: enrichment?.unitLabel,
     soldOut: inventory === 0,

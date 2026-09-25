@@ -20,20 +20,32 @@ async function main() {
  const bundle=deferred(),catalogue=deferred();
  global.fetch=(url,options)=>{requests.push({url,options});return url==='/bundle/merchandise'?bundle.promise:catalogue.promise};
  const loader=compile('src/lib/loadMerchandiseProducts.ts',{
+  '@/data/merchandiseBootstrap.json':{products:[]},
   '@/data/merchandise':{mergeBundleMerchandiseProducts:data=>data},
-  '@/lib/catalogueStorefront':{CATALOGUE_STOREFRONT_ENDPOINT:'/catalogue-products-api',adaptCatalogueStorefrontPayload:(payload,fallback)=>({payload,stock:fallback})},
+  '@/lib/catalogueStorefront':{CATALOGUE_STOREFRONT_ENDPOINT:'/catalogue-products-api',adaptCatalogueStorefrontPayload:(payload,fallback)=>[{payload,stock:fallback}]},
  });
  try {
-  const pending=loader.loadMerchandiseProducts();
+ const previews=[];
+ const pending=loader.loadMerchandiseProducts(undefined,value=>previews.push(value));
   assert.deepEqual(requests.map(r=>r.url),['/bundle/merchandise','/catalogue-products-api'],'both reads start before either resolves');
-  bundle.resolve({ok:true,json:async()=>({data:[{inventory:25}]})});
   catalogue.resolve({ok:true,json:async()=>({products:['published']})});
-  assert.deepEqual(await pending,{payload:{products:['published']},stock:[{inventory:25}]});
+  await tick();
+  assert.deepEqual(previews,[[{payload:{products:['published']},stock:[]}]],'published cards appear while Bundle is still pending');
+  bundle.resolve({ok:true,json:async()=>({data:[{inventory:25}]})});
+  assert.deepEqual(await pending,[{payload:{products:['published']},stock:[{inventory:25}]}]);
   assert(requests.every(r=>r.options.cache==='no-store'));
   global.fetch=async url=>url==='/bundle/merchandise'?{ok:true,json:async()=>({data:[{inventory:0}]})}:Promise.reject(Error('offline'));
-  assert.deepEqual(await loader.loadMerchandiseProducts(),{payload:null,stock:[{inventory:0}]},'catalogue outage keeps existing fallback policy');
+  assert.deepEqual(await loader.loadMerchandiseProducts(),[{payload:null,stock:[{inventory:0}]}],'catalogue outage keeps existing fallback policy');
   global.fetch=async()=>({ok:false,json:async()=>({})});
   await assert.rejects(loader.loadMerchandiseProducts(),/Unable/);
+  const failedBundle=deferred();
+  global.fetch=url=>url==='/bundle/merchandise'?failedBundle.promise:Promise.resolve({ok:true,json:async()=>({products:['visible']})});
+  const failedPreviews=[];
+  const failed=loader.loadMerchandiseProducts(undefined,value=>failedPreviews.push(value));
+  await tick();
+  assert.equal(failedPreviews.length,1,'catalogue remains available before a stock failure');
+  failedBundle.reject(Error('Bundle offline'));
+  await assert.rejects(failed,/Bundle offline/);
  } finally {global.fetch=oldFetch;}
 
  // Execute the actual hook with lifecycle-controlled React primitives.
@@ -44,7 +56,7 @@ async function main() {
  const hook=compile('src/hooks/useMerchandiseProducts.ts',{
   react,
   '@/store/cartStore':{useCartStore:selector=>selector({reconcileMerchandiseCatalog:()=>reconciled++})},
-  '@/lib/loadMerchandiseProducts':{merchandiseDisplayCache:display,loadMerchandiseProducts:()=>{networkCalls++;return hookJob.promise}},
+  '@/lib/loadMerchandiseProducts':{merchandiseBootstrapProducts:[],merchandiseDisplayCache:display,loadMerchandiseProducts:()=>{networkCalls++;return hookJob.promise}},
  });
  const priorWindow=global.window;global.window={setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}};
  try {

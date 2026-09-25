@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { MerchandiseProduct } from '@/data/merchandise';
-import { loadMerchandiseProducts, merchandiseDisplayCache } from '@/lib/loadMerchandiseProducts';
+import { loadMerchandiseProducts, merchandiseBootstrapProducts, merchandiseDisplayCache } from '@/lib/loadMerchandiseProducts';
 import { useCartStore } from '@/store/cartStore';
 
 export function useMerchandiseProducts({ displayCache = false } = {}) {
-  const [products, setProducts] = useState<MerchandiseProduct[]>([]);
+  const [products, setProducts] = useState<MerchandiseProduct[]>(displayCache ? merchandiseBootstrapProducts : []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [requestVersion, setRequestVersion] = useState(0);
@@ -17,12 +17,15 @@ export function useMerchandiseProducts({ displayCache = false } = {}) {
     let active = true;
     let running = false;
     const controller = new AbortController();
+    const unsubscribe = displayCache ? merchandiseDisplayCache.subscribePreview((preview) => {
+      if (active && !merchandiseDisplayCache.peek()) setProducts(preview);
+    }) : () => {};
 
     async function loadProducts(force = false) {
       if (running) return;
       const cached = displayCache ? merchandiseDisplayCache.peek() : null;
       if (cached) setProducts(cached.value);
-      else if (displayCache) setProducts([]);
+      else if (displayCache) setProducts(merchandiseDisplayCache.peekPreview() || merchandiseBootstrapProducts);
       if (cached?.fresh && !force) { setLoading(false); setError(''); return; }
       running = true;
       setLoading(true);
@@ -35,8 +38,9 @@ export function useMerchandiseProducts({ displayCache = false } = {}) {
         setError('');
       } catch (loadError) {
         if (!active || (loadError as Error).name === 'AbortError') return;
-        if (!displayCache || !merchandiseDisplayCache.peek()) setProducts([]);
-        setError('Merchandise could not be refreshed. Please try again.');
+        if (!displayCache) setProducts([]);
+        else if (!merchandiseDisplayCache.peek() && !merchandiseDisplayCache.peekPreview()) setProducts(merchandiseBootstrapProducts);
+        setError('Live stock could not be checked. Products are shown for browsing; please retry before purchasing.');
       } finally {
         running = false;
         if (active) setLoading(false);
@@ -50,6 +54,7 @@ export function useMerchandiseProducts({ displayCache = false } = {}) {
     return () => {
       active = false;
       controller.abort();
+      unsubscribe();
       if (timer !== undefined) window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
     };

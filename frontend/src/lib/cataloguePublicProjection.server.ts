@@ -5,6 +5,7 @@ import { listPublicationJobs, readPublicationJob, type CataloguePublicationJob }
 import { readCatalogueAdoptionByBundle } from '@/lib/admin/catalogueAdoption.server';
 import { readVerifiedCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
 import { readCataloguePublishedSnapshot, readCataloguePublishedSnapshotMedia, type CataloguePublishedProduct, type CataloguePublishedSnapshotManifest } from '@/lib/cataloguePublishedSnapshot.server';
+import { catalogueR2AssetUrl } from '@/lib/catalogueR2AssetPaths';
 
 const PRODUCT_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-products');
 const PUBLICATION_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-publications');
@@ -34,6 +35,21 @@ function activeVersion(product: CatalogueProductRecord) {
   const active = product.bundleVersions.filter(version => version.retiredAt === null);
   return product.status === 'published' && positive(product.currentBundleProductId) && active.length === 1
     && active[0].bundleProductId === product.currentBundleProductId ? active[0] : null;
+}
+function withOptimizedImages(product: CataloguePublishedProduct, hashes: Array<{ mediaId: string; sha256: string }>) {
+  if (process.env.TONEWOW_R2_PUBLIC_ENABLED === 'false') return product;
+  const byMediaId = new Map(hashes.map(item => [item.mediaId, item.sha256]));
+  const media = product.images.map(image => {
+    const match = /^\/catalogue-products-api\?catalogueId=([^&]+)&mediaId=([^&]+)$/.exec(image.url);
+    const sha = match ? byMediaId.get(decodeURIComponent(match[2])) : undefined;
+    return match && sha ? { catalogueId: decodeURIComponent(match[1]), sha } : null;
+  });
+  if (media.some(item => !item)) return product;
+  product.images = product.images.map((image, index) => ({ ...image,
+    url: catalogueR2AssetUrl(media[index]!.catalogueId, media[index]!.sha, 'gallery'),
+    thumbnailUrl: catalogueR2AssetUrl(media[index]!.catalogueId, media[index]!.sha, 'card'),
+  }));
+  return product;
 }
 async function ordinarySnapshot(product: CatalogueProductRecord, jobs: CataloguePublicationJob[]): Promise<CataloguePublishedSnapshotManifest|null> {
   const active = activeVersion(product); if (!active) return null;
@@ -70,11 +86,12 @@ export async function readCataloguePublicProjection(): Promise<{ products: Catal
         && projection.bundleProductId === adoption.bundleProductId) {
         const publicProjection = structuredClone(projection);
         if (adoption.managementProfile?.domain === 'SIM') publicProjection.details.category = 'SIM Card';
-        products.push(publicProjection);
+        products.push(withOptimizedImages(publicProjection, adoption.mediaHashes));
       }
       continue;
     }
-    const snapshot = await ordinarySnapshot(product, jobs); if (snapshot) products.push(structuredClone(snapshot.product));
+    const snapshot = await ordinarySnapshot(product, jobs);
+    if (snapshot) products.push(withOptimizedImages(structuredClone(snapshot.product), snapshot.media));
   }
   const payload = { products };
   if (Buffer.byteLength(JSON.stringify(payload)) > MAX_RESPONSE_BYTES) throw new Error('Catalogue public projection response limit exceeded.');

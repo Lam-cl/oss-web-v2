@@ -90,6 +90,7 @@ function load(file) {
     '@/lib/admin/catalogueMedia.server': { readVerifiedCatalogueMedia: async () => { throw new Error('ordinary snapshot must not read mutable media'); } },
     '@/lib/admin/catalogueAdoption.server': { readCatalogueAdoptionByBundle: async () => null },
     '@/lib/cataloguePublishedSnapshot.server': { readCataloguePublishedSnapshot: async id => id === operationId ? structuredClone(snapshot) : null, readCataloguePublishedSnapshotMedia: async () => null },
+    '@/lib/catalogueR2AssetPaths': { catalogueR2AssetUrl: (id, sha, variant) => `https://tonewow-assets.xifuhalim.com/catalogue/v1/${id}/${sha}/${variant}.webp` },
   };
   new Function('exports', 'require', 'module', '__filename', '__dirname', output)(module.exports, id => stubs[id] || require(id), module, file, path.dirname(file));
   return module.exports;

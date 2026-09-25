@@ -19,6 +19,7 @@
     "react": "^18",
     "react-day-picker": "^10.0.1",
     "react-dom": "^18",
+    "sharp": "^0.35.4",
     "swiper": "^12.1.2",
     "zustand": "^5.0.11"
   },

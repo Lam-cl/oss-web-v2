@@ -21,6 +21,7 @@ export interface MerchandiseProduct {
   options: MerchandiseOption[];
   sizes?: string[];
   gallery?: string[];
+  thumbnail?: string;
   features?: string[];
   unitLabel?: string;
   soldOut?: boolean;

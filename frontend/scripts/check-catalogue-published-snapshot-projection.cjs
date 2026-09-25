@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
+process.env.TONEWOW_R2_PUBLIC_ENABLED = 'false';
 const catalogueId='018f47a2-a117-4c37-8a28-7f429768bea1', mediaId='018f47a2-a117-4c37-8a28-7f429768bea2', operationId='a'.repeat(64), fingerprint='b'.repeat(64);
 const oldProduct={catalogueId,slug:'published-title',details:{title:'Published title',price:10,description:'old'},choices:[],combinations:[{valueKeys:[],variantId:90,price:10,inventory:5}],images:[{url:`/catalogue-products-api?catalogueId=${catalogueId}&mediaId=${mediaId}`,order:0,assignment:'all'}],bundleProductId:501};
 let product={catalogueId,status:'published',currentBundleProductId:501,bundleVersions:[{bundleProductId:501,fingerprint,publishedAt:'2026-01-01T00:00:00.000Z',retiredAt:null}],slug:'draft-title',model:{details:{title:'Draft title',price:99,description:'changed'},choices:[],combinations:[{valueKeys:[],price:99,inventory:0}],existingImages:[]}};
@@ -17,6 +18,7 @@ function load(){const file=path.resolve('src/lib/cataloguePublicProjection.serve
 '@/lib/admin/catalogueMedia.server':{readVerifiedCatalogueMedia:async()=>{throw new Error('ordinary snapshot must not read mutable media')}},
 '@/lib/admin/catalogueAdoption.server':{readCatalogueAdoptionByBundle:async()=>null},
 '@/lib/cataloguePublishedSnapshot.server':{readCataloguePublishedSnapshot:async id=>structuredClone(snapshots.get(id)||null),readCataloguePublishedSnapshotMedia:async(id,wanted)=>id===operationId&&wanted===mediaId?{...snapshots.get(id).media[0],body}:null},
+'@/lib/catalogueR2AssetPaths':{catalogueR2AssetUrl:(id,sha,variant)=>`https://tonewow-assets.xifuhalim.com/catalogue/v1/${id}/${sha}/${variant}.webp`},
 };new Function('exports','require','module','__filename','__dirname',out)(m.exports,id=>stubs[id]||require(id),m,file,path.dirname(file));return m.exports;}
 (async()=>{const projection=load();
  assert.deepEqual(await projection.readCataloguePublicProjection(),{products:[oldProduct]},'draft save must not alter active public payload');

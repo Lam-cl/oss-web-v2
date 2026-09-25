@@ -1,0 +1,16 @@
+{
+  "name": "tonewow-r2-upload",
+  "main": "index.js",
+  "compatibility_date": "2026-09-25",
+  "r2_buckets": [
+    { "binding": "CATALOGUE_ASSETS", "bucket_name": "tonewow-catalogue-assets" }
+  ],
+  "routes": [
+    { "pattern": "tonewow-r2-upload.xifuhalim.com", "custom_domain": true }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
+  }
+}

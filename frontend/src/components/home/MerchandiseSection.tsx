@@ -558,6 +558,10 @@ export default function MerchandiseSection() {
         </div>
       )}
 
+      {productsLoading && merchandiseProducts.length > 0 && (
+        <p className="merch-api-notice" role="status">Checking live availability…</p>
+      )}
+
       <div className="merch-catalog-grid" aria-busy={productsLoading} aria-label="Merchandise products">
         {productsLoading && merchandiseProducts.length === 0 && Array.from({ length: 8 }, (_, index) => (
           <div key={`merch-skeleton-${index}`} className="merch-product-skeleton" aria-hidden="true" />
@@ -572,14 +576,14 @@ export default function MerchandiseSection() {
             <button
               key={product.id}
               type="button"
-              className={`merch-product-card${product.soldOut ? ' is-sold-out' : ''}`}
+              className={`merch-product-card${product.soldOut && !productsLoading && !productsError ? ' is-sold-out' : ''}`}
               onClick={(event) => openProduct(product, event.currentTarget)}
               onMouseEnter={() => preloadGallery(getOptionGallery(product, 0))}
               onFocus={() => preloadGallery(getOptionGallery(product, 0))}
               aria-label={`View ${product.name}`}
             >
               <span className="merch-product-image">
-                {product.soldOut && (
+                {product.soldOut && !productsLoading && !productsError && (
                   <span className="merch-sold-out-label">
                     <Image
                       src="/images/merchandise/sold-out-stamp.png"
@@ -592,7 +596,7 @@ export default function MerchandiseSection() {
                 )}
                 <Image
                   className="merch-card-main-image"
-                  src={product.gallery?.[0] || product.options[0].image}
+                  src={product.thumbnail || product.gallery?.[0] || product.options[0].image}
                   alt={product.name}
                   fill
                   priority={productIndex < 4}
@@ -746,8 +750,8 @@ export default function MerchandiseSection() {
               <div className="merch-mobile-summary-copy">
                 <h2>{selectedProduct.name}</h2>
                 <div className="merch-detail-price">{formatRM(selectedVariantPrice)}</div>
-                {selectedProduct.soldOut && (
-                  <div className="merch-stock-status">Sold out</div>
+                {(productsLoading || productsError || selectedProduct.soldOut) && (
+                  <div className="merch-stock-status">{productsLoading ? 'Checking stock…' : productsError ? 'Stock check unavailable' : 'Sold out'}</div>
                 )}
                 {selectedProduct.unitLabel && (
                   <div className="merch-unit-label">{selectedProduct.unitLabel}</div>
@@ -831,8 +835,8 @@ export default function MerchandiseSection() {
             <section className="merch-modal-content">
               <h2 id="merch-modal-title">{selectedProduct.name}</h2>
               <div className="merch-detail-price">{formatRM(selectedVariantPrice)}</div>
-              {selectedProduct.soldOut && (
-                <div className="merch-stock-status">Sold out</div>
+              {(productsLoading || productsError || selectedProduct.soldOut) && (
+                <div className="merch-stock-status">{productsLoading ? 'Checking stock…' : productsError ? 'Stock check unavailable' : 'Sold out'}</div>
               )}
               {selectedProduct.unitLabel && (
                 <div className="merch-unit-label">{selectedProduct.unitLabel}</div>
@@ -909,14 +913,14 @@ export default function MerchandiseSection() {
                 </div>
               )}
 
-              {selectedProduct.soldOut || optionMappingUnavailable || insufficientVariantStock ? (
+              {productsLoading || productsError || !productsAreCurrent() || selectedProduct.soldOut || optionMappingUnavailable || insufficientVariantStock ? (
                 <div className="merch-purchase-row merch-purchase-row--desktop merch-purchase-row--unavailable">
                   <button
                     type="button"
                     className="btn merch-add-button merch-unavailable-button"
                     disabled
                   >
-                    {selectedProduct.soldOut || insufficientVariantStock ? 'Insufficient stock' : 'Variation unavailable'}
+                    {productsLoading ? 'Checking stock…' : productsError || !productsAreCurrent() ? 'Stock check unavailable' : selectedProduct.soldOut || insufficientVariantStock ? 'Insufficient stock' : 'Variation unavailable'}
                   </button>
                 </div>
               ) : (
@@ -974,13 +978,13 @@ export default function MerchandiseSection() {
             </section>
 
             <div className="merch-mobile-purchase-shell">
-              {selectedProduct.soldOut || optionMappingUnavailable || insufficientVariantStock ? (
+              {productsLoading || productsError || !productsAreCurrent() || selectedProduct.soldOut || optionMappingUnavailable || insufficientVariantStock ? (
                 <button
                   type="button"
                   className="btn merch-add-button merch-unavailable-button"
                   disabled
                 >
-                  {selectedProduct.soldOut || insufficientVariantStock ? 'Insufficient stock' : 'Variation unavailable'}
+                  {productsLoading ? 'Checking stock…' : productsError || !productsAreCurrent() ? 'Stock check unavailable' : selectedProduct.soldOut || insufficientVariantStock ? 'Insufficient stock' : 'Variation unavailable'}
                 </button>
               ) : (
                 <div className="merch-mobile-purchase-row">

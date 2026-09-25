@@ -11,7 +11,7 @@ export type CataloguePublishedProduct = {
   details: { title: string; price: number; description: string; category?: string };
   choices: Array<{ key: string; name: string; values: Array<{ key: string; label: string }> }>;
   combinations: Array<{ valueKeys: string[]; variantId: number; price: number; inventory: number }>;
-  images: Array<{ url: string; order: number; assignment: string }>;
+  images: Array<{ url: string; order: number; assignment: string; thumbnailUrl?: string }>;
   bundleProductId: number;
   minimumOrderQuantity?: number;
 };

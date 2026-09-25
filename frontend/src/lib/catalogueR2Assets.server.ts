@@ -19,7 +19,7 @@ export async function compressCatalogueImage(body: Uint8Array, variant: Catalogu
     for (const quality of variant === 'card' ? [80, 68, 56, 44, 35] : [84, 74, 64, 54, 45]) {
       const encoded = await sharp(body, { failOn: 'error', limitInputPixels: 80_000_000 })
         .rotate().resize({ width, withoutEnlargement: true, fit: 'inside' })
-        .webp({ quality, effort: 6 }).toBuffer();
+        .webp({ quality, effort: 4 }).toBuffer();
       if (encoded.length < MAX_BYTES && (!best || encoded.length < best.length)) best = encoded;
       if (encoded.length < target) return encoded;
     }

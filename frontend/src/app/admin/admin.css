@@ -102,6 +102,8 @@
 .adm-product-cell strong,.adm-product-cell small { display:block; }
 .adm-product-cell strong { font-size:11px; }
 .adm-product-cell small { margin-top:3px; color:var(--adm-muted); font-size:9px; }
+.adm-product-cell .adm-publish-feedback { max-width:320px; margin-top:6px; color:#1d4ed8; font-size:11px; line-height:1.4; }
+.adm-product-cell .adm-publish-feedback.is-error { color:#b91c1c; }
 .adm-choice-summary strong,.adm-choice-summary small { display:block; white-space:nowrap; }
 .adm-choice-summary strong { font-size:10px; }
 .adm-choice-summary small { margin-top:3px; color:var(--adm-muted); font-size:9px; }

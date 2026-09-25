@@ -56,7 +56,7 @@ type EditorTarget = { kind: 'new' } | { kind: 'existing'; product: CatalogueProd
 type ProductRow =
   | { kind: 'catalogue'; catalogue: CatalogueProductRecord; product?: Product }
   | { kind: 'legacy'; product: Product };
-type CatalogueMediaSummary = { order: number; assignment: 'all' | string };
+type CatalogueMediaSummary = { mediaId: string; order: number; assignment: 'all' | string };
 type CataloguePublicationSummary = { phase: string };
 
 const emptyProduct: ProductEditorSpec = {
@@ -311,6 +311,7 @@ function ProductsContent() {
   const [deletingLegacyProductId, setDeletingLegacyProductId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const [publishingCatalogueId, setPublishingCatalogueId] = useState<string | null>(null);
+  const [publishFeedback, setPublishFeedback] = useState<Record<string, { message: string; error: boolean }>>({});
   const publishingCatalogueIdRef = useRef<string | null>(null);
   const [archivingCatalogueId, setArchivingCatalogueId] = useState<string | null>(null);
   const archivingCatalogueIdRef = useRef<string | null>(null);
@@ -391,15 +392,19 @@ function ProductsContent() {
     if (publishingCatalogueIdRef.current) return;
     publishingCatalogueIdRef.current = product.catalogueId;
     setPublishingCatalogueId(product.catalogueId);
+    setPublishFeedback(current => ({ ...current, [product.catalogueId]: { message: 'Publishing and verifying product photos…', error: false } }));
     try {
       await catalogueRequest(`/${encodeURIComponent(product.catalogueId)}/publish`, {
         method: 'POST',
         body: JSON.stringify({ revision: product.revision }),
       });
       await load();
+      setPublishFeedback(current => { const next = { ...current }; delete next[product.catalogueId]; return next; });
       flash('Product published successfully. It is now visible in OSS.');
     } catch (problem) {
-      flash(problem instanceof Error ? problem.message : 'The product could not be published. Please review it and try again.', 'error');
+      const message = problem instanceof Error ? problem.message : 'The product could not be published. Please review it and try again.';
+      setPublishFeedback(current => ({ ...current, [product.catalogueId]: { message, error: true } }));
+      flash(message, 'error');
     } finally {
       publishingCatalogueIdRef.current = null;
       setPublishingCatalogueId(null);
@@ -524,8 +529,14 @@ function ProductsContent() {
       const publishLabel = publicationRecovery.pending ? publicationRecovery.label : publicationAction.visible ? publicationAction.label : 'Publish';
       const publishHazardDisabled = publishHazardReason !== null;
       const archiveHazardDisabled = archiveHazardReason !== null;
+      const draftMedia = row.kind === 'catalogue' ? catalogueMedia[row.catalogue.catalogueId]?.[0] : undefined;
+      const draftMediaUrl = row.kind === 'catalogue' && draftMedia
+        ? `/admin-api/catalogue-products/${encodeURIComponent(row.catalogue.catalogueId)}/media/${encodeURIComponent(draftMedia.mediaId)}`
+        : null;
+      const thumbnailUrl = product?.images?.[0] ? adminMediaUrl(product.images[0].url) : draftMediaUrl;
+      const publicationFeedback = row.kind === 'catalogue' ? publishFeedback[row.catalogue.catalogueId] : undefined;
       return <tr key={key}>
-        <td><div className="adm-product-cell">{product?.images?.[0] ? <img className="adm-thumb" src={adminMediaUrl(product.images[0].url)} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small></div></div></td>
+        <td><div className="adm-product-cell">{thumbnailUrl ? <img className="adm-thumb" src={thumbnailUrl} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{publicationFeedback && <small className={`adm-publish-feedback${publicationFeedback.error ? ' is-error' : ''}`} role={publicationFeedback.error ? 'alert' : 'status'}>{publicationFeedback.message}</small>}</div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Choices"><span className={`adm-choice-summary${choices.incomplete ? ' is-incomplete' : ''}`}><strong>{choices.primary}</strong><small>{choices.secondary}</small></span></td>
         <td data-label="Inventory">{stock}</td>

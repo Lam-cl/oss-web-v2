@@ -238,12 +238,22 @@ export const catalogueAdminRoute={
       const publicProduct=publishedProduct(publicationProduct,productId,bindings,metadata);
       const snapshotMedia=uploads.map(upload=>{const item=metadata.find(media=>media.mediaId===upload.key);if(!item)throw new CatalogueAdminRouteError('Published snapshot media binding is missing.',502);return {mediaId:item.mediaId,originalName:item.originalName,contentType:item.contentType,bytes:item.bytes,sha256:item.sha256,order:item.order,assignment:item.assignment,body:upload.body};});
       await createCataloguePublishedSnapshot({operationId:snapshotOperationId,catalogueId:id,bundleProductId:productId,resultFingerprint64:fingerprint,product:publicProduct,media:snapshotMedia});
-      const readback=await readCataloguePublishedSnapshot(snapshotOperationId);
-      if(!readback||readback.catalogueId!==id||readback.bundleProductId!==productId||readback.resultFingerprint64!==fingerprint||!isDeepStrictEqual(readback.product,publicProduct))throw new CatalogueAdminRouteError('Published snapshot readback attestation failed.',503);
       // The manifest can be durable while a published media object is absent or unreadable.
       // Verify the exact public image bytes before activating the product.
-      try { await assertPublishedSnapshotMediaReadable(readback); }
-      catch { throw new CatalogueAdminRouteError('Published images could not be read back. Product was not activated.',503); }
+      for(let attempt=0;attempt<3;attempt++){
+        try {
+          const readback=await readCataloguePublishedSnapshot(snapshotOperationId);
+          if(!readback||readback.catalogueId!==id||readback.bundleProductId!==productId||readback.resultFingerprint64!==fingerprint||!isDeepStrictEqual(readback.product,publicProduct))throw new Error('Snapshot identity mismatch.');
+          await assertPublishedSnapshotMediaReadable(readback);
+          return;
+        } catch (reason) {
+          if(attempt===2){
+            console.error('Catalogue published media verification failed.',{catalogueId:id,operationId:snapshotOperationId,reason:reason instanceof Error?reason.message:'Unknown error'});
+            throw new CatalogueAdminRouteError('Published images could not be verified after three attempts. Product was not activated.',503);
+          }
+          await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
+        }
+      }
     };
     let activationOperation:string|null=null,snapshotOperation:string|null=null;
     const local={

@@ -311,6 +311,13 @@ function ProductsContent() {
   const [deletingLegacyProductId, setDeletingLegacyProductId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const [publishingCatalogueId, setPublishingCatalogueId] = useState<string | null>(null);
+  const [publishElapsedSeconds, setPublishElapsedSeconds] = useState(0);
+  useEffect(() => {
+    if (!publishingCatalogueId) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setPublishElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [publishingCatalogueId]);
   const [publishFeedback, setPublishFeedback] = useState<Record<string, { message: string; error: boolean }>>({});
   const publishingCatalogueIdRef = useRef<string | null>(null);
   const [archivingCatalogueId, setArchivingCatalogueId] = useState<string | null>(null);
@@ -391,6 +398,7 @@ function ProductsContent() {
   const publish = async (product: CatalogueProductRecord) => {
     if (publishingCatalogueIdRef.current) return;
     publishingCatalogueIdRef.current = product.catalogueId;
+    setPublishElapsedSeconds(0);
     setPublishingCatalogueId(product.catalogueId);
     setPublishFeedback(current => ({ ...current, [product.catalogueId]: { message: 'Publishing and verifying product photos…', error: false } }));
     try {
@@ -536,7 +544,7 @@ function ProductsContent() {
       const thumbnailUrl = product?.images?.[0] ? adminMediaUrl(product.images[0].url) : draftMediaUrl;
       const publicationFeedback = row.kind === 'catalogue' ? publishFeedback[row.catalogue.catalogueId] : undefined;
       return <tr key={key}>
-        <td><div className="adm-product-cell">{thumbnailUrl ? <img className="adm-thumb" src={thumbnailUrl} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{publicationFeedback && <small className={`adm-publish-feedback${publicationFeedback.error ? ' is-error' : ''}`} role={publicationFeedback.error ? 'alert' : 'status'}>{publicationFeedback.message}</small>}</div></div></td>
+        <td><div className="adm-product-cell">{thumbnailUrl ? <img className="adm-thumb" src={thumbnailUrl} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{publicationFeedback && <small className={`adm-publish-feedback${publicationFeedback.error ? ' is-error' : ''}`} role={publicationFeedback.error ? 'alert' : 'status'}>{publicationFeedback.message}{publishingCatalogueId === key && <span className="adm-publish-wait">{publishElapsedSeconds}s · {publishElapsedSeconds >= 20 ? 'Still processing. Keep this page open; no need to click again.' : 'Please keep this page open.'}</span>}</small>}</div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Choices"><span className={`adm-choice-summary${choices.incomplete ? ' is-incomplete' : ''}`}><strong>{choices.primary}</strong><small>{choices.secondary}</small></span></td>
         <td data-label="Inventory">{stock}</td>
@@ -549,8 +557,9 @@ function ProductsContent() {
             aria-label={`${publishLabel} for ${title} to OSS`}
             aria-describedby={publishHazardReason ? publishHazardReasonId : undefined}
             disabled={!canPublish || publishHazardDisabled || publishingCatalogueId !== null || archivingCatalogueId !== null}
+            aria-busy={publishingCatalogueId === row.catalogue.catalogueId}
             onClick={() => void publish(row.catalogue)}
-          >{publishingCatalogueId === row.catalogue.catalogueId ? publicationRecovery.pending ? 'Resuming…' : 'Publishing…' : publishLabel}</button>}
+          >{publishingCatalogueId === row.catalogue.catalogueId && <span className="adm-publish-spinner" aria-hidden="true" />}{publishingCatalogueId === row.catalogue.catalogueId ? publicationRecovery.pending ? 'Resuming…' : 'Publishing…' : publishLabel}</button>}
           {genericLifecycleAllowed && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
           {genericLifecycleAllowed && localDraft && <button
             className="adm-button secondary"

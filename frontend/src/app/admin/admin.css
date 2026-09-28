@@ -104,6 +104,10 @@
 .adm-product-cell small { margin-top:3px; color:var(--adm-muted); font-size:9px; }
 .adm-product-cell .adm-publish-feedback { max-width:320px; margin-top:6px; color:#1d4ed8; font-size:11px; line-height:1.4; }
 .adm-product-cell .adm-publish-feedback.is-error { color:#b91c1c; }
+.adm-publish-wait { display:block; margin-top:4px; }
+.adm-publish-spinner { display:inline-block; width:14px; height:14px; margin-right:6px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:adm-publish-spin .8s linear infinite; }
+@keyframes adm-publish-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .adm-publish-spinner { animation:none; } }
 .adm-choice-summary strong,.adm-choice-summary small { display:block; white-space:nowrap; }
 .adm-choice-summary strong { font-size:10px; }
 .adm-choice-summary small { margin-top:3px; color:var(--adm-muted); font-size:9px; }

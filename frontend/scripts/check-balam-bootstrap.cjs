@@ -16,6 +16,16 @@ assert.match(layout,/src="\/js\/tonewow-balam-bootstrap-20260907.js" strategy="b
    return route.fulfill({contentType:'text/html',body:'<html><head><style>#Assistant-Shadow-Host{visibility:hidden!important}</style><script src="/bootstrap.js"></script></head><body></body></html>'});
   });
   await page.goto('https://balam.test/');
+  await page.evaluate(() => {
+    let received;
+    window.Assistant = { init(config) { received = config; }, show() {} };
+    window.Assistant.init({ welcomeMessage: 'Hi bestie! How can I assist u today?', userId: 'conversation-kept', widgetSettings: { theme: 'blue' } });
+    window.greetingSuppressed = received.welcomeMessage === null
+      && received.userId === 'conversation-kept'
+      && received.widgetSettings.theme === 'blue'
+      && typeof window.Assistant.show === 'function';
+  });
+  assert.equal(await page.evaluate(() => window.greetingSuppressed), true, 'Only the Balam welcome popup should be removed');
   await page.evaluate(()=>{
    window.originalPatchedAttach=Element.prototype.attachShadow;
    const other=document.createElement('div');document.body.append(other);other.attachShadow({mode:'closed'});window.otherStayedClosed=other.shadowRoot===null;

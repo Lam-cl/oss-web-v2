@@ -1,6 +1,28 @@
 (() => {
   if (window.__tonewowBalamBootstrapInstalled) return;
   window.__tonewowBalamBootstrapInstalled = true;
+  // Balam creates its greeting from welcomeMessage during Assistant.init.
+  // Suppress only that optional greeting; leave credentials and chat setup intact.
+  let assistantApi = window.Assistant;
+  const priorAssistant = Object.getOwnPropertyDescriptor(window, 'Assistant');
+  if (!priorAssistant || priorAssistant.configurable) {
+    Object.defineProperty(window, 'Assistant', {
+      configurable: true,
+      enumerable: true,
+      get() { return assistantApi; },
+      set(api) {
+        if (api && typeof api.init === 'function') {
+          const init = api.init;
+          api.init = function(config) {
+            return init.call(this, config && typeof config === 'object'
+              ? { ...config, welcomeMessage: null }
+              : config);
+          };
+        }
+        assistantApi = api;
+      },
+    });
+  }
   const HOST_ID = 'Assistant-Shadow-Host';
   const LAUNCHER_ATTR = 'data-tonewow-balam-launcher';
   const nativeAttachShadow = Element.prototype.attachShadow;

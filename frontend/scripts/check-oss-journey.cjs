@@ -8,8 +8,8 @@ const originalLoad = Module._load;
 Module._load = function(request, parent, main) {
   if (request === '@/lib/dataApiClient.server') return { remoteDocument: async () => ({ value: {
     rows: [
-      { productCode: 'TWE', requestId: 1, requestDate: '2026-09-30', purchaserName: 'Ali', referralCode: 'TWE-12', simSerial: '12345678901', simPrefixId: '10' },
-      { productCode: 'TWP', requestId: 2, requestDate: '2026-09-29', purchaserName: 'Lee', referralCode: 'TWP-33', simSerial: '98765432101', simPrefixId: '11' },
+      { productCode: 'TWE', requestId: 1, requestDate: '30/09/2026 12:00', purchaserName: 'Ali', referralCode: 'TWE-12', simSerial: '12345678901', simPrefixId: '10' },
+      { productCode: 'TWP', requestId: 2, requestDate: '01/10/2026 12:00', purchaserName: 'Lee', referralCode: 'TWP-33', simSerial: '98765432101', simPrefixId: '11' },
     ], refreshedAt: '2026-09-30T00:00:00Z', checks: { 'TWE:1': { status: 'confirmed', simSerial: 'other-serial', simPrefixId: '10', memberId: 'TWE-SECRET' } },
   } }) };
   return originalLoad.call(this, request, parent, main);
@@ -29,6 +29,7 @@ async function run(status, member, expected) {
   const filtered = await listOssRequests({ productCode: 'TWP', search: 'Lee', page: 1, limit: 25 });
   assert.equal(filtered.meta.total, 1);
   assert.equal(filtered.data[0].requestId, 2);
+  assert.equal((await listOssRequests({})).data[0].requestId, 2, 'DD/MM/YYYY dates sort chronologically');
   assert.equal((await listOssRequests({ productCode: 'TWE' })).data[0].check, null, 'changed serial hides old identity');
   assert.equal(planLabel({ ...row, planName: 'Lindung Biz' }), 'Preload BIZ');
   assert.equal(planLabel({ ...row, planName: 'Lindung Pro' }), 'Preload PRO');

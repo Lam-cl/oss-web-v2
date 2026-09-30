@@ -10,7 +10,7 @@ type Row = { requestId: number; productCode: string; requestDate: string; refere
   simSerial: string; trackingNo: string; courierType: string; expectedDeliveryDate: string;
   check: { status: string; checkedAt: string; memberId?: string; msisdn?: string; currentPlan?: string | null; planCheckedAt?: string } | null };
 type Result = { data: Row[]; meta: { page: number; total: number; totalPages: number; refreshedAt: string } };
-const when = (value?: string) => value ? dateTime(value) : 'Belum disemak';
+const when = (value?: string) => value ? (/^\d{2}\/\d{2}\/\d{4}\s/.test(value) ? value : dateTime(value)) : 'Belum disemak';
 function plan(row: Row) {
   const name = row.planName.toUpperCase();
   if (/\bBIZ\b/.test(name)) return 'Preload BIZ';

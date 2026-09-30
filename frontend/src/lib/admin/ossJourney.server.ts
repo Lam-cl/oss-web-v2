@@ -47,6 +47,10 @@ function parseRows(payload: any, productCode: OssCode): OssRequest[] {
 }
 
 export function ossKey(row: OssRequest) { return `${row.productCode}:${row.requestId}`; }
+function ossDate(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/.exec(value);
+  return match ? `${match[3]}-${match[2]}-${match[1]}T${match[4]}:${match[5]}` : value;
+}
 function checkMatches(row: OssRequest, check?: OssCheck) {
   return check?.simSerial === row.simSerial && check?.simPrefixId === row.simPrefixId;
 }
@@ -82,7 +86,7 @@ export async function listOssRequests(query: { productCode?: string; search?: st
   const rows = snapshot.rows.filter(row => (!code || row.productCode === code)
     && (!term || [row.requestId, row.reference, row.purchaserName, row.purchaserEmail, row.contactNo, row.simSerial, row.referralCode]
       .some(value => String(value).toLowerCase().includes(term))));
-  rows.sort((a, b) => b.requestDate.localeCompare(a.requestDate) || b.requestId - a.requestId);
+  rows.sort((a, b) => ossDate(b.requestDate).localeCompare(ossDate(a.requestDate)) || b.requestId - a.requestId);
   return { data: rows.slice((page - 1) * limit, page * limit).map(row => ({ ...row,
     check: checkMatches(row, snapshot.checks[ossKey(row)]) ? snapshot.checks[ossKey(row)] : null })),
     meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)), refreshedAt: snapshot.refreshedAt } };

@@ -7,6 +7,7 @@ import {
   trackAdxPaymentOutcome,
   trackAdxPurchase,
 } from '@/lib/adxPurchaseTracking';
+import { trackSimPurchaseSuccess, type SimOrderData } from '@/lib/smartech';
 
 type Status = 'loading' | 'success' | 'failed' | 'pending';
 type EsimDetails = {
@@ -234,6 +235,35 @@ function ThankYouContent() {
       if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [isAdx, status, refNo]);
+
+    /* Smartech: online sim purchase success */
+  useEffect(() => {
+    if (status !== 'success' || !refNo) return;
+
+    const raw = localStorage.getItem('tw_smartech_sim_order');
+    if (!raw) return;
+
+    let stored: (SimOrderData & { paymentRefNo?: string }) | null = null;
+    try { stored = JSON.parse(raw); } catch { return; }
+    if (!stored) return;
+
+    const { paymentRefNo, ...orderData } = stored;
+    if (normalizePaymentRefNo(paymentRefNo || '') !== normalizePaymentRefNo(refNo)) return;
+
+    let attempts = 0;
+    let timer: number | undefined;
+    const send = () => {
+      if (window.smartech) {
+        trackSimPurchaseSuccess(orderData);
+        localStorage.removeItem('tw_smartech_sim_order'); // elak hantar dua kali
+        return;
+      }
+      if (attempts++ < 20) timer = window.setTimeout(send, 500);
+    };
+    send();
+
+    return () => { if (timer) window.clearTimeout(timer); };
+  }, [status, refNo]);
 
   useEffect(() => {
     if (status === 'failed') {

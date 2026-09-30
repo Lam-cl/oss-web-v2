@@ -4,6 +4,7 @@ import 'react-day-picker/style.css';
 import './globals.css';
 import './merchandise-parity.css';
 import RouteChrome from '@/components/layout/RouteChrome';
+import SmartechInit from '@/components/smartech/smartech';
 
 export const metadata: Metadata = {
   title: 'tone wow Shop',
@@ -25,7 +26,9 @@ export default function RootLayout({
         <style>{'#Assistant-Shadow-Host{visibility:hidden!important}'}</style>
         <Script src="/js/tonewow-balam-bootstrap-20260907.js" strategy="beforeInteractive" />
       </head>
-      <body><RouteChrome>{children}</RouteChrome></body>
+      <body><RouteChrome>{children}</RouteChrome>
+      <SmartechInit />
+      </body>
     </html>
   );
 }

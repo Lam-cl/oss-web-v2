@@ -22,6 +22,7 @@ import {
 } from '@/lib/referral';
 import type { NumberResult } from '@/types';
 import { rememberAdxPurchase } from '@/lib/adxPurchaseTracking';
+import { trackSimPurchaseInitiated, type SimOrderData } from '../../../lib/smartech';
 
 /* ═══════════════════════════════════════════════
    CONSTANTS
@@ -1093,6 +1094,25 @@ const goBack = () => {
         localStorage.removeItem('tw_purchase_retry_mode');
         localStorage.removeItem('tw_purchase_retry_started_at');
       }
+
+            const smartechOrder: SimOrderData = {
+        icNumber: form.nric,
+        name: customerName,
+        email: form.email,
+        mobile: form.phone,
+        city: form.city,
+        state: form.state,
+        postcode: form.postcode,
+        simType,
+        packageType: selectedNumber ? 'special_number' : (selectedPackage ?? purchaseMode),
+        totalAmount: Number(total),
+        paymentMethod: PAYMENT_METHODS.find(m => m.id === paymentMethod)?.label ?? paymentMethod,
+        addressOne: form.address1,
+        addressTwo: form.address2 || '',
+      };
+      console.log('[smartech] before track');
+      trackSimPurchaseInitiated(smartechOrder);
+      localStorage.setItem('tw_smartech_sim_order', JSON.stringify({ paymentRefNo, ...smartechOrder }));
       window.location.href = `${getOssPaymentUrl()}?${params.toString()}`;
     } catch (err: any) { setError(err.message || 'Something went wrong. Please try again.'); setSubmitting(false); }
   };

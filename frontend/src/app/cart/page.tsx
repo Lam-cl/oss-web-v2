@@ -11,6 +11,7 @@ import { calculateDeliveryShipping } from "@/lib/shipping";
 import type { CartItem } from "@/types";
 import CartMerchandiseEditor from "@/components/merchandise/CartMerchandiseEditor";
 import { useMerchandiseProducts } from "@/hooks/useMerchandiseProducts";
+import { trackCheckout, type MerchItem } from "@/lib/smartech";
 
 export default function CartPage() {
   const { products: merchandiseProducts, loading: merchandiseLoading } =
@@ -70,6 +71,39 @@ export default function CartPage() {
     else setSummaryOpen(false);
   };
   const merchandiseLink = "/?tab=merchandise#shop";
+
+    const handleProceedToCheckout = () => {
+    const merchItems = items.filter((item) => item.type === "merchandise");
+    if (merchItems.length > 0) {
+      const payloadItems: MerchItem[] = merchItems.map((item) => {
+        const product = merchandiseProducts.find(
+          (candidate) =>
+            candidate.id === item.productId ||
+            candidate.slug === item.slug ||
+            candidate.name === item.name,
+        );
+        const isColour = /^colou?r$/i.test(product?.optionLabel || "");
+        return {
+          prid: item.productId || item.id,
+          image: item.image || "",
+          prqt: item.quantity,
+          productName: item.name,
+          brand: "tone wow", // andaian, tanya marketing
+          colour: isColour ? item.variant || "" : "",
+          price: item.price,
+          size: item.size,
+          stockAvailability:
+            (item.availableQuantity ?? 0) > 0 ? "in stock" : "out of stock",
+        };
+      });
+      const merchTotal = merchItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0,
+      );
+      trackCheckout(payloadItems, merchTotal);
+    }
+    router.push("/checkout");
+  };
 
   if (!merchandiseMode) {
     return (
@@ -239,7 +273,7 @@ export default function CartPage() {
               <button
                 className="btn btn-primary"
                 style={{ width: "100%", marginTop: 16 }}
-                onClick={() => router.push("/checkout")}
+                onClick={handleProceedToCheckout}
               >
                 Proceed to Checkout
               </button>
@@ -486,7 +520,7 @@ export default function CartPage() {
                   type="button"
                   className="btn btn-primary merch-cart-checkout"
                   disabled={checkoutBlocked}
-                  onClick={() => router.push("/checkout")}
+                  onClick={handleProceedToCheckout}
                 >
                   {merchandiseLoading
                     ? "Checking stock…"
@@ -571,7 +605,7 @@ export default function CartPage() {
                       type="button"
                       className="btn btn-primary"
                       disabled={checkoutBlocked}
-                      onClick={() => router.push("/checkout")}
+                      onClick={handleProceedToCheckout}
                     >
                       {merchandiseLoading
                         ? "Checking…"

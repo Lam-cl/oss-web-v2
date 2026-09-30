@@ -14,6 +14,7 @@ import { isKualaLumpurWorkingDay, localDateToPickupDate, malaysiaDate, minimumPi
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
 import { checkoutTotal } from '@/lib/checkoutTotal';
 import { CHECKOUT_PAUSED_MESSAGE } from '@/lib/merchandiseCheckoutPolicy';
+import { trackMerchPurchaseInitiated, type MerchOrderData } from '@/lib/smartech';
 
 const verifyBtnStyle: React.CSSProperties = {
   height: 46,
@@ -266,6 +267,29 @@ export default function CheckoutPage() {
         throw new Error(payment.error || 'Failed to initiate payment');
       }
 
+        const merchOrder: MerchOrderData = {
+        icNumber: form.ic,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email,
+        mobile: form.phone,
+        city: form.billingCity,
+        state: form.billingState,
+        postcode: form.billingPostcode,
+        totalAmount: Number(grandTotal),
+        paymentMethod: 'Online Payment (GKash)', // checkout ni tak pilih kaedah bayaran, tanya marketing
+        addressOne: shippingAddr.address1,
+        addressTwo: '',
+      };
+      trackMerchPurchaseInitiated(merchOrder);
+      if (payment.orderId) {
+        localStorage.setItem('tw_smartech_merch_order', JSON.stringify({
+          orderId: payment.orderId,
+          referenceNumber: payment.referenceNumber || '',
+          ...merchOrder,
+        }));
+      }
+
       if (payment.orderId) localStorage.setItem('tw_pending_order', payment.orderId);
       if (payment.orderId && payment.referenceNumber) {
         const callbackReference = Object.entries(payment.paymentParams || {}).find(([key]) => (
@@ -278,8 +302,8 @@ export default function CheckoutPage() {
           storedAt: Date.now(),
         }));
       }
-      if (payment.redirectMethod === 'GET') {
-        window.location.assign(payment.paymentUrl);
+          if (payment.redirectMethod === 'GET') {
+        window.setTimeout(() => window.location.assign(payment.paymentUrl!), 500);
         return;
       }
       setPaymentData({

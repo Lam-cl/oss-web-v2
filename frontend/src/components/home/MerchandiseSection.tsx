@@ -16,6 +16,7 @@ import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
 import { formatRM } from '@/lib/utils';
 import { incrementOrderQuantity, minimumOrderError, minimumOrderLabel } from '@/lib/minimumOrderQuantity';
 import { useCartStore } from '@/store/cartStore';
+import { trackProductView, trackAddToCart } from '@/lib/smartech';
 
 type CategoryFilter = 'All' | string;
 
@@ -249,6 +250,17 @@ export default function MerchandiseSection() {
     setShowSizeGuide(false);
     setShowFullscreenGallery(false);
     setError('');
+    const firstOption = product.options[0];
+    trackProductView({
+      prid: product.id,
+      image: firstOption?.image || product.thumbnail || '',
+      prqt: product.minimumOrderQuantity,
+      productName: product.name,
+      brand: 'tone wow', // andaian, tanya marketing
+      colour: isColourOption(product.optionLabel) ? (firstOption?.name ?? '') : '',
+      price: product.price,
+      stockAvailability: product.soldOut ? 'out of stock' : 'in stock',
+      });
   };
 
   const closeProduct = () => {
@@ -521,6 +533,17 @@ export default function MerchandiseSection() {
       quantity,
       minimumOrderQuantity: selectedProduct.minimumOrderQuantity,
       availableQuantity: inventory,
+    });
+    trackAddToCart({
+      prid: selectedProduct.id,
+      image: selectedOption.image,
+      prqt: quantity,
+      productName: selectedProduct.name,
+      brand: 'tone wow', // andaian, tanya marketing
+      colour: isColourOption(selectedProduct.optionLabel) ? selectedOption.name : '',
+      price: selectedVariantPrice,
+      size: selectedSize || undefined,
+      stockAvailability: remaining > 0 ? 'in stock' : 'out of stock',
     });
     setCartBumped(false);
     window.requestAnimationFrame(() => setCartBumped(true));

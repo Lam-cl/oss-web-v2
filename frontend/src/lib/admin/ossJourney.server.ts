@@ -156,7 +156,7 @@ export async function refreshOssJourney() {
     await saveSnapshot({ rows, refreshedAt, checks });
     const due = rows.filter(row => row.simSerial && (!checkMatches(row, checks[ossKey(row)]) ||
       (checks[ossKey(row)].status !== 'confirmed' && Date.now() - Date.parse(checks[ossKey(row)].checkedAt) >= 24 * 60 * 60 * 1000) ||
-      (checks[ossKey(row)].status === 'confirmed' && Date.now() - Date.parse(checks[ossKey(row)].planCheckedAt || '') >= 24 * 60 * 60 * 1000)));
+      (checks[ossKey(row)].status === 'confirmed' && Date.now() - Date.parse(checks[ossKey(row)].checkedAt) >= 24 * 60 * 60 * 1000)));
     due.sort((a, b) => (Date.parse(checks[ossKey(a)]?.checkedAt || '') || 0) - (Date.parse(checks[ossKey(b)]?.checkedAt || '') || 0));
     const batch = due.slice(0, 8);
     const prefixCache = new Map<OssCode, Promise<Map<string, string>>>();

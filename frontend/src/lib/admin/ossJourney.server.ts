@@ -10,6 +10,9 @@ export type OssRequest = {
 export type OssCheck = {
   status: 'confirmed' | 'processing' | 'unknown'; checkedAt: string;
   simSerial?: string; simPrefixId?: string;
+  firstConfirmedAt?: string;
+  hqLastTransactionAt?: string;
+  hqDateCheckedAt?: string;
   msisdn?: string; memberId?: string; currentPlan?: string | null; planCheckedAt?: string;
   error?: string;
 };
@@ -24,6 +27,12 @@ const normalPhone = (value: unknown) => {
   return digits.startsWith('60') ? `0${digits.slice(2)}` : digits;
 };
 const timeout = () => AbortSignal.timeout(15_000);
+function hqTransactionDate(value: unknown) {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.\d+)?$/.exec(clean(value));
+  if (!match) return undefined;
+  const date = new Date(`${match[1]}T${match[2]}+08:00`);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
 
 async function json(url: string, init?: RequestInit): Promise<any> {
   const response = await fetch(url, { ...init, cache: 'no-store', signal: timeout(), headers: { accept: 'application/json', ...init?.headers } });
@@ -54,6 +63,19 @@ function ossDate(value: string) {
 function checkMatches(row: OssRequest, check?: OssCheck) {
   return check?.simSerial === row.simSerial && check?.simPrefixId === row.simPrefixId;
 }
+const malaysiaDay = (value: string) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(value));
+function localDate(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(value);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : /^\d{4}-\d{2}-\d{2}/.exec(value)?.[0] || '';
+}
+function weekStart(day: string) {
+  const date = new Date(`${day}T00:00:00Z`);
+  const weekday = date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - ((weekday + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
 export function planLabel(row: OssRequest, check?: OssCheck): string {
   const name = row.planName.toUpperCase();
   if (/\bBIZ\b/.test(name)) return 'Preload BIZ';
@@ -77,19 +99,39 @@ async function saveSnapshot(value: Snapshot) {
   else await createRemoteDocument(NAMESPACE, SNAPSHOT_KEY, value, { revision: 1, createdAt: now, updatedAt: now });
 }
 
-export async function listOssRequests(query: { productCode?: string; search?: string; page?: number; limit?: number }) {
+export async function listOssRequests(query: { productCode?: string; search?: string; period?: string; page?: number; limit?: number }) {
   const snapshot = await readOssSnapshot();
   const code = query.productCode === 'TWE' || query.productCode === 'TWP' ? query.productCode : '';
   const term = clean(query.search).toLowerCase().slice(0, 100);
+  const period = ['today', 'yesterday', 'week', 'month'].includes(query.period || '') ? query.period! : 'today';
+  const today = malaysiaDay(new Date().toISOString());
+  const yesterdayDate = new Date(`${today}T00:00:00Z`);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterday = yesterdayDate.toISOString().slice(0, 10);
+  const monday = weekStart(today);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const inPeriod = (day: string) => Boolean(day) && (period === 'today' ? day === today
+    : period === 'yesterday' ? day === yesterday
+    : period === 'week' ? day >= monday && day <= today : day >= monthStart && day <= today);
+  const networkRows = snapshot.rows.filter(row => !code || row.productCode === code);
+  const summary = { orders: 0, confirmed: 0, pendingHqDates: 0 };
+  for (const row of networkRows) {
+    const check = snapshot.checks[ossKey(row)];
+    if (inPeriod(localDate(row.requestDate))) summary.orders++;
+    if (!checkMatches(row, check) || check.status !== 'confirmed') continue;
+    if (!check.hqDateCheckedAt) summary.pendingHqDates++;
+    if (check.hqLastTransactionAt && inPeriod(malaysiaDay(check.hqLastTransactionAt))) summary.confirmed++;
+  }
   const page = Math.max(1, Math.min(10000, Number(query.page) || 1));
   const limit = Math.max(1, Math.min(50, Number(query.limit) || 25));
-  const rows = snapshot.rows.filter(row => (!code || row.productCode === code)
-    && (!term || [row.requestId, row.reference, row.purchaserName, row.purchaserEmail, row.contactNo, row.simSerial, row.referralCode]
-      .some(value => String(value).toLowerCase().includes(term))));
+  const rows = networkRows.filter(row =>
+    !term || [row.requestId, row.reference, row.purchaserName, row.purchaserEmail, row.contactNo, row.simSerial, row.referralCode]
+      .some(value => String(value).toLowerCase().includes(term)));
   rows.sort((a, b) => ossDate(b.requestDate).localeCompare(ossDate(a.requestDate)) || b.requestId - a.requestId);
   return { data: rows.slice((page - 1) * limit, page * limit).map(row => ({ ...row,
     check: checkMatches(row, snapshot.checks[ossKey(row)]) ? snapshot.checks[ossKey(row)] : null })),
-    meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)), refreshedAt: snapshot.refreshedAt } };
+    meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)), refreshedAt: snapshot.refreshedAt,
+      period, summary } };
 }
 
 async function prefixes(code: OssCode): Promise<Map<string, string>> {
@@ -120,7 +162,8 @@ export async function inspectOssRow(row: OssRequest, prefixIds: Map<string, stri
     const memberSuffix = clean(account.simserial).replace(/\D/g, '');
     if (![prefix, prefixId].includes(memberPrefix) || memberSuffix !== serial || !clean(account.memberID))
       throw new Error('Member identity did not match this SIM serial.');
-    return { status: 'confirmed', checkedAt, simSerial: row.simSerial, simPrefixId: row.simPrefixId, msisdn, memberId: clean(account.memberID),
+    return { status: 'confirmed', checkedAt, firstConfirmedAt: checkedAt, hqLastTransactionAt: hqTransactionDate(data.lastTransaction), hqDateCheckedAt: checkedAt,
+      simSerial: row.simSerial, simPrefixId: row.simPrefixId, msisdn, memberId: clean(account.memberID),
       currentPlan: clean(member.mainPlanName) || null, planCheckedAt: checkedAt };
   } catch (error) { return { status: 'unknown', checkedAt, simSerial: row.simSerial, simPrefixId: row.simPrefixId, error: error instanceof Error ? error.message : 'HQ unavailable.' }; }
 }
@@ -129,6 +172,9 @@ async function refreshConfirmedPlan(row: OssRequest, previous: OssCheck, prefixI
   const checkedAt = new Date().toISOString();
   if (!previous.msisdn) return { status: 'unknown', checkedAt, simSerial: row.simSerial, simPrefixId: row.simPrefixId, error: 'Registered number unavailable.' };
   try {
+    const hq = await json(`${BASE}/register/x1/checksimtype/productcode/${row.productCode}/simprefixid/${encodeURIComponent(row.simPrefixId)}/simserial/${encodeURIComponent(row.simSerial.replace(/\D/g, ''))}`);
+    if (clean(hq.simStatus).toUpperCase() !== 'COMPLETED' || normalPhone(hq.msisdn) !== previous.msisdn)
+      return { status: 'unknown', checkedAt, simSerial: row.simSerial, simPrefixId: row.simPrefixId, error: 'HQ SIM status no longer matches the saved member.' };
     const member = await json(`${BASE}/member/x3/memberProfileDetail`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ msisdn: previous.msisdn }),
     });
@@ -139,7 +185,8 @@ async function refreshConfirmedPlan(row: OssRequest, previous: OssCheck, prefixI
       clean(account.memberID) !== previous.memberId)
       return { status: 'unknown', checkedAt, simSerial: row.simSerial, simPrefixId: row.simPrefixId,
         error: 'Member identity no longer matches this SIM serial.' };
-    return { ...previous, checkedAt, currentPlan: clean(member.mainPlanName) || null, planCheckedAt: checkedAt, error: undefined };
+    return { ...previous, checkedAt, hqLastTransactionAt: hqTransactionDate(hq.lastTransaction), hqDateCheckedAt: checkedAt,
+      currentPlan: clean(member.mainPlanName) || null, planCheckedAt: checkedAt, error: undefined };
   } catch (error) {
     return { ...previous, checkedAt, error: error instanceof Error ? error.message : 'Plan service unavailable.' };
   }
@@ -152,12 +199,19 @@ export async function refreshOssJourney() {
     const rows = [...twe, ...twp];
     const current = await readOssSnapshot();
     const checks = current.checks;
+    for (const check of Object.values(checks)) if (check.status === 'confirmed' && !check.firstConfirmedAt)
+      check.firstConfirmedAt = check.checkedAt;
     const refreshedAt = new Date().toISOString();
     await saveSnapshot({ rows, refreshedAt, checks });
     const due = rows.filter(row => row.simSerial && (!checkMatches(row, checks[ossKey(row)]) ||
       (checks[ossKey(row)].status !== 'confirmed' && Date.now() - Date.parse(checks[ossKey(row)].checkedAt) >= 24 * 60 * 60 * 1000) ||
-      (checks[ossKey(row)].status === 'confirmed' && Date.now() - Date.parse(checks[ossKey(row)].checkedAt) >= 24 * 60 * 60 * 1000)));
-    due.sort((a, b) => (Date.parse(checks[ossKey(a)]?.checkedAt || '') || 0) - (Date.parse(checks[ossKey(b)]?.checkedAt || '') || 0));
+      (checks[ossKey(row)].status === 'confirmed' && (!checks[ossKey(row)].hqDateCheckedAt ||
+        Date.now() - Date.parse(checks[ossKey(row)].checkedAt) >= 24 * 60 * 60 * 1000))));
+    due.sort((a, b) => {
+      const missingHqDate = (row: OssRequest) => Number(checks[ossKey(row)]?.status === 'confirmed' && !checks[ossKey(row)]?.hqDateCheckedAt);
+      return missingHqDate(b) - missingHqDate(a) ||
+        (Date.parse(checks[ossKey(a)]?.checkedAt || '') || 0) - (Date.parse(checks[ossKey(b)]?.checkedAt || '') || 0);
+    });
     const batch = due.slice(0, 8);
     const prefixCache = new Map<OssCode, Promise<Map<string, string>>>();
     await Promise.all(batch.map(async row => {
@@ -167,9 +221,7 @@ export async function refreshOssJourney() {
         const next = checkMatches(row, checks[ossKey(row)]) && checks[ossKey(row)]?.status === 'confirmed'
           ? await refreshConfirmedPlan(row, checks[ossKey(row)], prefixIds)
           : await inspectOssRow(row, prefixIds);
-        if (checkMatches(row, checks[ossKey(row)]) && checks[ossKey(row)]?.status === 'confirmed' && next.status === 'unknown') {
-          checks[ossKey(row)] = { ...checks[ossKey(row)], checkedAt: next.checkedAt, error: next.error };
-        } else checks[ossKey(row)] = next;
+        checks[ossKey(row)] = next;
       } catch (error) { checks[ossKey(row)] = { status: 'unknown', checkedAt: new Date().toISOString(), simSerial: row.simSerial, simPrefixId: row.simPrefixId, error: error instanceof Error ? error.message : 'HQ unavailable.' }; }
     }));
     // This key is private to OSS; other order metadata keys are untouched.

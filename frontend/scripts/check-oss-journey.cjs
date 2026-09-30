@@ -37,9 +37,10 @@ async function run(status, member, expected) {
   assert.equal((await run({ simStatus: '', msisdn: '' }, null, 'unknown')).memberId, undefined);
   assert.equal((await run({ simStatus: 'PENDING' }, null, 'processing')).msisdn, undefined);
   const member = { accountInfo: { memberID: 'TWE-123', simprefix: '10', simserial: row.simSerial }, mainPlanName: 'FU35' };
-  const confirmed = await run({ simStatus: 'COMPLETED', msisdn: '60123456789' }, member, 'confirmed');
+  const confirmed = await run({ simStatus: 'COMPLETED', msisdn: '60123456789', lastTransaction: '2026-09-30 12:34:56.0' }, member, 'confirmed');
   assert.equal(confirmed.memberId, 'TWE-123');
   assert.equal(confirmed.msisdn, '0123456789');
+  assert.equal(confirmed.hqLastTransactionAt, '2026-09-30T04:34:56.000Z');
   assert.equal(planLabel(row, confirmed), 'Pelan aktif: FU35');
   const mismatch = await run({ simStatus: 'COMPLETED', msisdn: '60123456789' },
     { accountInfo: { ...member.accountInfo, simserial: '99999999999' } }, 'unknown');

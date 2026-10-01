@@ -1110,7 +1110,7 @@ const goBack = () => {
         addressOne: form.address1,
         addressTwo: form.address2 || '',
       };
-      console.log('[smartech] before track');
+     
       trackSimPurchaseInitiated(smartechOrder);
       localStorage.setItem('tw_smartech_sim_order', JSON.stringify({ paymentRefNo, ...smartechOrder }));
       window.location.href = `${getOssPaymentUrl()}?${params.toString()}`;

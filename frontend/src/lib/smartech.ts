@@ -6,7 +6,7 @@ declare global {
 }
 
 export function smartechDispatch(event: string, payload: Record<string, any>) {
-     console.log('[smartech] dispatch:', event, payload, 'sdk:', typeof window !== 'undefined' && !!window.smartech);
+     
   if (typeof window === 'undefined' || !window.smartech) return;
   window.smartech('dispatch', event, payload);
 }
@@ -136,7 +136,7 @@ const MERCH_INITIATED_EVENT = 'online sim purchase initiated';
 const MERCH_SUCCESS_EVENT = 'online sim purchase success';
 
 function sendMerchOrderEvent(eventName: string, d: MerchOrderData) {
-    console.log('[smartech] merch:', eventName, 'sdk:', typeof window !== 'undefined' && !!window.smartech, 'ic:', d.icNumber);
+    
   if (!d.icNumber) return;
   smartechContact('24', {
     'pk^ic_number': d.icNumber,

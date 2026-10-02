@@ -47,6 +47,7 @@ function currentProjection(product: CatalogueProductRecord) {
     title: product.model.details.title,
     price: product.model.details.price,
     description: product.model.details.description,
+    isPreOrder: product.model.details.isPreOrder ?? false,
     ...(product.model.details.category === undefined ? {} : { category: product.model.details.category }),
   };
   return {
@@ -72,7 +73,7 @@ function currentProjection(product: CatalogueProductRecord) {
 function snapshotProjection(snapshot: CataloguePublishedSnapshotManifest) {
   return {
     slug: snapshot.product.slug,
-    details: snapshot.product.details,
+    details: { ...snapshot.product.details, isPreOrder: snapshot.product.details.isPreOrder ?? false },
     minimumOrderQuantity: snapshot.product.minimumOrderQuantity ?? 1,
     choices: snapshot.product.choices,
     combinations: snapshot.product.combinations.map(({ variantId: _variantId, ...combination }) => combination),

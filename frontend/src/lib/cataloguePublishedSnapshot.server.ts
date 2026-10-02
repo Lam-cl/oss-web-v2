@@ -8,7 +8,7 @@ import { createRemoteDocument, dataApiBinary, dataApiEnabled, dataApiRequest, re
 export type CataloguePublishedProduct = {
   catalogueId: string;
   slug: string;
-  details: { title: string; price: number; description: string; category?: string };
+  details: { title: string; price: number; description: string; category?: string; isPreOrder?: boolean };
   choices: Array<{ key: string; name: string; values: Array<{ key: string; label: string }> }>;
   combinations: Array<{ valueKeys: string[]; variantId: number; price: number; inventory: number }>;
   images: Array<{ url: string; order: number; assignment: string; thumbnailUrl?: string }>;
@@ -66,9 +66,10 @@ function validateProduct(value: unknown, catalogueId: string, bundleProductId: n
   if (!object(value) || !Object.hasOwn(value, 'slug')) throw new Error('Published snapshot product is invalid.');
   const allowed = ['bundleProductId','catalogueId','choices','combinations','details','images','slug', ...(Object.hasOwn(value,'minimumOrderQuantity') ? ['minimumOrderQuantity'] : [])];
   if (!exact(value, allowed) || value.catalogueId !== catalogueId || value.bundleProductId !== bundleProductId || !safeText(value.slug, 200)) throw new Error('Published snapshot product is invalid.');
-  if (!object(value.details) || !exact(value.details, ['description','price','title', ...(Object.hasOwn(value.details,'category') ? ['category'] : [])])
+  if (!object(value.details) || !exact(value.details, ['description','price','title', ...(Object.hasOwn(value.details,'category') ? ['category'] : []), ...(Object.hasOwn(value.details,'isPreOrder') ? ['isPreOrder'] : [])])
     || !safeText(value.details.title, 200) || !safeText(value.details.description, 10_000, false) || !finitePrice(value.details.price)
-    || Object.hasOwn(value.details,'category') && !safeText(value.details.category, 200)) throw new Error('Published snapshot product details are invalid.');
+    || Object.hasOwn(value.details,'category') && !safeText(value.details.category, 200)
+    || Object.hasOwn(value.details,'isPreOrder') && typeof value.details.isPreOrder !== 'boolean') throw new Error('Published snapshot product details are invalid.');
   if (!Array.isArray(value.choices) || value.choices.length > 2 || !Array.isArray(value.combinations) || value.combinations.length === 0 || value.combinations.length > 10_000
     || !Array.isArray(value.images) || value.images.length === 0 || value.images.length > 100) throw new Error('Published snapshot product collections are invalid.');
   const valueKeys = new Set<string>();

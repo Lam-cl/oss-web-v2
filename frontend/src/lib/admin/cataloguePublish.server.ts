@@ -9,7 +9,7 @@ export type CatalogueVariantBinding = { valueKeys:string[]; variantId:number };
 export type CatalogueImageBinding = { uploadKey:string; imageId:number; sha256:string; order:number };
 export type CatalogueVariantUpdate = { id:number; sku:string; price:number; inventory:number };
 export type CataloguePublishRequest = { catalogueId:string; spec:unknown; uploads:CataloguePreparedImageUpload[]; previousBundleProductId?:number|null; versionOrdinal:number };
-export type CatalogueDraftPayload = { draft:true; draftMarker:string; operationId:string; attemptRevision:number; title:string; description:string; price:number; categories:string[]; tags:string[] };
+export type CatalogueDraftPayload = { draft:true; draftMarker:string; operationId:string; attemptRevision:number; title:string; description:string; price:number; categories:string[]; tags:string[]; isPreOrder?:boolean };
 export type CatalogueCompiledVariantsRequest = { optionName:'Catalogue Variant'; values:string[]; hidden:true; autoGenerateSku:true; defaultInventory:0; operationId:string };
 export type CatalogueCompiledVariantsAttestation = { optionId:number; valueIdByCode:Record<string,number>; variantIdByCode:Record<string,number> };
 export type CataloguePublishResult = { operationId:string; bundleProductId:number; bindings:CatalogueVariantBinding[]; imageBindings:CatalogueImageBinding[]; fingerprint:string };
@@ -64,7 +64,7 @@ function providerSkuPlan(canonicalSkus:string[],catalogueId:string,versionOrdina
 async function read(d:CataloguePublishDependencies,id:number,label:string){try{return unwrap(await d.readProduct(id));}catch(e){if(e instanceof CataloguePublishError)throw e;throw new CataloguePublishError(`Bundle ${label} readback failed.`,502,id);}}
 const MIN_PROVIDER_TITLE_SUFFIX_LENGTH=` [TW-${'0'.repeat(8)}-a1]`.length;
 const MAX_PROVIDER_TITLE_SUFFIX_LENGTH=` [TW-${'0'.repeat(8)}-a${Number.MAX_SAFE_INTEGER}]`.length;
-function metadata(p:Row,s:ProductEditorSpec){const titleMatches=p.title===s.details.title||s.details.title.length===200&&typeof p.title==='string'&&p.title.length>=200-MAX_PROVIDER_TITLE_SUFFIX_LENGTH&&p.title.length<=200-MIN_PROVIDER_TITLE_SUFFIX_LENGTH&&s.details.title.startsWith(p.title);if(!titleMatches||p.description!==s.details.description||numeric(p.price)!==s.details.price)throw new CataloguePublishError('Bundle product metadata verification failed.',502,positive(p.id)?p.id:undefined);}
+function metadata(p:Row,s:ProductEditorSpec){const titleMatches=p.title===s.details.title||s.details.title.length===200&&typeof p.title==='string'&&p.title.length>=200-MAX_PROVIDER_TITLE_SUFFIX_LENGTH&&p.title.length<=200-MIN_PROVIDER_TITLE_SUFFIX_LENGTH&&s.details.title.startsWith(p.title);if(!titleMatches||p.description!==s.details.description||numeric(p.price)!==s.details.price||(p.isPreOrder===true)!==(s.details.isPreOrder===true))throw new CataloguePublishError('Bundle product metadata verification failed.',502,positive(p.id)?p.id:undefined);}
 function verifyImages(p:Row,uploads:ReturnType<typeof validateUploads>,resolved:Record<string,number>){const images=imageRows(p),byId=new Map(images.map(x=>[x.id,x]));if(images.length!==uploads.length||Object.keys(resolved).length!==uploads.length)throw new CataloguePublishError('Bundle image count verification failed.',502);uploads.forEach(u=>{const id=resolved[u.key],x=byId.get(id);if(!x||x.uploadKey!==u.key||x.order!==u.order||x.contentType!==u.contentType||digestOf(x)!==u.sha256)throw new CataloguePublishError('Bundle image storage digest/ID/order/type verification failed.',502);});}
 function exactMap(actual:unknown,expected:Record<string,number>){return object(actual)&&same(Object.keys(actual).sort(),Object.keys(expected).sort())&&Object.entries(expected).every(([k,v])=>actual[k]===v);}
 function flatSnapshot(p:Row,codes:string[]){
@@ -96,7 +96,7 @@ async function runPublication(request:CataloguePublishRequest,d:CataloguePublish
     let created:unknown=reconciledDraft,mutationError=false;
     if(!created){
       job=await checkpoint(job,d,()=>{});
-      try{created=await d.createDraft({draft:true,draftMarker:d.draftMarker,operationId:op,attemptRevision:job.revision,title:spec.details.title,description:spec.details.description,price:spec.details.price,categories:spec.details.category===undefined?[]:[spec.details.category],tags:[]});}
+      try{created=await d.createDraft({draft:true,draftMarker:d.draftMarker,operationId:op,attemptRevision:job.revision,title:spec.details.title,description:spec.details.description,price:spec.details.price,categories:spec.details.category===undefined?[]:[spec.details.category],tags:[],...(spec.details.isPreOrder===undefined?{}:{isPreOrder:spec.details.isPreOrder})});}
       catch{mutationError=true;created=await d.findDraftByOperation(op);}
     }
     if(!created)throw new CataloguePublishError('Bundle draft creation failed and could not be reconciled.',502);

@@ -29,6 +29,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
     readActiveVersions: async () => [{ active:true, operationId:op, productId:7, fingerprint:hash }],
   };
   function applyMetadata(form) {
+    product.isPreOrder = form.get('isPreOrder') === 'true';
     for (const key of ['title','description','type','price','shippingCost','weight']) if (form.get(key) !== null) product[key] = key === 'price' ? Number(form.get(key)) : String(form.get(key));
     // Real-provider failure mode: taxonomy is irreversibly discarded on every PUT.
     product.categories = []; product.tags = [];
@@ -36,7 +37,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const fetcher = async (url, init) => {
     const u = new URL(String(url)); calls.push([init.method, u.pathname, u.search, init.body]);
     if (u.pathname.endsWith('/products/upload')) {
-      product = { id:7, title:String(init.body.get('title')), description:String(init.body.get('description')), type:String(init.body.get('type')), price:Number(init.body.get('price')), shippingCost:String(init.body.get('shippingCost')), weight:String(init.body.get('weight')), categories:[], tags:[], images:[], options:[], productVariants:[], deletedAt:null, requiresSimAssignment:init.body.get('requiresSimAssignment')==='true', tracksInventory:init.body.get('tracksInventory')==='true' };
+      product = { id:7, title:String(init.body.get('title')), description:String(init.body.get('description')), type:String(init.body.get('type')), price:Number(init.body.get('price')), shippingCost:String(init.body.get('shippingCost')), weight:String(init.body.get('weight')), categories:[], tags:[], images:[], options:[], productVariants:[], deletedAt:null, isPreOrder:init.body.get('isPreOrder')==='true', requiresSimAssignment:init.body.get('requiresSimAssignment')==='true', tracksInventory:init.body.get('tracksInventory')==='true' };
       return json({ data:product }, 201);
     }
     if (u.pathname.endsWith('/products') && init.method === 'GET') return json({ data: product ? [product] : [] });
@@ -61,7 +62,8 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const adapter = make();
   assert.equal(adapter.draftMarker, 'TW-CATALOGUE-DRAFT');
   await assert.rejects(()=>adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:3,title:canonicalTitle,description:'Keeps warm',price:10,categories:['SIM Card'],tags:['ignored']}),/revision|publication/i);
-  const draft = await adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:2,title:canonicalTitle,description:'Keeps warm',price:10,categories:['SIM Card'],tags:['ignored']});
+  const draft = await adapter.createDraft({draft:true,draftMarker:adapter.draftMarker,operationId:op,attemptRevision:2,title:canonicalTitle,description:'Keeps warm',price:10,categories:['SIM Card'],tags:['ignored'],isPreOrder:true});
+  assert.equal(product.isPreOrder,true);
   assert.equal(draft.data.id, 7);
   assert.equal(product.title, `${canonicalTitle.slice(0,200-titleSuffix.length)}${titleSuffix}`);
   assert.equal(product.title.length, 200);
@@ -128,6 +130,13 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const availability = await adapter.checkGlobalSkuAvailability(['MUG-A'],{excludeProductIds:[7]});
   assert.equal(availability.available,true);
   assert(calls.some(([m,p,,body])=>m==='PUT'&&p==='/api/products/7'&&body.get('images')&&body.get('description')===`Keeps warm${suffix}`));
+  assert.equal(product.isPreOrder,true,'image PUT, publish and restore preserve pre-order');
+  for (const isPreOrder of [false,true,false]) {
+    const fresh=make();
+    await fresh.createDraft({draft:true,draftMarker:fresh.draftMarker,operationId:op,attemptRevision:2,title:'Pre-order test',description:'Test',price:10,categories:[],tags:[],isPreOrder});
+    assert.equal(product.isPreOrder,isPreOrder);
+    await fresh.publishProduct(7,op);assert.equal(product.isPreOrder,isPreOrder);
+  }
   for (const [,p] of calls) assert.doesNotMatch(p,/catalogue\/(drafts|activations|retirements|sku-availability)|compiled-variants|publication-state|publish|restore-draft|catalogue-images/);
   console.log('Catalogue durable-marker Bundle adapter check passed');
 })().catch(e => { console.error(e); process.exit(1); });

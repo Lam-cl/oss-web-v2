@@ -506,7 +506,7 @@ export default function UnifiedProductEditor({
     const split = splitPhotoRows(next);
     onPhotosChange(split.existingPhotos, split.pendingPhotos);
   };
-  const updateDetails = (field: keyof ProductEditorSpec['details'], value: string | number) => {
+  const updateDetails = (field: keyof ProductEditorSpec['details'], value: string | number | boolean) => {
     onModelChange({ ...model, details: { ...model.details, [field]: value } });
   };
   const updateNumeric = (key: string, value: number | '', commit: (numeric: number) => void) => {
@@ -695,6 +695,7 @@ export default function UnifiedProductEditor({
               {customCategoryMode && <label>New category<input autoFocus value={model.details.category ?? ''} onChange={(event) => updateDetails('category', event.target.value)} placeholder="New category name" /></label>}
               <label>Minimum order quantity<NumericInput resetToken={numericResetToken} min={1} step={1} value={model.details.minimumOrderQuantity ?? 1} onChange={(value) => updateNumeric('minimum-order-quantity', value, (minimumOrderQuantity) => updateDetails('minimumOrderQuantity', minimumOrderQuantity))} /></label>
             </>}
+            {!simManaged && <label>Pre-order<select name="isPreOrder" value={String(model.details.isPreOrder ?? false)} onChange={(event) => updateDetails('isPreOrder', event.target.value === 'true')}><option value="false">No</option><option value="true">Yes</option></select><small className={styles.fieldHint}>Mark this product as a pre-order.</small></label>}
             <label className={styles.fullField}>Description<textarea rows={4} value={descriptionDraft} onChange={(event) => updateDescription(event.target.value)} /></label>
             <label className={styles.fullField}>Product details<textarea name="productDetails" rows={5} value={productDetailsDraft} onChange={(event) => updateProductDetails(event.target.value)} placeholder={'One detail per line\nExample: Material: Cotton\nSize: 6 ft × 2 ft'} /><small className={styles.fieldHint}>Enter one detail per line. These appear separately from the main description.</small></label>
           </div>

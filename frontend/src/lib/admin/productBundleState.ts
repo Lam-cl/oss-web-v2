@@ -231,7 +231,10 @@ function normalizeProduct(input: RecordValue): NormalizedBundleProduct {
 export function normalizeBundleProduct(payload: unknown): NormalizedBundleProduct {
   const candidate = object(payload) && 'data' in payload ? payload.data : payload;
   if (!object(candidate)) throw new Error('A valid Bundle product is required.');
-  return normalizeProduct(candidate);
+  const normalized = normalizeProduct(candidate);
+  // Missing and false are equivalent for existing publication fingerprints.
+  if (candidate.isPreOrder === true) normalized.isPreOrder = true;
+  return normalized;
 }
 
 export function fingerprintBundleProduct(payload: unknown) {

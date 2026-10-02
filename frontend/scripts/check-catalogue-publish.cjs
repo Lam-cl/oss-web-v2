@@ -108,6 +108,14 @@ try {
   {const f=await fresh();await assert.rejects(()=>run(f,request(1,40)),/differ|previous/i);assert.equal(f.events.filter(x=>x==='retire-old').length,0);}
   // Job is loaded before preflight; resume excludes its own draft, then re-attests the exact operation marker.
   {const f=await fresh(),input=request(1);f.badDigest=true;await assert.rejects(()=>run(f,input));f.badDigest=false;f.events=[];await run(f,input);const pre=f.events.indexOf('sku-preflight'),find=f.events.indexOf('find-draft');assert.ok(pre>=0&&find>pre);const job=await store.readPublicationJob(crypto.createHash('sha256').update(canonical({catalogueId:input.catalogueId,spec:input.spec,previous:9,versionOrdinal:1,uploads:input.uploads.map(({key,name,contentType,order,sha256})=>({key,name,contentType,order,sha256}))})).digest('hex'),f.directory);assert.equal(job.draftBundleProductId,40);}
+  // Pre-order survives the actual publication orchestration and must be attested.
+  for(const isPreOrder of [true,false]){
+    const f=await fresh(),input=request(1);input.spec.details.isPreOrder=isPreOrder;
+    const create=f.createDraft.bind(f);
+    f.createDraft=async payload=>{assert.equal(payload.isPreOrder,isPreOrder);const p=await create(payload);f.products.get(p.id).isPreOrder=payload.isPreOrder;p.isPreOrder=payload.isPreOrder;return p;};
+    const result=await run(f,input);assert.equal(f.products.get(result.bundleProductId).isPreOrder,isPreOrder);
+  }
+  {const f=await fresh(),input=request(1);input.spec.details.isPreOrder=true;await assert.rejects(()=>run(f,input),/metadata verification/i);assert.equal(f.activations.size,0,'provider dropping pre-order must not activate');}
   // Version ordinal is required, positive, safe and immutable as part of the operation fingerprint.
   for(const versionOrdinal of [undefined,0,-1,1.5,Number.MAX_SAFE_INTEGER+1]){const f=await fresh(),input=request(1);input.versionOrdinal=versionOrdinal;await assert.rejects(()=>run(f,input),/version ordinal/i);assert.deepEqual(f.events,[]);}
   {const f=await fresh();f.preflightEvidenceMode='boolean';await assert.rejects(()=>run(f,request(1)),/SKU|evidence|attestation/i);assert.equal(f.createCount,0);}

@@ -60,7 +60,7 @@ type CatalogueMediaSummary = { mediaId: string; order: number; assignment: 'all'
 type CataloguePublicationSummary = { phase: string };
 
 const emptyProduct: ProductEditorSpec = {
-  details: { title: '', description: '', price: 0, minimumOrderQuantity: 1 },
+  details: { title: '', description: '', price: 0, minimumOrderQuantity: 1, isPreOrder: false },
   choices: [],
   combinations: [{ valueKeys: [], price: 0, inventory: 0 }],
   existingImages: [],

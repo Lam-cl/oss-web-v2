@@ -4,6 +4,7 @@ export type ProductEditorDetails = {
   description: string;
   category?: string;
   minimumOrderQuantity?: number;
+  isPreOrder?: boolean;
 };
 
 export type ProductEditorValue = {
@@ -92,6 +93,7 @@ export function normalizeProductEditorSpec(input: unknown): ProductEditorSpec {
     price: amount(rawDetails.price, 'Product price'),
     description: text(rawDetails.description, 'Product description', true),
     ...(rawDetails.category === undefined ? {} : { category: text(rawDetails.category, 'Product category') }),
+    ...(rawDetails.isPreOrder === undefined ? {} : { isPreOrder: bool(rawDetails.isPreOrder, 'Pre-order') }),
     ...(rawDetails.minimumOrderQuantity === undefined
       ? {}
       : { minimumOrderQuantity: positiveInteger(rawDetails.minimumOrderQuantity, 'Minimum order quantity') }),

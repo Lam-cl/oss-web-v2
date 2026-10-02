@@ -178,4 +178,10 @@ const collision = {
 };
 assert.equal(editor.normalizeProductEditorSpec(collision).combinations.length, 2,
   'JSON tuple keys must distinguish colon-containing value keys');
+for (const isPreOrder of [true, false]) {
+  assert.equal(editor.normalizeProductEditorSpec({ ...raw, details: { ...raw.details, isPreOrder } }).details.isPreOrder, isPreOrder);
+}
+for (const isPreOrder of ['true', 'false', 1, 0, null]) {
+  assert.throws(() => editor.normalizeProductEditorSpec({ ...raw, details: { ...raw.details, isPreOrder } }), /Pre-order must be boolean/);
+}
 console.log('Product editor semantic contract check passed');

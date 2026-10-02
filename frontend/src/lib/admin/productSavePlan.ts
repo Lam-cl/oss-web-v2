@@ -24,7 +24,7 @@ export type ProductSaveOperation =
   | { kind: 'remove-images'; scope: 'bundle'; imageIds: number[] }
   | { kind: 'order-images'; scope: 'bundle'; images: ProductImageReference[] }
   | { kind: 'update-control'; scope: 'local'; metadata: ProductControlMetadata }
-  | { kind: 'update-product'; scope: 'bundle'; payload: { title?: string; price?: number; description?: string } };
+  | { kind: 'update-product'; scope: 'bundle'; payload: { title?: string; price?: number; description?: string; isPreOrder?: boolean } };
 
 export type ProductSavePlanInput = {
   current: NormalizedBundleProduct;
@@ -269,6 +269,7 @@ export function planProductSave({ current, control, spec, uploads = [] }: Produc
   if (current.title !== spec.details.title) payload.title = spec.details.title;
   if (current.price !== spec.details.price) payload.price = spec.details.price;
   if (current.description !== spec.details.description) payload.description = spec.details.description;
+  if (spec.details.isPreOrder !== undefined && (current.isPreOrder === true) !== spec.details.isPreOrder) payload.isPreOrder = spec.details.isPreOrder;
   if (Object.keys(payload).length) metadata.push({ kind: 'update-product', scope: 'bundle', payload });
 
   return [...structural, ...variants, ...media, ...local, ...metadata];

@@ -74,6 +74,18 @@ for (const generation of [1, 2, 5, 8]) test(`generation ${generation}: clean pub
   assert.deepEqual(evaluatePublicationChangeState(fixture(generation)), { publicationChangeState: 'clean' });
 });
 
+test('pre-order defaults clean, toggling is dirty and matching publication is clean', () => {
+  const evidence=fixture();
+  evidence.product.model.details.isPreOrder=false;
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'clean');
+  evidence.product.model.details.isPreOrder=true;
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'dirty');
+  evidence.snapshot.product.details.isPreOrder=true;
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'clean');
+  evidence.product.model.details.isPreOrder=false;
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'dirty');
+});
+
 test('save changes are dirty and a matching republish becomes clean again', () => {
   const first = fixture(2);
   first.product.model.details.title = 'Bottle updated';

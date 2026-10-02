@@ -86,6 +86,11 @@ const version = (bundleProductId, overrides = {}) => ({
     assert.equal(created.createdAt, created.updatedAt);
     assert.equal(new Date(created.createdAt).toISOString(), created.createdAt);
     assert.deepEqual(await store.readCatalogueProduct(created.catalogueId, directory), created);
+    const preOrderModel=model('Pre-order test');preOrderModel.details.isPreOrder=true;
+    const preOrder=await store.createCatalogueProduct(preOrderModel,'preorder-test',directory);
+    assert.equal((await store.readCatalogueProduct(preOrder.catalogueId,directory)).model.details.isPreOrder,true);
+    const regular=await store.updateCatalogueProduct(preOrder.catalogueId,preOrder.revision,record=>({...record,model:{...record.model,details:{...record.model.details,isPreOrder:false}}}),directory);
+    assert.equal((await store.readCatalogueProduct(regular.catalogueId,directory)).model.details.isPreOrder,false);
     assert.equal((await fsp.stat(directory)).mode & 0o777, 0o700);
     assert.equal((await fsp.stat(path.join(directory, `${created.catalogueId}.json`))).mode & 0o777, 0o600);
 

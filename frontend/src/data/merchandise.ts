@@ -10,6 +10,7 @@ export interface MerchandiseOption {
 }
 
 export interface MerchandiseProduct {
+  isPreOrder?: boolean;
   id: string;
   apiProductId?: number;
   slug: string;
@@ -35,6 +36,7 @@ export interface MerchandiseProduct {
 }
 
 export interface BundleMerchandiseProduct {
+  isPreOrder?: boolean;
   id: number;
   title?: string;
   name?: string;
@@ -110,6 +112,13 @@ export function getMerchandiseOptionIndexForImage(product: MerchandiseProduct, i
 export function getMerchandiseVariantInventory(product: MerchandiseProduct, variantId?: number) {
   if (!variantId) return 0;
   return Math.max(0, Number(product.variantInventoryById?.[variantId]) || 0);
+}
+
+// Purchase availability is separate from physical inventory. Infinity never
+// goes into persisted cart data or provider stock; undefined means no cart cap.
+export function getMerchandiseVariantPurchaseLimit(product: MerchandiseProduct, variantId?: number) {
+  if (!variantId || !Object.hasOwn(product.variantInventoryById ?? {}, variantId)) return 0;
+  return product.isPreOrder === true ? Infinity : getMerchandiseVariantInventory(product, variantId);
 }
 
 function normaliseProductName(value: string) {
@@ -282,7 +291,8 @@ export function mergeBundleMerchandiseProducts(
         apiProductId: apiProduct.id,
         variantInventoryById,
         inventory,
-        soldOut: inventory === 0,
+        isPreOrder: apiProduct.isPreOrder === true,
+        soldOut: inventory === 0 && apiProduct.isPreOrder !== true,
         providerBindingOnly: true,
       } as MerchandiseProduct];
     }
@@ -405,7 +415,8 @@ export function mergeBundleMerchandiseProducts(
       gallery: galleryImages,
       features: productContent.details.length ? productContent.details : enrichment?.features,
       unitLabel: enrichment?.unitLabel,
-      soldOut: variants.length === 0 || inventory === 0,
+      isPreOrder: apiProduct.isPreOrder === true,
+      soldOut: variants.length === 0 || inventory === 0 && apiProduct.isPreOrder !== true,
       inventory,
       variantIds,
       variantPrices,

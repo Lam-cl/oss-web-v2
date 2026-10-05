@@ -151,7 +151,7 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
     'zustand/middleware': { persist: (value) => value },
     '@/data/merchandise': {
       getMerchandiseVariantId: (candidate, option) => candidate.variantIds[option],
-      getMerchandiseVariantInventory: (candidate, id) => candidate.variantInventoryById[id] || 0,
+      getMerchandiseVariantPurchaseLimit: (candidate, id) => candidate.variantInventoryById[id] || 0,
       merchandiseVariantKey: (option, size) => `${option}${size || ''}`,
     },
   });

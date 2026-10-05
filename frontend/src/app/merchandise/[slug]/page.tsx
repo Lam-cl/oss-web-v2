@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { getMerchandiseGalleryIndexForOption, getMerchandiseOptionIndexForImage, getMerchandiseProduct, getMerchandiseVariantId, getMerchandiseVariantInventory, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
+import { getMerchandiseGalleryIndexForOption, getMerchandiseOptionIndexForImage, getMerchandiseProduct, getMerchandiseVariantId, getMerchandiseVariantPurchaseLimit, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
 import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
 import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
 import { minimumOrderError } from '@/lib/minimumOrderQuantity';
@@ -67,7 +67,7 @@ export default function MerchandiseDetailPage() {
   const selectedImage = activeImage || gallery[0] || selectedOption.image;
   const bundleVariantId = getMerchandiseVariantId(product, selectedOption.name, selectedSize || undefined);
   const variantPrice = product.variantPrices?.[merchandiseVariantKey(selectedOption.name, selectedSize || undefined)] ?? product.price;
-  const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
+  const availableQuantity = getMerchandiseVariantPurchaseLimit(product, bundleVariantId);
 
   const handleOptionChange = (index: number) => {
     setOptionIndex(index);
@@ -130,7 +130,8 @@ export default function MerchandiseDetailPage() {
       price: variantPrice,
       quantity,
       minimumOrderQuantity: product.minimumOrderQuantity,
-      availableQuantity,
+      availableQuantity: Number.isFinite(availableQuantity) ? availableQuantity : undefined,
+      isPreOrder: product.isPreOrder === true,
     });
     router.push('/cart');
   };

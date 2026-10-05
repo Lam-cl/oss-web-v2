@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem } from '@/types';
-import { getMerchandiseVariantId, getMerchandiseVariantInventory, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
+import { getMerchandiseVariantId, getMerchandiseVariantPurchaseLimit, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
 
 function clampQuantity(item: { minimumOrderQuantity?: number; availableQuantity?: number }, requested: number) {
   const minimum = Math.max(1, item.minimumOrderQuantity || 1);
@@ -74,7 +74,8 @@ export function reconcileMerchandiseCartItems(items: CartItem[], products: Merch
       availableQuantity: undefined,
       selectionRequired: 'Variant selection required' as const,
     };
-    const availableQuantity = getMerchandiseVariantInventory(product, bundleVariantId);
+    const purchaseLimit = getMerchandiseVariantPurchaseLimit(product, bundleVariantId);
+    const availableQuantity = Number.isFinite(purchaseLimit) ? purchaseLimit : undefined;
     const { selectionRequired: _selectionRequired, ...current } = item;
     return {
       ...current,
@@ -88,6 +89,7 @@ export function reconcileMerchandiseCartItems(items: CartItem[], products: Merch
       image: option.image,
       price: product.variantPrices?.[merchandiseVariantKey(option.name)] ?? product.price,
       minimumOrderQuantity: product.minimumOrderQuantity,
+      isPreOrder: product.isPreOrder === true,
       availableQuantity,
       quantity: clampQuantity({ minimumOrderQuantity: product.minimumOrderQuantity, availableQuantity }, item.quantity),
     };
@@ -118,6 +120,7 @@ export const useCartStore = create<CartState>()(
                 i.id === existing.id
                   ? {
                       ...i,
+                      isPreOrder: item.isPreOrder === true,
                       minimumOrderQuantity,
                       availableQuantity,
                       quantity: clampQuantity(

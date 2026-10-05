@@ -39,9 +39,9 @@ export default function CheckoutPage() {
   const stockIssues = items.filter((item) => item.type === 'merchandise' && (
     item.selectionRequired
     ||
-    item.availableQuantity === undefined
+    (item.isPreOrder !== true && (item.availableQuantity === undefined
     || item.quantity > item.availableQuantity
-    || item.availableQuantity < (item.minimumOrderQuantity || 1)
+    || item.availableQuantity < (item.minimumOrderQuantity || 1)))
   ));
 
   const [pickupOption, setPickupOption] = useState<'delivery' | 'self'>('delivery');

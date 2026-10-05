@@ -28,7 +28,7 @@ const cart = compile('src/store/cartStore.ts', {
   '@/data/merchandise': {
     merchandiseVariantKey: key,
     getMerchandiseVariantId: (product, option, size) => product.variantIds[key(option, size)],
-    getMerchandiseVariantInventory: (product, id) => product.variantInventoryById[id] || 0,
+    getMerchandiseVariantPurchaseLimit: (product, id) => product.isPreOrder === true && Object.hasOwn(product.variantInventoryById,id) ? Infinity : product.variantInventoryById[id] || 0,
   },
 });
 
@@ -70,4 +70,13 @@ const sizedResult = cart.reconcileMerchandiseCartItems([staleFlyer], [sized])[0]
 assert.equal(sizedResult.bundleVariantId, undefined);
 assert.equal(sizedResult.selectionRequired, 'Variant selection required');
 
+const preorderProduct = {...flyers,isPreOrder:true,variantInventoryById:{349:0}};
+const preorderItem = cart.reconcileMerchandiseCartItems([{...repairedFlyer,quantity:100}], [preorderProduct])[0];
+assert.equal(preorderItem.quantity,100);
+assert.equal(preorderItem.isPreOrder,true);
+assert.equal(preorderItem.availableQuantity,undefined);
+assert.equal(JSON.parse(JSON.stringify(preorderItem)).availableQuantity,undefined,'no Infinity/null stock cap persisted');
+const regularItem = cart.reconcileMerchandiseCartItems([preorderItem], [{...preorderProduct,isPreOrder:false,variantInventoryById:{349:3}}])[0];
+assert.equal(regularItem.isPreOrder,false);
+assert.equal(regularItem.quantity,3,'turning pre-order off restores physical stock cap');
 console.log('Single-variant cart behavior passed');

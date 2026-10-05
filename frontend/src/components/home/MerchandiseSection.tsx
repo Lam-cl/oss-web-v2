@@ -8,7 +8,7 @@ import {
   getMerchandiseGalleryIndexForOption,
   getMerchandiseOptionIndexForImage,
   getMerchandiseVariantId,
-  getMerchandiseVariantInventory,
+  getMerchandiseVariantPurchaseLimit,
   merchandiseVariantKey,
   type MerchandiseProduct,
 } from '@/data/merchandise';
@@ -334,7 +334,7 @@ export default function MerchandiseSection() {
     ? selectedProduct.variantPrices?.[merchandiseVariantKey(selectedOption.name, selectedSize || undefined)] ?? selectedProduct.price
     : selectedProduct?.price || 0;
   const selectedVariantInventory = selectedProduct
-    ? getMerchandiseVariantInventory(selectedProduct, selectedBundleVariantId)
+    ? getMerchandiseVariantPurchaseLimit(selectedProduct, selectedBundleVariantId)
     : 0;
   const selectedVariantInCart = selectedBundleVariantId
     ? items.reduce((total, item) => total + (
@@ -501,7 +501,7 @@ export default function MerchandiseSection() {
       return;
     }
 
-    const inventory = getMerchandiseVariantInventory(selectedProduct, bundleVariantId);
+    const inventory = getMerchandiseVariantPurchaseLimit(selectedProduct, bundleVariantId);
     const alreadyInCart = items.reduce((total, item) => total + (
       item.type === 'merchandise' && item.bundleVariantId === bundleVariantId ? item.quantity : 0
     ), 0);
@@ -532,7 +532,8 @@ export default function MerchandiseSection() {
       price: selectedVariantPrice,
       quantity,
       minimumOrderQuantity: selectedProduct.minimumOrderQuantity,
-      availableQuantity: inventory,
+      availableQuantity: Number.isFinite(inventory) ? inventory : undefined,
+      isPreOrder: selectedProduct.isPreOrder === true,
     });
     trackAddToCart({
       prid: selectedProduct.id,
@@ -915,7 +916,7 @@ export default function MerchandiseSection() {
                         className={selectedSize === size ? 'active' : ''}
                         disabled={(() => {
                           const variantId = getMerchandiseVariantId(selectedProduct, selectedOption.name, size);
-                          return !variantId || getMerchandiseVariantInventory(selectedProduct, variantId) <= 0;
+                          return !variantId || getMerchandiseVariantPurchaseLimit(selectedProduct, variantId) <= 0;
                         })()}
                         onClick={() => {
                           setSelectedSize(size);

@@ -7,7 +7,7 @@ import type { CartItem } from "@/types";
 import {
   getMerchandiseGalleryIndexForOption,
   getMerchandiseVariantId,
-  getMerchandiseVariantInventory,
+  getMerchandiseVariantPurchaseLimit,
   type MerchandiseProduct,
 } from "@/data/merchandise";
 import { fetchCatalogueStorefrontProducts } from "@/lib/catalogueStorefront";
@@ -147,7 +147,7 @@ export default function CartMerchandiseEditor({
         selectedSize || undefined,
       )
     : undefined;
-  const selectedVariantInventory = getMerchandiseVariantInventory(
+  const selectedVariantInventory = getMerchandiseVariantPurchaseLimit(
     product,
     selectedVariantId,
   );
@@ -348,7 +348,7 @@ export default function CartMerchandiseEditor({
       image: selectedOption.image,
       quantity,
       bundleVariantId,
-      availableQuantity: selectedVariantInventory,
+      availableQuantity: Number.isFinite(selectedVariantInventory) ? selectedVariantInventory : undefined,
     });
     closeEditor();
   };

@@ -29,6 +29,7 @@ type CheckoutItem = {
 };
 
 type BundleProduct = {
+  isPreOrder?: boolean;
   id: number;
   title?: string;
   name?: string;
@@ -153,6 +154,7 @@ export async function calculateExpectedAmount(
           catalogueId: product.catalogueId,
           slug: product.slug,
           category: product.details?.category,
+          isPreOrder: product.details?.isPreOrder === true,
           variants: new Set(product.combinations.map((combination) => combination.variantId)),
           minimumOrderQuantity: product.minimumOrderQuantity ?? 1,
         },
@@ -200,7 +202,7 @@ export async function calculateExpectedAmount(
     }
 
     const inventory = Math.max(0, Math.floor(Number(variant.inventory) || 0));
-    if (item.quantity > inventory) {
+    if (!(product.isPreOrder === true && (!projected || projected.isPreOrder)) && item.quantity > inventory) {
       throw new CheckoutValidationError(
         "One or more items exceed the current stock limit. Review your cart and try again.",
       );

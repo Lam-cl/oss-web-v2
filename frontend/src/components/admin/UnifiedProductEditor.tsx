@@ -297,6 +297,9 @@ export function validateProductEditorDraft(
   emptyNumericFields: ReadonlySet<string> = new Set(),
 ): string | null {
   if (!model.details.title.trim()) return 'Add a product name before saving.';
+  if (model.details.minimumOrderQuantity !== undefined && (!Number.isSafeInteger(model.details.minimumOrderQuantity) || model.details.minimumOrderQuantity < 1)) {
+    return 'Minimum order quantity must be a whole number of at least 1, including for pre-orders.';
+  }
   const requiredEmptyFields = Array.from(emptyNumericFields).filter((field) => !model.details.isPreOrder || !field.startsWith('inventory:'));
   if (requiredEmptyFields.length) {
     const field = requiredEmptyFields[0];
@@ -341,7 +344,9 @@ export function validateProductEditorDraft(
 export function friendlySpecError(problem: unknown) {
   const message = problem instanceof Error ? problem.message : '';
   if (/live stock|stock variant|active product changed/i.test(message)) return message;
-  if (/^Combination (?:inventory|price) must /i.test(message)) return message;
+  // Local normalizer errors contain field names, not provider response bodies.
+  // Preserve their detail so an invalid field does not become an opaque banner.
+  if (/^(?:Product editor spec|Product details|Product title|Product price|Product description|Product category|Product choices|Product combinations|Minimum order quantity|Pre-order|Choice(?: values| value label| key| name)?|Value(?: key)?|Option|Variant|Combination(?: value keys| value key| SKU| price| inventory)?|Existing images|Image(?: order| assignment| remove flag)?|Retired flag) (?:must |is required\.)/.test(message)) return message;
   if (/duplicate/i.test(message)) return 'Remove duplicate choice names, values, SKUs, or IDs before saving.';
   if (/combination/i.test(message)) return 'Complete every price and stock combination before saving.';
   if (/category/i.test(message)) return 'Enter a category or clear the category field.';

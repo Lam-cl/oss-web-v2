@@ -232,4 +232,19 @@ assert.equal(component.validateProductEditorDraft(preorder, undefined, new Set([
 assert.match(component.validateProductEditorDraft(preorder, undefined, new Set(['base-price'])) || '', /price/i, 'pre-order still requires price');
 preorder.details.isPreOrder = false;
 assert.match(component.validateProductEditorDraft(preorder, undefined, new Set(['inventory:standard'])) || '', /stock/i, 'ordinary products still require stock');
+const pixelBlue = {
+  details: {title:'(Pre-Order) Pixel Blue Shirt',description:'This is a preorder item. These items will only be shipped out AFTER 13th of OCTOBER.',price:69,category:'Apparel',isPreOrder:true,minimumOrderQuantity:1},
+  choices: [{key:'choice-size',name:'Size',values:['XS','S','M','L','XL','2XL','3XL','4XL'].map(label=>({key:`value-${label.toLowerCase()}`,label,retired:false}))}],
+  combinations: ['XS','S','M','L','XL','2XL','3XL','4XL'].map(label=>({valueKeys:[`value-${label.toLowerCase()}`],price:69,inventory:0})),
+  existingImages: [],
+};
+assert.equal(component.validateProductEditorDraft(pixelBlue,[]),null,'pictured eight-size pre-order with zero stock must validate');
+assert.equal(component.buildSaveIntent(pixelBlue,[],normalizer.normalizeProductEditorSpec).spec.combinations.length,8);
+for(const invalidMOQ of [0,-1,1.5,NaN]) {
+  assert.match(component.validateProductEditorDraft({...pixelBlue,details:{...pixelBlue.details,minimumOrderQuantity:invalidMOQ}},[])||'',/Minimum order quantity.*whole number/i);
+}
+for(const message of ['Pre-order must be boolean.','Image must be a positive safe integer ID.','Image assignment must reference a valid value key.','Value key must be a stable key of at most 128 letters, numbers, dots, underscores, colons, or hyphens.']) {
+  assert.equal(component.friendlySpecError(new Error(message)),message,'safe local errors must identify the exact field');
+}
+assert.doesNotMatch(component.friendlySpecError(new Error('Provider secret response')),/secret/,'unclassified provider errors must not leak');
 console.log('Unified Product Editor behavioral contract: PASS');

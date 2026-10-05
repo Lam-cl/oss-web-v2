@@ -30,7 +30,11 @@ const STEPS = [
 const DEFAULT_BASE_SIM_PRICE = 19.50;
 const PRODUCTION_OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
 const STAGING_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
-const STAGING_PAYMENT_HOSTS = new Set(['tonewow-v2.xifuhalim.com']);
+
+const STAGING_PAYMENT_HOSTS = new Set([
+  'tonewow-v2.xifuhalim.com',
+  'tonewow.xifuhalim.com',
+]);
 const ESIM_ORDER_STORAGE_KEY = 'tw_esim_order';
 const ESIM_ORDER_COOKIE = 'tw_esim_refno';
 

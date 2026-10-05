@@ -240,6 +240,18 @@ const pixelBlue = {
 };
 assert.equal(component.validateProductEditorDraft(pixelBlue,[]),null,'pictured eight-size pre-order with zero stock must validate');
 assert.equal(component.buildSaveIntent(pixelBlue,[],normalizer.normalizeProductEditorSpec).spec.combinations.length,8);
+const defaultZero = {...clone(pixelBlue),details:{...pixelBlue.details,price:0},combinations:pixelBlue.combinations.map(c=>({...c,price:0}))};
+const repriced=component.updateProductBasePrice(defaultZero,69);
+assert.deepEqual(repriced.combinations.map(c=>c.price),Array(8).fill(69),'size variants created before base price inherit the new base');
+assert.deepEqual(defaultZero.combinations.map(c=>c.price),Array(8).fill(0),'repricing is immutable');
+const varied=clone(pixelBlue);varied.combinations[0].price=79;varied.combinations[1].price=0;
+const corrected=component.correctZeroVariantPrices(varied);
+assert.equal(corrected.combinations[0].price,79,'explicit positive variant price preserved');
+assert.equal(corrected.combinations[1].price,69,'only RM0 variant corrected');
+assert.deepEqual(corrected.combinations.map(c=>c.inventory),Array(8).fill(0),'stock remains unchanged');
+const differentiated=component.updateProductBasePrice(varied,75);
+assert.equal(differentiated.combinations[0].price,79,'base edits preserve independent variant price');
+assert.equal(differentiated.combinations[1].price,0,'base edits do not silently repair unrelated existing RM0 overrides');
 for(const invalidMOQ of [0,-1,1.5,NaN]) {
   assert.match(component.validateProductEditorDraft({...pixelBlue,details:{...pixelBlue.details,minimumOrderQuantity:invalidMOQ}},[])||'',/Minimum order quantity.*whole number/i);
 }

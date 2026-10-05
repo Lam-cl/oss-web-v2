@@ -177,6 +177,24 @@ export function reconcileCombinations(model: ProductEditorSpec): ProductEditorSp
   return { ...model, combinations };
 }
 
+export function updateProductBasePrice(model: ProductEditorSpec, price: number): ProductEditorSpec {
+  return {
+    ...model,
+    details: { ...model.details, price },
+    combinations: model.combinations.map(combination => model.choices.length === 0 || combination.price === model.details.price
+      ? { ...combination, price }
+      : combination),
+  };
+}
+
+export function correctZeroVariantPrices(model: ProductEditorSpec): ProductEditorSpec {
+  if (model.details.price <= 0) return model;
+  const retired = new Set(model.choices.flatMap(choice => choice.values.filter(value => value.retired).map(value => value.key)));
+  return { ...model, combinations: model.combinations.map(combination => combination.price === 0 && combination.valueKeys.every(key => !retired.has(key))
+    ? { ...combination, price: model.details.price }
+    : combination) };
+}
+
 export function removeChoiceFromModel(model: ProductEditorSpec, choiceKey: string): ProductEditorSpec {
   const choices = model.choices.filter((choice) => choice.key !== choiceKey);
   if (!choices.length) {
@@ -526,13 +544,7 @@ export default function UnifiedProductEditor({
     if (value !== '') commit(value);
   };
   const updateBasePrice = (price: number) => {
-    onModelChange({
-      ...model,
-      details: { ...model.details, price },
-      combinations: model.choices.length === 0
-        ? model.combinations.map((combination) => ({ ...combination, price }))
-        : model.combinations,
-    });
+    onModelChange(updateProductBasePrice(model, price));
   };
   const clearCategory = () => {
     const { category: _category, ...details } = model.details;
@@ -765,6 +777,7 @@ export default function UnifiedProductEditor({
         <section className={styles.section} aria-labelledby="price-stock-title">
           <div className={styles.sectionHeading}><span>03</span><div><h2 id="price-stock-title">Price and stock</h2><p>{model.choices.length === 0 ? 'No choices added. Set one price and stock quantity for the whole product.' : model.choices.length === 2 ? 'Enter stock for every choice combination.' : `Enter stock for each ${model.choices[0].name.toLowerCase()} option.`}</p></div></div>
           <label className={styles.basePrice}>{model.choices.length === 0 ? 'Price (RM)' : 'Base price (RM)'}<NumericInput resetToken={numericResetToken} step={0.01} value={model.details.price} onChange={(value) => updateNumeric('base-price', value, updateBasePrice)} /></label>
+          {model.details.price > 0 && model.combinations.some(combination => combination.price === 0) && <p role="status">Some variants still have a RM0 price. <button type="button" onClick={() => onModelChange(correctZeroVariantPrices(model))}>Set RM0 variants to base price ({money.format(model.details.price)})</button> Other variant prices and stock will not change.</p>}
           {model.choices.length === 0 && <p className={styles.noChoicesNote}>Stock below applies to the whole product. To manage stock separately by Color, Size, or another option, add Product choices in Step 02.</p>}
           {matrix ? (
             <div className={styles.matrixScroll} tabIndex={0} aria-label="Stock matrix, scroll horizontally when needed">

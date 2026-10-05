@@ -29,9 +29,9 @@ async function main() {
         const [existingPhotos,setExisting]=React.useState([]),[pendingPhotos,setPending]=React.useState([]);
         const [editorKey,setEditorKey]=React.useState('new');
         const [liveInventory,setInventory]=React.useState(undefined);
-        window.loadExisting=()=>{
+        window.loadExisting=(zeroPrices=false)=>{
           const labels=['XS','S','M','L','XL','2XL','3XL','4XL'];
-          setModel({details:{title:'Existing Shirt',description:'Original description',price:69,minimumOrderQuantity:1,isPreOrder:false,category:'Apparel'},choices:[{key:'choice-size',optionId:20,name:'Size',values:labels.map((label,index)=>({key:`value-${label.toLowerCase()}`,valueId:30+index,label,retired:false}))}],combinations:labels.map((label,index)=>({valueKeys:[`value-${label.toLowerCase()}`],variantId:100+index,sku:`SHIRT-${label}`,price:69,inventory:12})),existingImages:[]});
+          setModel({details:{title:'Existing Shirt',description:'Original description',price:69,minimumOrderQuantity:1,isPreOrder:zeroPrices,category:'Apparel'},choices:[{key:'choice-size',optionId:20,name:'Size',values:labels.map((label,index)=>({key:`value-${label.toLowerCase()}`,valueId:30+index,label,retired:false}))}],combinations:labels.map((label,index)=>({valueKeys:[`value-${label.toLowerCase()}`],variantId:100+index,sku:`SHIRT-${label}`,price:zeroPrices?0:69,inventory:12})),existingImages:[]});
           setExisting([{mediaId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',url:'/fixture.png',assignment:'all',order:0}]);setPending([]);
           setInventory(new Map(labels.map((label,index)=>[JSON.stringify([`value-${label.toLowerCase()}`]),{valueKeys:[`value-${label.toLowerCase()}`],variantId:100+index,inventory:25}])));
           setEditorKey('existing');window.savedIntent=undefined;
@@ -44,12 +44,12 @@ async function main() {
     await page.locator('label').filter({hasText:/^Category/}).locator('select').selectOption({label:'Apparel'});
     await page.locator('select[name=isPreOrder]').selectOption('true');
     await page.locator('label').filter({hasText:/^Description/}).locator('textarea').fill('This is a preorder item. These items will only be shipped out AFTER 13th of OCTOBER.');
-    await page.getByLabel('Price (RM)',{exact:true}).fill('69');
     await page.getByRole('button',{name:'+ Size',exact:true}).click();
     for(const size of ['XS','S','M','L','XL','2XL','3XL','4XL']) {
       await page.getByPlaceholder('Type a value and press Enter').fill(size);
       await page.getByRole('button',{name:'Add value',exact:true}).click();
     }
+    await page.getByLabel('Base price (RM)',{exact:true}).fill('69');
     await page.locator('input[type=file]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1kAAAAASUVORK5CYII=','base64')});
     const save=page.getByRole('button',{name:'Save product',exact:true});
     assert.equal(await save.isDisabled(),false);
@@ -57,6 +57,7 @@ async function main() {
     await save.click();
     const saved=await page.evaluate(()=>({details:window.savedIntent.spec.details,combinations:window.savedIntent.spec.combinations,inventoryChanges:window.savedIntent.inventoryChanges,photos:window.savedIntent.pendingPhotos.length}));
     assert.equal(saved.details.isPreOrder,true);assert.equal(saved.details.price,69);assert.equal(saved.combinations.length,8);assert.equal(saved.photos,1);assert.deepEqual(saved.inventoryChanges,[]);
+    assert.deepEqual(saved.combinations.map(c=>c.price),Array(8).fill(69),'choices-before-price flow sets all inherited variant prices');
     const moq=page.getByLabel('Minimum order quantity',{exact:true});
     await moq.fill('1.5');
     assert.equal(await save.isDisabled(),true);
@@ -79,6 +80,11 @@ async function main() {
     await page.locator('select[name=isPreOrder]').selectOption('false');
     assert.deepEqual(await stockInputs.evaluateAll(xs=>xs.map(x=>x.value)),Array(8).fill('25'));
     await save.click();assert.equal(await page.evaluate(()=>window.savedIntent.spec.details.isPreOrder),false);
+    await page.evaluate(()=>window.loadExisting(true));
+    await page.getByRole('button',{name:/Set RM0 variants to base price/}).click();
+    await save.click();
+    const repaired=await page.evaluate(()=>({prices:window.savedIntent.spec.combinations.map(c=>c.price),variants:window.savedIntent.spec.combinations.map(c=>c.variantId),stock:window.savedIntent.spec.combinations.map(c=>c.inventory),adjustments:window.savedIntent.inventoryChanges}));
+    assert.deepEqual(repaired.prices,Array(8).fill(69));assert.deepEqual(repaired.variants,[100,101,102,103,104,105,106,107]);assert.deepEqual(repaired.stock,Array(8).fill(12));assert.deepEqual(repaired.adjustments,[]);
     console.log('Real-browser create pre-order with eight sizes/photo, local save and specific MOQ validation: PASS');
     console.log('Real-browser edit existing product, authoritative stock, stable variant IDs and pre-order ON/OFF: PASS');
   } finally {await browser.close();}

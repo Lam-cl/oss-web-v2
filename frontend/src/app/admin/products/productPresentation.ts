@@ -89,11 +89,11 @@ export function catalogueChoiceSummary(model: VariantModel) {
 }
 
 export function catalogueHazardReason(model: VariantModel) {
-  if (!hasValidCatalogueVariants(model)) return 'Complete every active variant before publishing or archiving.';
+  if (!hasValidCatalogueVariants(model)) return 'Complete every active variant before publishing.';
   const retiredKeys = new Set(model.choices.flatMap((choice) => choice.values.filter((value) => value.retired).map((value) => value.key)));
   const hasInvalidRm0Variant = (model.details?.price ?? 0) > 0
     && model.combinations.some((combination) => combination.price === 0 && combination.valueKeys.every((key) => !retiredKeys.has(key)));
-  if (hasInvalidRm0Variant) return 'Set the base price to RM0 or correct the RM0 variant before publishing or archiving.';
+  if (hasInvalidRm0Variant) return 'Some active variants have a RM0 price. Edit the product and set their prices before publishing.';
   return null;
 }
 

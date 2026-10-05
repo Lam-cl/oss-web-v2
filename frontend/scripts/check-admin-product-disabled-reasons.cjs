@@ -27,7 +27,7 @@ const completeModel = {
 assert.equal(typeof catalogueHazardReason, 'function', 'presentation exposes the disabled-action reason policy');
 assert.equal(
   catalogueHazardReason({ ...completeModel, combinations: [completeModel.combinations[0]] }),
-  'Complete every active variant before publishing or archiving.',
+  'Complete every active variant before publishing.',
   'incomplete variant matrices have a concise actionable reason',
 );
 assert.equal(
@@ -35,7 +35,7 @@ assert.equal(
     completeModel.combinations[0],
     { valueKeys: ['plus'], price: 0 },
   ] }),
-  'Set the base price to RM0 or correct the RM0 variant before publishing or archiving.',
+  'Some active variants have a RM0 price. Edit the product and set their prices before publishing.',
   'an accidental RM0 variant is distinguished from an incomplete matrix',
 );
 assert.equal(catalogueHazardReason(completeModel), null, 'ready rows do not show a content hazard reason');
@@ -83,6 +83,9 @@ assert.equal(page.includes('aria-describedby'), true, 'disabled actions expose t
 assert.match(page, /publicationRecovery\.pending \? publicationRecovery\.label/,'pending rows use the recovery label');
 assert.match(page, /publicationRecovery\.pending \? 'Resuming…' : 'Publishing…'/,'pending rows expose resume progress');
 assert.match(page, /Resume or finish provider publication before archiving\./,'archive remains disabled while provider recovery is pending');
+const archivePolicy=page.slice(page.indexOf('const archiveHazardReason ='),page.indexOf('const publishHazardReasonId ='));
+assert.doesNotMatch(archivePolicy,/contentHazardReason/,'invalid content prices must not prevent draft archiving');
+assert.match(archivePolicy,/publicationRecovery\.disabledReason/,'archive still respects provider safety evidence');
 assert.doesNotMatch(page, /Provider operation unresolved\. Wait for it to finish/,'the UI must not claim that an absent worker will finish provider work');
 assert.match(css, /\.adm-action-disabled-reason\b[^}]*color:[^;}]+;[^}]*font-size:[^;}]+;/, 'disabled reason has visible presentation styling');
 

@@ -526,8 +526,7 @@ function ProductsContent() {
           : contentHazardReason || publicationRecovery.disabledReason
         : null;
       const archiveHazardReason = row.kind === 'catalogue'
-        ? contentHazardReason
-          || publicationRecovery.disabledReason
+        ? publicationRecovery.disabledReason
           || (publicationRecovery.pending ? 'Resume or finish provider publication before archiving.' : null)
         : null;
       const publishHazardReasonId = row.kind === 'catalogue' ? `catalogue-publish-reason-${row.catalogue.catalogueId}` : undefined;

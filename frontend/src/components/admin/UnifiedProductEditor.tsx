@@ -297,8 +297,9 @@ export function validateProductEditorDraft(
   emptyNumericFields: ReadonlySet<string> = new Set(),
 ): string | null {
   if (!model.details.title.trim()) return 'Add a product name before saving.';
-  if (emptyNumericFields.size) {
-    const field = emptyNumericFields.values().next().value!;
+  const requiredEmptyFields = Array.from(emptyNumericFields).filter((field) => !model.details.isPreOrder || !field.startsWith('inventory:'));
+  if (requiredEmptyFields.length) {
+    const field = requiredEmptyFields[0];
     if (field === 'base-price') return 'Base price is required.';
     if (field === 'minimum-order-quantity') return 'Minimum order quantity is required.';
     const [kind, key] = field.split(':', 2);
@@ -497,6 +498,7 @@ export default function UnifiedProductEditor({
       : combination.inventory;
   };
   const changeInventory = (combination: ProductEditorCombination, value: number | '') => {
+    if (model.details.isPreOrder) return;
     const key = catalogueCombinationKey(combination.valueKeys);
     setTouchedInventory((current) => new Set(current).add(key));
     updateNumeric(`inventory:${key || 'standard'}`, value, (inventory) => updateCombination(combination.valueKeys, { inventory }));
@@ -662,7 +664,7 @@ export default function UnifiedProductEditor({
     }
     try {
       const intent = buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged);
-      intent.inventoryChanges = catalogueInventoryChanges(intent.spec.combinations, touchedInventory, liveInventory);
+      intent.inventoryChanges = model.details.isPreOrder ? [] : catalogueInventoryChanges(intent.spec.combinations, touchedInventory, liveInventory);
       await onSave(intent);
       createdObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
       createdObjectUrls.current.clear();
@@ -695,7 +697,7 @@ export default function UnifiedProductEditor({
               {customCategoryMode && <label>New category<input autoFocus value={model.details.category ?? ''} onChange={(event) => updateDetails('category', event.target.value)} placeholder="New category name" /></label>}
               <label>Minimum order quantity<NumericInput resetToken={numericResetToken} min={1} step={1} value={model.details.minimumOrderQuantity ?? 1} onChange={(value) => updateNumeric('minimum-order-quantity', value, (minimumOrderQuantity) => updateDetails('minimumOrderQuantity', minimumOrderQuantity))} /></label>
             </>}
-            {!simManaged && <label>Pre-order<select name="isPreOrder" value={String(model.details.isPreOrder ?? false)} onChange={(event) => updateDetails('isPreOrder', event.target.value === 'true')}><option value="false">No</option><option value="true">Yes</option></select><small className={styles.fieldHint}>Mark this product as a pre-order.</small></label>}
+            {!simManaged && <label>Pre-order<select name="isPreOrder" value={String(model.details.isPreOrder ?? false)} onChange={(event) => updateDetails('isPreOrder', event.target.value === 'true')}><option value="false">No</option><option value="true">Yes</option></select><small className={styles.fieldHint}>Pre-orders have no stock quantity limit. Existing stock is preserved when pre-order is switched off.</small></label>}
             <label className={styles.fullField}>Description<textarea rows={4} value={descriptionDraft} onChange={(event) => updateDescription(event.target.value)} /></label>
             <label className={styles.fullField}>Product details<textarea name="productDetails" rows={5} value={productDetailsDraft} onChange={(event) => updateProductDetails(event.target.value)} placeholder={'One detail per line\nExample: Material: Cotton\nSize: 6 ft × 2 ft'} /><small className={styles.fieldHint}>Enter one detail per line. These appear separately from the main description.</small></label>
           </div>
@@ -766,7 +768,7 @@ export default function UnifiedProductEditor({
                 <thead><tr><th scope="col">{model.choices[0].name} / {model.choices[1].name}</th>{matrix.columns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}<th scope="col">Row total</th></tr></thead>
                 <tbody>{matrix.rows.map((row, rowIndex) => {
                   const total = matrix.cells[rowIndex].reduce((sum, cell) => sum + shownInventory(cell.combination), 0);
-                  return <tr key={row.key}><th scope="row">{row.label}</th>{matrix.cells[rowIndex].map((cell) => <td key={cell.key}><label><span className={styles.srOnly}>Stock for {row.label} / {matrix.columns.find((column) => cell.valueKeys.includes(column.key))?.label}</span><NumericInput resetToken={numericResetToken} value={shownInventory(cell.combination)} onChange={(value) => changeInventory(cell.combination, value)} /></label>{simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /></label> : <details className={styles.cellAdvanced}><summary>Variant Price / Product Code</summary><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={cell.combination.sku ?? ''} onChange={(event) => updateCombination(cell.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></details>}</td>)}<td className={styles.rowTotal}>{total}</td></tr>;
+                  return <tr key={row.key}><th scope="row">{row.label}</th>{matrix.cells[rowIndex].map((cell) => <td key={cell.key}><label><span className={styles.srOnly}>Stock for {row.label} / {matrix.columns.find((column) => cell.valueKeys.includes(column.key))?.label}</span>{model.details.isPreOrder ? <span>Unlimited (pre-order)</span> : <NumericInput resetToken={numericResetToken} value={shownInventory(cell.combination)} onChange={(value) => changeInventory(cell.combination, value)} />}</label>{simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /></label> : <details className={styles.cellAdvanced}><summary>Variant Price / Product Code</summary><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={cell.combination.price} onChange={(value) => updateNumeric(`price:${cell.key}`, value, (price) => updateCombination(cell.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={cell.combination.sku ?? ''} onChange={(event) => updateCombination(cell.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></details>}</td>)}<td className={styles.rowTotal}>{model.details.isPreOrder ? 'Unlimited' : total}</td></tr>;
                 })}</tbody>
               </table>
             </div>
@@ -775,7 +777,7 @@ export default function UnifiedProductEditor({
               {model.combinations.filter((combination) => combination.valueKeys.every((key) => model.choices.some((choice) => choice.values.some((value) => value.key === key && !value.retired)))).map((combination) => (
                 <div className={styles.variantRow} key={combinationKey(combination.valueKeys) || 'standard'}>
                   <strong>{combinationLabel(combination, model.choices)}</strong>
-                  <label>{combination.valueKeys.length === 0 ? 'Stock quantity' : 'Stock'}<NumericInput resetToken={numericResetToken} value={shownInventory(combination)} onChange={(value) => changeInventory(combination, value)} /></label>
+                  <label>{combination.valueKeys.length === 0 ? 'Stock quantity' : 'Stock'}{model.details.isPreOrder ? <span>Unlimited (pre-order)</span> : <NumericInput resetToken={numericResetToken} value={shownInventory(combination)} onChange={(value) => changeInventory(combination, value)} />}</label>
                   {combination.valueKeys.length === 0
                     ? simManaged ? null : <label className={styles.standardSku}>Product Code<input value={combination.sku ?? ''} onChange={(event) => updateCombination(combination.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label>
                     : simManaged ? <label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={combination.price} onChange={(value) => updateNumeric(`price:${combinationKey(combination.valueKeys)}`, value, (price) => updateCombination(combination.valueKeys, { price }))} /></label> : <details className={styles.advanced}><summary>Advanced</summary><div><label>Variant Price (RM)<NumericInput resetToken={numericResetToken} step={0.01} value={combination.price} onChange={(value) => updateNumeric(`price:${combinationKey(combination.valueKeys)}`, value, (price) => updateCombination(combination.valueKeys, { price }))} /><small className={styles.fieldHint}>Defaults to Base price. Change only when this option has a different price.</small></label><label>Product Code<input value={combination.sku ?? ''} onChange={(event) => updateCombination(combination.valueKeys, { sku: event.target.value })} placeholder="Auto-generated if blank" /><small className={styles.fieldHint}>Internal item reference. Leave blank to create one automatically.</small></label></div></details>}

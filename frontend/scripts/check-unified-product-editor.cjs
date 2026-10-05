@@ -226,4 +226,10 @@ assert.match(mobile, /neutralHelper[^}]*display:\s*none/s, 'mobile may hide only
 assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-motion support is required');
 assert.ok(css.includes(':focus-visible'), 'visible keyboard focus is required');
 
+const preorder = clone(base);
+preorder.details.isPreOrder = true;
+assert.equal(component.validateProductEditorDraft(preorder, undefined, new Set(['inventory:standard'])), null, 'pre-order does not require a stock quantity');
+assert.match(component.validateProductEditorDraft(preorder, undefined, new Set(['base-price'])) || '', /price/i, 'pre-order still requires price');
+preorder.details.isPreOrder = false;
+assert.match(component.validateProductEditorDraft(preorder, undefined, new Set(['inventory:standard'])) || '', /stock/i, 'ordinary products still require stock');
 console.log('Unified Product Editor behavioral contract: PASS');

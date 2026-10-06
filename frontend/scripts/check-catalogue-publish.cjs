@@ -86,7 +86,69 @@ try {
   {const f=await fresh(),input=request(1);input.spec.details.title='L'.repeat(200);input.spec.combinations.forEach((combination,index)=>{combination.sku=`MAX-${index}`});const out=await run(f,input),provider=f.products.get(out.bundleProductId).title;assert.equal(provider.length,200);assert.match(provider,/ \[TW-[a-f0-9]{8}-a2\]$/);assert.equal(input.spec.details.title.length,200);}
   {const f=await fresh(),input=request(1);input.spec.combinations[0].sku='S'.repeat(100);input.spec.combinations[1].sku='T'.repeat(100);const canonicalSkus=input.spec.combinations.map(x=>x.sku),out=await run(f,input),providerSkus=f.products.get(out.bundleProductId).productVariants.map(x=>x.sku),suffix=`-TW${input.catalogueId.slice(0,8)}V1`;assert.deepEqual(input.spec.combinations.map(x=>x.sku),canonicalSkus);assert(providerSkus.every(x=>x.length===100&&x.endsWith(suffix)));}
   // Every external commit-then-timeout reconciles against the same authoritative draft.
-  for(const stage of ['create-draft','upload:front','compiled-variants','batch-update','publish','activate','retire-old']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));if(stage==='batch-update'){const files=await fsp.readdir(f.directory),checkpointed=await store.readPublicationJob(files[0].slice(0,-5),f.directory);assert(checkpointed.completedSteps.some(x=>x.name==='variants-normalized'));assert.equal(f.events.filter(x=>x==='publish').length,0);}const beforeBatch=f.events.filter(x=>x==='batch-update').length,out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');if(stage==='batch-update')assert.equal(f.events.filter(x=>x==='batch-update').length,beforeBatch);if(stage==='activate')assert.deepEqual(f.restored,[]);}
+  for(const stage of ['create-draft','upload:front','batch-update','publish','activate','retire-old']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));if(stage==='batch-update'){const files=await fsp.readdir(f.directory),checkpointed=await store.readPublicationJob(files[0].slice(0,-5),f.directory);assert(checkpointed.completedSteps.some(x=>x.name==='variants-normalized'));assert.equal(f.events.filter(x=>x==='publish').length,0);}const beforeBatch=f.events.filter(x=>x==='batch-update').length,out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');if(stage==='batch-update')assert.equal(f.events.filter(x=>x==='batch-update').length,beforeBatch);if(stage==='activate')assert.deepEqual(f.restored,[]);}
+  // A committed compiled graph whose response fails must normalize and publish
+  // within the same attempt, without duplicating variants or restoring a draft.
+  for(const count of [0,1,2]){
+    const f=await fresh(),input=request(count);f.commitTimeout.add('commit:compiled-variants');
+    const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory),p=f.products.get(40);
+    assert.equal(job.phase,'complete');assert.equal(f.createCount,1);
+    assert.equal(f.events.filter(x=>x==='compiled-variants').length,1);
+    assert.equal(f.events.filter(x=>x==='batch-update').length,1);
+    assert.equal(f.events.filter(x=>x==='publish').length,1);assert.deepEqual(f.restored,[]);
+    assert.deepEqual(p.productVariants.map(v=>v.price),input.spec.combinations.map(c=>c.price));
+    await run(f,input);assert.equal(f.events.filter(x=>x==='compiled-variants').length,1,'completed retry never duplicates variants');
+  }
+  // Exact production-like pre-order case: eight sizes created with null prices.
+  {
+    const f=await fresh(),input=request(1),labels=['XS','S','M','L','XL','2XL','3XL','4XL'];
+    f.ids=Array.from({length:60},(_,i)=>1000+i);f.commitTimeout.add('commit:compiled-variants');
+    input.spec.details={title:'PIXEL Blue Shirt',description:'Pre-order',price:69,isPreOrder:true,minimumOrderQuantity:1};
+    input.spec.choices=[{key:'size',name:'Size',values:labels.map(label=>({key:`size-${label}`,label,retired:false}))}];
+    input.spec.combinations=labels.map(label=>({valueKeys:[`size-${label}`],price:69,inventory:0}));
+    const create=f.createDraft.bind(f);f.createDraft=async payload=>{const product=await create(payload);f.products.get(product.id).isPreOrder=payload.isPreOrder;product.isPreOrder=payload.isPreOrder;return product;};
+    const out=await run(f,input),p=f.products.get(out.bundleProductId);
+    assert.equal(p.productVariants.length,8);assert.deepEqual(p.productVariants.map(v=>v.price),Array(8).fill(69));
+    assert.deepEqual(p.productVariants.map(v=>v.inventory),Array(8).fill(0));
+    assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');
+  }
+  // Genuine pre-commit failure or ambiguous post-commit mapping stays fail-closed.
+  {
+    const f=await fresh();f.createCompiledVariants=async()=>{throw new Error('provider rejected request');};
+    await assert.rejects(()=>run(f,request(1)),error=>error.status===503&&/complete variant mapping/.test(error.message));
+    assert.equal(f.events.includes('batch-update'),false);assert.equal(f.events.includes('publish'),false);
+  }
+  {
+    const f=await fresh();f.extraCompiledCode=true;f.commitTimeout.add('commit:compiled-variants');
+    await assert.rejects(()=>run(f,request(1)),error=>error.status===503&&/complete variant mapping/.test(error.message));
+    assert.equal(f.events.includes('batch-update'),false);assert.equal(f.events.includes('publish'),false);
+  }
+  // Existing jobs resume the same Bundle draft, preserving recorded provider IDs.
+  for(const duplicate of ['value','variant']){
+    const f=await fresh(),create=f.createCompiledVariants.bind(f);
+    f.createCompiledVariants=async(id,request)=>{
+      await create(id,request);const p=f.products.get(id);
+      if(duplicate==='variant')p.productVariants[1].id=p.productVariants[0].id;
+      else{p.options[0].values[1].id=p.options[0].values[0].id;p.productVariants[1].selectedOptions[0].valueId=p.options[0].values[0].id;}
+      throw new Error('response failed after ambiguous commit');
+    };
+    await assert.rejects(()=>run(f,request(1)),error=>error.status===503&&/complete variant mapping/.test(error.message));
+    assert.equal(f.events.includes('batch-update'),false);assert.equal(f.events.includes('publish'),false);
+  }
+  {
+    const f=await fresh(),input=request(1);f.batchRejectBeforeCommit=true;
+    await assert.rejects(()=>run(f,input));const ids=f.products.get(40).productVariants.map(v=>v.id);
+    f.batchRejectBeforeCommit=false;const out=await run(f,input);
+    assert.equal(out.bundleProductId,40);assert.deepEqual(f.products.get(40).productVariants.map(v=>v.id),ids);
+    assert.equal(f.events.filter(x=>x==='compiled-variants').length,1);
+  }
+  {
+    const f=await fresh(),input=request(1);f.batchRejectBeforeCommit=true;await assert.rejects(()=>run(f,input));
+    f.products.get(40).productVariants[0].id=999999;f.batchRejectBeforeCommit=false;
+    const batches=f.events.filter(x=>x==='batch-update').length;
+    await assert.rejects(()=>run(f,input),error=>error.status===503&&/IDs changed/.test(error.message));
+    assert.equal(f.events.filter(x=>x==='batch-update').length,batches);assert.equal(f.events.includes('publish'),false);
+  }
   // A rejected batch whose readback remains generated/null/0 is a resumable explicit 503, not generic verification 502.
   {const f=await fresh(),input=request(1);f.batchRejectBeforeCommit=true;await assert.rejects(()=>run(f,input),error=>error.status===503&&/batch|normaliz|variant/i.test(error.message));const files=await fsp.readdir(f.directory),job=await store.readPublicationJob(files[0].slice(0,-5),f.directory);assert(!job.completedSteps.some(x=>x.name==='variants-normalized'));}
   // Mapping uses exact code attestations and selected option/value IDs, never provider array position.

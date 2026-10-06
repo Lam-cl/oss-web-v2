@@ -109,8 +109,24 @@ try {
     const create=f.createDraft.bind(f);f.createDraft=async payload=>{const product=await create(payload);f.products.get(product.id).isPreOrder=payload.isPreOrder;product.isPreOrder=payload.isPreOrder;return product;};
     const out=await run(f,input),p=f.products.get(out.bundleProductId);
     assert.equal(p.productVariants.length,8);assert.deepEqual(p.productVariants.map(v=>v.price),Array(8).fill(69));
-    assert.deepEqual(p.productVariants.map(v=>v.inventory),Array(8).fill(0));
+    assert.deepEqual(p.productVariants.map(v=>v.inventory),Array(8).fill(9_999_999));
+    assert.deepEqual(input.spec.combinations.map(v=>v.inventory),Array(8).fill(0),'sentinel never overwrites stored physical stock');
     assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');
+    const regular=clone(input);regular.spec.details.isPreOrder=false;regular.previousBundleProductId=out.bundleProductId;regular.versionOrdinal=2;
+    const ordinary=await run(f,regular);
+    assert.deepEqual(f.products.get(ordinary.bundleProductId).productVariants.map(v=>v.inventory),Array(8).fill(0),'switching pre-order OFF uses saved physical stock, never the sentinel');
+  }
+  // Old building jobs with a normalized zero-stock checkpoint adopt the new
+  // sentinel on resume without replacing variants or duplicating checkpoints.
+  {
+    const f=await fresh(),input=request(1);input.spec.details.isPreOrder=true;
+    const create=f.createDraft.bind(f);f.createDraft=async payload=>{const product=await create(payload);f.products.get(product.id).isPreOrder=payload.isPreOrder;product.isPreOrder=payload.isPreOrder;return product;};
+    f.commitTimeout.add('commit:batch-update');await assert.rejects(()=>run(f,input));
+    const p=f.products.get(40),ids=p.productVariants.map(v=>v.id);p.productVariants.forEach(v=>{v.inventory=0});
+    const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory);
+    assert.deepEqual(p.productVariants.map(v=>v.inventory),Array(p.productVariants.length).fill(9_999_999));
+    assert.deepEqual(p.productVariants.map(v=>v.id),ids);assert.equal(f.events.filter(x=>x==='compiled-variants').length,1);
+    assert.equal(job.completedSteps.filter(x=>x.name==='variants-normalized').length,1);
   }
   // Genuine pre-commit failure or ambiguous post-commit mapping stays fail-closed.
   {

@@ -166,6 +166,7 @@ export default function MerchandiseDetailPage() {
 
         <section className="merch-detail-panel">
           <h1>{product.name}</h1>
+          {product.isPreOrder && <div className="merch-stock-status">Unlimited (pre-order)</div>}
           {product.unitLabel && <div className="merch-unit-label">{product.unitLabel}</div>}
 
           {product.options.length > 1 && (

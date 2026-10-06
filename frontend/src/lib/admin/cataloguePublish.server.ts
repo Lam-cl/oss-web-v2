@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createPublicationJob, readPublicationJob, updatePublicationJob, type CataloguePublicationJob, type CataloguePublicationStepName } from './cataloguePublication.server';
-import { normalizeProductEditorSpec, type ProductEditorSpec } from './productEditor';
+import { normalizeProductEditorSpec, providerInventory, type ProductEditorSpec } from './productEditor';
 import { fingerprintBundleProduct, normalizeBundleProduct } from './productBundleState';
 
 type Row = Record<string, unknown>;
@@ -135,8 +135,8 @@ async function runPublication(request:CataloguePublishRequest,d:CataloguePublish
       if(!job.completedSteps.some(x=>x.name==='variants-resolved'))job=await checkpoint(job,d,()=>{},'variants-resolved');
       // A failed response is not a failed commit: exact authoritative mapping
       // above is sufficient to proceed to normalization in this same attempt.
-      const updates=m.combinations.map((c,i)=>({id:snap.variantIdByCode[codes[i]],sku:skus[i],price:c.price,inventory:c.inventory}));
-      if(!job.completedSteps.some(x=>x.name==='variants-normalized')){let batchError=false;try{await d.batchUpdateVariants(id,structuredClone(updates));}catch{batchError=true;}current=await read(d,id,'normalized variants');try{verifyVariants(current,codes,updates,snap);verifyImages(current,uploads,job.resolved.images);}catch(reason){if(batchError)throw new CataloguePublishError('Variant batch update failed and authoritative readback did not prove normalization.',503,id);throw reason;}job=await checkpoint(job,d,()=>{},'variants-normalized');if(batchError)throw new CataloguePublishError('Variant update timed out after a reconciled commit.',503,id);}else{verifyVariants(current,codes,updates,snap);verifyImages(current,uploads,job.resolved.images);}
+      const updates=m.combinations.map((c,i)=>({id:snap.variantIdByCode[codes[i]],sku:skus[i],price:c.price,inventory:providerInventory(spec.details,c.inventory)}));
+      if(!job.completedSteps.some(x=>x.name==='variants-normalized')||spec.details.isPreOrder===true&&updates.some(update=>numeric(variantRows(current).find(variant=>variant.id===update.id)?.inventory)!==update.inventory)){let batchError=false;try{await d.batchUpdateVariants(id,structuredClone(updates));}catch{batchError=true;}current=await read(d,id,'normalized variants');try{verifyVariants(current,codes,updates,snap);verifyImages(current,uploads,job.resolved.images);}catch(reason){if(batchError)throw new CataloguePublishError('Variant batch update failed and authoritative readback did not prove normalization.',503,id);throw reason;}job=await checkpoint(job,d,()=>{},job.completedSteps.some(x=>x.name==='variants-normalized')?undefined:'variants-normalized');if(batchError)throw new CataloguePublishError('Variant update timed out after a reconciled commit.',503,id);}else{verifyVariants(current,codes,updates,snap);verifyImages(current,uploads,job.resolved.images);}
       let publishError=false;try{await d.publishProduct(id,op);}catch{publishError=true;}const published=publicationEvidence(await d.readPublicationState(id),id);metadata(published,spec);verifyVariants(published,codes,updates,snap);verifyImages(published,uploads,job.resolved.images);job=await checkpoint(job,d,j=>{j.phase='bundle-published';},'bundle-published');if(publishError)throw new CataloguePublishError('Bundle publication timed out after a reconciled commit.',503,id);
     }catch(reason){if(job.phase==='building')await restore(d,job);throw reason;}
   }

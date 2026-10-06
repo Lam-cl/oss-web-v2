@@ -5,6 +5,7 @@ export type OptionValue = { id: number; value: string; imageUrl?: string | null;
 export type ProductOption = { id: number; name: string; type?: string; values: OptionValue[] };
 export type ProductVariant = { id: number; sku: string; price: number; inventory: number; weight?: number | null; selectedOptions?: unknown[] };
 export type Product = {
+  isPreOrder?: boolean;
   id: number; name?: string; title: string; description: string; type: 'MOBILE' | 'MERCHANDISE'; price: number;
   shippingCost: number; weight: number; slug: string; deletedAt?: string | null; createdAt: string; updatedAt: string;
   categories: Array<string | { id?: number; name?: string; title?: string }>;

@@ -774,6 +774,7 @@ export default function MerchandiseSection() {
               <div className="merch-mobile-summary-copy">
                 <h2>{selectedProduct.name}</h2>
                 <div className="merch-detail-price">{formatRM(selectedVariantPrice)}</div>
+                {selectedProduct.isPreOrder && !productsLoading && !productsError && <div className="merch-stock-status">Unlimited (pre-order)</div>}
                 {(productsLoading || productsError || selectedProduct.soldOut) && (
                   <div className="merch-stock-status">{productsLoading ? 'Checking stock…' : productsError ? 'Stock check unavailable' : 'Sold out'}</div>
                 )}
@@ -859,6 +860,7 @@ export default function MerchandiseSection() {
             <section className="merch-modal-content">
               <h2 id="merch-modal-title">{selectedProduct.name}</h2>
               <div className="merch-detail-price">{formatRM(selectedVariantPrice)}</div>
+              {selectedProduct.isPreOrder && !productsLoading && !productsError && <div className="merch-stock-status">Unlimited (pre-order)</div>}
               {(productsLoading || productsError || selectedProduct.soldOut) && (
                 <div className="merch-stock-status">{productsLoading ? 'Checking stock…' : productsError ? 'Stock check unavailable' : 'Sold out'}</div>
               )}

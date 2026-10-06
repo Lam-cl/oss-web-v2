@@ -377,7 +377,8 @@ function ProductsContent() {
     return [...drafts, ...listed].filter((row) => {
       const product = row.product;
       const stock = productInventory(row.kind === 'catalogue' ? row.catalogue : null, product);
-      return (stockFilter === 'all' || stock === 0) && (!search || productSearchText(row).toLowerCase().includes(search));
+      const isPreOrder = row.kind === 'catalogue' ? row.catalogue.model.details.isPreOrder === true : product?.isPreOrder === true;
+      return (stockFilter === 'all' || stock === 0 && !isPreOrder) && (!search || productSearchText(row).toLowerCase().includes(search));
     });
   }, [catalogue, data, page, query, stockFilter, type]);
   const availableCategories = useMemo(() => {
@@ -507,6 +508,7 @@ function ProductsContent() {
       const choices = model ? catalogueChoiceSummary(model) : { primary: 'Legacy', secondary: `${variants} ${variants === 1 ? 'combination' : 'combinations'}`, incomplete: false };
       const stock = productInventory(row.kind === 'catalogue' ? row.catalogue : null, product);
       const key = row.kind === 'catalogue' ? row.catalogue.catalogueId : `legacy-${product!.id}`;
+      const isPreOrder = row.kind === 'catalogue' ? row.catalogue.model.details.isPreOrder === true : product?.isPreOrder === true;
       const localDraft = row.kind === 'catalogue' && row.catalogue.status === 'draft' && row.catalogue.currentBundleProductId === null;
       const publicationRecovery = row.kind === 'catalogue' && localDraft
         ? publicationRecoveryPresentation(cataloguePublications[row.catalogue.catalogueId])
@@ -546,8 +548,8 @@ function ProductsContent() {
         <td><div className="adm-product-cell">{thumbnailUrl ? <img className="adm-thumb" src={thumbnailUrl} alt="" /> : <span className="adm-thumb" />}<div><strong>{title}</strong><small>{slug}{row.kind === 'legacy' ? ' · Legacy' : ''}</small>{publicationFeedback && <small className={`adm-publish-feedback${publicationFeedback.error ? ' is-error' : ''}`} role={publicationFeedback.error ? 'alert' : 'status'}>{publicationFeedback.message}{publishingCatalogueId === key && <span className="adm-publish-wait">{publishElapsedSeconds}s · {publishElapsedSeconds >= 20 ? 'Still processing. Keep this page open; no need to click again.' : 'Please keep this page open.'}</span>}</small>}</div></div></td>
         <td data-label="Price">{money(price)}</td>
         <td data-label="Choices"><span className={`adm-choice-summary${choices.incomplete ? ' is-incomplete' : ''}`}><strong>{choices.primary}</strong><small>{choices.secondary}</small></span></td>
-        <td data-label="Inventory">{stock}</td>
-        <td data-label="Status"><StatusBadge status={row.kind === 'catalogue' && row.catalogue.status === 'draft' ? 'DRAFT' : stock === 0 ? 'OUT' : 'ACTIVE'} /></td>
+        <td data-label="Inventory">{isPreOrder ? 'Unlimited' : stock}</td>
+        <td data-label="Status"><StatusBadge status={row.kind === 'catalogue' && row.catalogue.status === 'draft' ? 'DRAFT' : stock === 0 && !isPreOrder ? 'OUT' : 'ACTIVE'} /></td>
         <td><div className="adm-actions">{row.kind === 'catalogue' ? <>
           <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue })}><Icon name="edit" /></button>
           {genericLifecycleAllowed && publishAvailable && <button

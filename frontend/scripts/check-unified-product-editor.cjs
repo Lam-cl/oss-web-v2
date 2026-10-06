@@ -227,6 +227,9 @@ assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-moti
 assert.ok(css.includes(':focus-visible'), 'visible keyboard focus is required');
 
 const preorder = clone(base);
+assert.equal(normalizer.providerInventory({isPreOrder:true},12),9_999_999);
+assert.equal(normalizer.providerInventory({isPreOrder:false},12),12);
+assert.equal(normalizer.providerInventory({},0),0);
 preorder.details.isPreOrder = true;
 assert.equal(component.validateProductEditorDraft(preorder, undefined, new Set(['inventory:standard'])), null, 'pre-order does not require a stock quantity');
 assert.match(component.validateProductEditorDraft(preorder, undefined, new Set(['base-price'])) || '', /price/i, 'pre-order still requires price');

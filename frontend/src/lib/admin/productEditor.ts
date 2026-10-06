@@ -39,6 +39,14 @@ export type ProductEditorSpec = {
   existingImages: ProductEditorExistingImage[];
 };
 
+export const PRE_ORDER_BACKEND_STOCK = 9_999_999;
+
+// Provider stock is a checkout compatibility sentinel. Keep the editor model's
+// physical stock separate so switching pre-order OFF never copies the sentinel.
+export function providerInventory(details: Pick<ProductEditorDetails, 'isPreOrder'>, inventory: number) {
+  return details.isPreOrder === true ? PRE_ORDER_BACKEND_STOCK : inventory;
+}
+
 const object = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
   return value as Record<string, unknown>;

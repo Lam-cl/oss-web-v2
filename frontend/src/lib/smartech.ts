@@ -132,8 +132,8 @@ export type MerchOrderData = {
   addressTwo: string;
 };
 
-const MERCH_INITIATED_EVENT = 'online sim purchase initiated';
-const MERCH_SUCCESS_EVENT = 'online sim purchase success';
+const MERCH_INITIATED_EVENT = 'online merchandise purchase initiated';
+const MERCH_SUCCESS_EVENT = 'online merchandise purchase success';
 
 function sendMerchOrderEvent(eventName: string, d: MerchOrderData) {
     

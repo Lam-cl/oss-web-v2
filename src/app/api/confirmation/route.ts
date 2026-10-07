@@ -33,7 +33,15 @@ async function handleConfirmation(req: NextRequest, method: string) {
   const locale = searchParams.get('locale') || 'en';
   const isAdx = flow.toLowerCase() === 'adx' || prodDesc.toLowerCase() === 'osspaymentadx';
 
-  const url = new URL(isAdx ? '/adx/thank-you' : '/thank-you', req.url);
+  // const url = new URL(isAdx ? '/adx/thank-you' : '/thank-you', req.url);
+
+  const publicOrigin = process.env.APP_URL;
+if (!publicOrigin) throw new Error('APP_URL is required');
+
+const url = new URL(
+  isAdx ? '/adx/thank-you' : '/thank-you',
+  publicOrigin
+);
   if (refno) url.searchParams.set('refno', refno);
   url.searchParams.set('locale', locale);
   if (isEsim) url.searchParams.set('esim', '1');

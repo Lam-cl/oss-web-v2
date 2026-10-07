@@ -833,10 +833,16 @@ useEffect(() => {
   // const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
   // const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
 
-  const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
-  const superliteBasePrice = hasPromoter ? SUPERLITE_BASE_PRICE : SUPERLITE_HQ_BASE_PRICE;
+const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
 
-  const effectiveBasePrice = readyBundle
+// HQ = tiada referrer, ADX = isAdxDirectFlow. Discount hanya bila dah pilih plan.
+const isHqOrAdx = isAdxDirectFlow || !hasPromoter;
+const superliteBasePrice =
+  isHqOrAdx && !!selectedDataPlan
+    ? SUPERLITE_HQ_BASE_PRICE
+    : SUPERLITE_BASE_PRICE;
+
+const effectiveBasePrice = readyBundle
   ? readyBundle.price
   : directCheckout
     ? 10
@@ -1262,7 +1268,7 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1)
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <p className="fu-plan-price-col package-choice-price">
-  {choice === 'superlite' ? formatRM(superliteBasePrice) : option.price}
+   {option.price}
 </p>
           </div>
         </div>

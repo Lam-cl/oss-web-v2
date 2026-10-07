@@ -28,6 +28,8 @@ const STEPS = [
 ];
 
 const DEFAULT_BASE_SIM_PRICE = 19.50;
+const SUPERLITE_BASE_PRICE = 10;      // ada referrer
+const SUPERLITE_HQ_BASE_PRICE = 5;    // tiada referrer (HQ) atau ADX
 const PRODUCTION_OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
 const STAGING_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
 
@@ -828,8 +830,21 @@ useEffect(() => {
   const planAddon = selectedDataPlan?.price || 0;
   const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceById.basic || insuranceOptions[0];
   const insurancePrice = selectedInsuranceOption.price;
-  const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
+  // const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
+  // const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
+
   const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
+  const superliteBasePrice = hasPromoter ? SUPERLITE_BASE_PRICE : SUPERLITE_HQ_BASE_PRICE;
+
+  const effectiveBasePrice = readyBundle
+  ? readyBundle.price
+  : directCheckout
+    ? 10
+    : purchaseMode === 'superlite'
+      ? superliteBasePrice
+      : isSuperlitePlusMode
+        ? 0
+        : BASE_SIM_PRICE;
   const isBareOrder = !hasPromoter && !selectedDataPlan && insurancePrice === 0 && !selectedNumber;
   const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : readyBundle ? 0 : isBareOrder ? 5 : 0;
 
@@ -1246,7 +1261,9 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1)
             <p className="fu-plan-data package-choice-data">{option.data}</p>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <p className="fu-plan-price-col package-choice-price">{option.price}</p>
+            <p className="fu-plan-price-col package-choice-price">
+  {choice === 'superlite' ? formatRM(superliteBasePrice) : option.price}
+</p>
           </div>
         </div>
         {active && (

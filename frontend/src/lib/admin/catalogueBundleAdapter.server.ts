@@ -144,7 +144,12 @@ function compiledVariantAttestation(
         }
       }
     }
-    const generatedCode=typeof variant.sku==='string'?variant.sku.match(/(?:^|-)(CV-[A-Z0-9]+)$/i)?.[1]:undefined;
+    // Bundle keeps SKUs reserved even after soft-delete, so its compiler can
+    // append a numeric uniqueness counter (e.g. CV-<hash>-1) on a later draft.
+    // The full CV code still identifies the value; the counter never does.
+    // Keep this anchored and numeric-only, and retain all one-to-one and
+    // selected/durable identity checks below. Never infer identity by row order.
+    const generatedCode=typeof variant.sku==='string'?variant.sku.match(/(?:^|-)(CV-[A-Z0-9]+)(?:-[1-9][0-9]*)?$/i)?.[1]:undefined;
     const skuCode=generatedCode?codeByUppercase.get(generatedCode.toUpperCase()):undefined;
     const unknownGeneratedCode=generatedCode&&!skuCode&&/^CV-[A-F0-9]{24}$/i.test(generatedCode);
     if(unknownGeneratedCode||selectedCode&&skuCode&&selectedCode!==skuCode) {

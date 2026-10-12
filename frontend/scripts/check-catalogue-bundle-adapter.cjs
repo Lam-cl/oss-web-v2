@@ -157,14 +157,16 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const emptyMappingJob={operationId:op,draftBundleProductId:195,revision:6,catalogueId:job.catalogueId,resolved:{images:{},options:{},values:{},variants:{}},bindings:[]};
   const checkpoint={...emptyMappingJob,resolved:{...emptyMappingJob.resolved,options:{'catalogue-variant':175},values:correct.valueIdByCode},bindings:codes.map(code=>({valueKeys:[code],variantId:correct.variantIdByCode[code]}))};
   function mappingFixture(raw=unnormalized,stored=emptyMappingJob) {
-    const result={raw:structuredClone(raw),stored:structuredClone(stored),writes:[],hidden:[]};
+    const result={raw:structuredClone(raw),stored:structuredClone(stored),writes:[],hidden:[],reads:[],extraProducts:[]};
     result.make=()=>createCatalogueBundleAdapter({baseUrl:'https://bundle.test/api',token:'mock-token',local:{...local,
       readPublication:async()=>result.stored,readProductPublication:async()=>result.stored,readMedia:async()=>[],
       hideOptionValues:async(id,valueIds)=>result.hidden.push([id,valueIds]),
     },fetcher:async(url,init)=>{
       const pathname=new URL(String(url)).pathname;
-      if(init.method==='POST'&&pathname==='/api/products/195/variants'){result.writes.push(JSON.parse(init.body));return json({success:true},201);}
-      if(init.method==='GET'&&pathname==='/api/products/195')return json(result.raw);
+      if(init.method==='POST'&&pathname===`/api/products/${result.raw.id}/variants`){result.writes.push(JSON.parse(init.body));return json({success:true},201);}
+      if(init.method==='GET')result.reads.push(pathname);
+      if(init.method==='GET'&&pathname==='/api/products')return json({data:[...result.extraProducts,result.raw]});
+      if(init.method==='GET'&&pathname===`/api/products/${result.raw.id}`)return json(result.raw);
       throw new Error('Unexpected mapping fixture request');
     }});
     result.adapter=result.make();return result;
@@ -180,6 +182,72 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   assert.deepEqual(composedMapping.productVariants.map(variant=>variant.id),rawOrder,'provider row order is irrelevant and need not be rewritten');
   composedMapping.productVariants.forEach(variant=>assert.equal(correct.variantIdByCode[variant.selectedOptions[0].value],variant.id));
   assert.deepEqual(shuffled.raw,unnormalized,'composition does not mutate the raw provider response');
+
+  // Real retry after retiring draft 195: the provider retains its generated
+  // SKUs and disambiguates draft 196 with a numeric suffix, while both response
+  // arrays are still shuffled and selectedOptions remains empty.
+  const retryOperation='e0bb57bb3cd8f684eb79b11ae55ef47ad53982a746f015971c47e1bfc100ad02';
+  const retryCorrect={optionId:176,valueIdByCode:{[codes[0]]:728,[codes[1]]:729,[codes[2]]:730},variantIdByCode:{[codes[0]]:781,[codes[1]]:782,[codes[2]]:783}};
+  const retryRaw={id:196,title:'Water Bottle 500ml [TW-e0bb57bb-a2]',description:`Bottle\n[[TW-CATALOGUE-DRAFT:${retryOperation}]]`,deletedAt:null,images:[],options:[{id:176,name:'Catalogue Variant',values:[{id:730,value:codes[2]},{id:728,value:codes[0]},{id:729,value:codes[1]}]}],productVariants:[
+    {id:782,sku:'WATER-'+codes[1].toUpperCase()+'-1',price:null,inventory:0,selectedOptions:[]},
+    {id:783,sku:'WATER-'+codes[2].toUpperCase()+'-1',price:null,inventory:0,selectedOptions:[]},
+    {id:781,sku:'WATER-'+codes[0].toUpperCase()+'-1',price:null,inventory:0,selectedOptions:[]},
+  ]};
+  const retryJob={...emptyMappingJob,operationId:retryOperation,draftBundleProductId:196,revision:4};
+  const retryCheckpoint={...retryJob,resolved:{...retryJob.resolved,options:{'catalogue-variant':176},values:retryCorrect.valueIdByCode},bindings:codes.map(code=>({valueKeys:[code],variantId:retryCorrect.variantIdByCode[code]}))};
+  const retryRequest={...compileRequest,operationId:retryOperation};
+  function retryFixture(stored=retryJob){
+    const fixture=mappingFixture(retryRaw,stored);
+    fixture.extraProducts=[{id:99,title:'Unrelated product',description:'Normal merchandise',deletedAt:null},{...unnormalized,deletedAt:'2026-10-12T06:00:44.206Z'}];
+    return fixture;
+  }
+  function assertRetryMapping(composed,label){
+    assert.equal(composed.id,196,label+' selects the current draft');
+    assert.deepEqual(composed.productVariants.map(variant=>variant.id),[782,783,781],label+' does not assume provider row ordering');
+    for(const variant of composed.productVariants){
+      const selected=variant.selectedOptions[0];
+      assert.equal(selected.optionId,176,label+' retains option identity');
+      assert.equal(retryCorrect.variantIdByCode[selected.value],variant.id,label+' maps code to exact variant ID');
+      assert.equal(retryCorrect.valueIdByCode[selected.value],selected.valueId,label+' maps code to exact value ID');
+    }
+  }
+  for(const numericSuffix of ['1','2','10']){
+    const retry=retryFixture();
+    retry.raw.productVariants.forEach(variant=>{variant.sku=variant.sku.replace(/-1$/,'-'+numericSuffix);});
+    assertRetryMapping(await retry.adapter.findDraftByOperation(retryOperation),'discovery with -'+numericSuffix);
+    assert.deepEqual(retry.writes,[],'discovery never recreates variants for -'+numericSuffix);
+    assertRetryMapping((await retry.make().readProduct(196)).data,'readback with -'+numericSuffix);
+    assert.deepEqual(retry.writes,[],'readback never recreates variants for -'+numericSuffix);
+    assert.deepEqual(await retry.make().createCompiledVariants(196,retryRequest),retryCorrect,'compiled callback attests the suffix without changing identity');
+    assert.deepEqual(retry.raw.productVariants.map(variant=>variant.selectedOptions),[[],[],[]],'composition does not alter raw evidence');
+  }
+  const checkpointedRetry=retryFixture(retryCheckpoint);
+  assertRetryMapping((await checkpointedRetry.make().readProduct(196)).data,'durable retry readback');
+  assert.deepEqual(checkpointedRetry.hidden,[],'checkpointed retry needs no new hidden-option state');
+  for(const [label,mutate]of [
+    ['arbitrary suffix',raw=>{raw.productVariants[0].sku=raw.productVariants[0].sku.replace(/-1$/,'-copy');}],
+    ['zero suffix',raw=>{raw.productVariants[0].sku=raw.productVariants[0].sku.replace(/-1$/,'-0');}],
+    ['leading-zero suffix',raw=>{raw.productVariants[0].sku=raw.productVariants[0].sku.replace(/-1$/,'-01');}],
+    ['multiple numeric suffixes',raw=>{raw.productVariants[0].sku+='-2';}],
+    ['duplicate suffixed code',raw=>{raw.productVariants[0].sku=raw.productVariants[1].sku.replace(/-1$/,'-2');}],
+    ['unknown suffixed code',raw=>{raw.productVariants[0].sku='WATER-CV-'+ 'f'.repeat(24)+'-1';}],
+    ['selected value/SKU disagreement',raw=>{raw.productVariants[0].selectedOptions=[{optionId:176,valueId:728,value:codes[0]}];}],
+  ]){
+    const invalid=retryFixture();mutate(invalid.raw);
+    await assert.rejects(()=>invalid.adapter.findDraftByOperation(retryOperation),/ambiguous|missing|invalid|contradict/i,label+' is rejected during discovery');
+    await assert.rejects(()=>invalid.make().readProduct(196),/ambiguous|missing|invalid|contradict/i,label+' is rejected during direct readback');
+    assert.deepEqual(invalid.writes,[],label+' causes no provider writes');
+    assert.deepEqual(invalid.hidden,[],label+' never persists a fabricated mapping');
+  }
+  const wrongRetryCheckpoint=structuredClone(retryCheckpoint);
+  wrongRetryCheckpoint.bindings=codes.map((code,index)=>({valueKeys:[code],variantId:[782,783,781][index]}));
+  const conflictingRetry=retryFixture(wrongRetryCheckpoint),unchangedRetryCheckpoint=structuredClone(conflictingRetry.stored);
+  await assert.rejects(()=>conflictingRetry.adapter.findDraftByOperation(retryOperation),/contradicts durable publication bindings/i,'numeric suffixes cannot override conflicting durable identities');
+  assert.deepEqual(conflictingRetry.stored,unchangedRetryCheckpoint,'durable retry identities are never silently repaired');
+  assert.deepEqual(conflictingRetry.writes,[],'conflicting durable retry evidence causes no provider writes');
+  const unknownCheckpointedRetry=retryFixture(retryCheckpoint);
+  unknownCheckpointedRetry.raw.productVariants[0].sku='WATER-CV-'+ 'f'.repeat(24)+'-10';
+  await assert.rejects(()=>unknownCheckpointedRetry.adapter.readProduct(196),/contradict/i,'a numeric suffix on a foreign code cannot fall back to durable identity');
 
   const selected=mappingFixture();
   selected.raw.productVariants.forEach(variant=>{

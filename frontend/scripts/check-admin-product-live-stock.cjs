@@ -52,6 +52,19 @@ const longSku = 'S'.repeat(100), suffix = '-TWc49c1d85V4';
 const longSkuModel = { ...model, combinations: [{ ...model.combinations[0], variantId: 39, sku: longSku }] };
 const longSkuLive = { id: 83, productVariants: [{ id: 304, sku: `${longSku.slice(0, 100 - suffix.length)}${suffix}`, inventory: 4, selectedOptions: [] }] };
 assert.deepEqual(stock.liveCombinationInventory(longSkuModel, longSkuLive), { blue: 4 }, 'long canonical SKU resolves by exact provider truncation and version suffix reconstruction');
+const operationId='b'.repeat(64),identity={catalogueId:'c49c1d85-1234-4567-89ab-123456789abc',operationId};
+const operationSuffix=`-TWc49c1d85V4-${operationId.slice(0,16)}`;
+const operationSkuLive={id:83,productVariants:[{id:305,sku:`TONE-STANDARD-2${operationSuffix}`,inventory:15,selectedOptions:[]}]};
+assert.deepEqual(stock.liveCombinationInventory(staleBindingModel,operationSkuLive,identity),{blue:15},'operation-specific SKU resolves live stock with stale editor IDs');
+const longOperationSkuLive={id:83,productVariants:[{id:305,sku:`${longSku.slice(0,100-operationSuffix.length)}${operationSuffix}`,inventory:16,selectedOptions:[]}]};
+assert.equal(longOperationSkuLive.productVariants[0].sku.length,100);
+assert.deepEqual(stock.liveCombinationInventory(longSkuModel,longOperationSkuLive,identity),{blue:16},'operation-specific suffix preserves exact 100-character canonical truncation');
+assert.deepEqual(stock.liveCombinationInventory(staleBindingModel,operationSkuLive,{...identity,operationId:'c'.repeat(64)}),{blue:0},'provided publication operation identity must match the exact suffix');
+assert.deepEqual(stock.liveCombinationInventory(staleBindingModel,operationSkuLive,{...identity,catalogueId:'deadbeef-1234-4567-89ab-123456789abc'}),{blue:0},'another catalogue suffix must not supply stock');
+assert.equal(stock.productInventory({...catalogue,catalogueId:identity.catalogueId,publicationOperationId:operationId,model:staleBindingModel},operationSkuLive),15,'joined row stock retains catalogue and available publication identity');
+for(const sku of ['TONE-STANDARD-2'+operationSuffix.slice(0,-1),'TONE-STANDARD-2'+operationSuffix+'x','TONE-STANDARD-2-TWc49c1d85V4-operation']){
+  assert.deepEqual(stock.liveCombinationInventory(staleBindingModel,{id:83,productVariants:[{id:305,sku,inventory:15,selectedOptions:[]}]}),{blue:0},'arbitrary or partial operation suffixes never supply live stock');
+}
 assert.equal(model.combinations[0].inventory, 1, 'live reconciliation never mutates local publish intent');
 
 const page = fs.readFileSync('src/app/admin/products/page.tsx', 'utf8');

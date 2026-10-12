@@ -114,13 +114,20 @@ function providerSkusMatch(product: CatalogueProductRecord, snapshot: CatalogueP
     JSON.stringify(combination.valueKeys),
     { combination, index },
   ]));
-  const suffix = new RegExp(`-TW${product.catalogueId.slice(0, 8).toUpperCase()}V[1-9][0-9]*$`);
+  const suffix = new RegExp(`-TW${product.catalogueId.slice(0, 8).toUpperCase()}V([1-9][0-9]*)(?:-([A-F0-9]{16}))?$`);
   for (const published of snapshot.product.combinations) {
     const current = currentByTuple.get(JSON.stringify(published.valueKeys));
     const providerVariant = providerById.get(published.variantId);
-    if (!current || typeof providerVariant?.sku !== 'string' || !suffix.test(providerVariant.sku.toUpperCase())) return null;
-    const providerCanonicalSku = providerVariant.sku.toUpperCase().replace(suffix, '');
-    if (providerCanonicalSku !== expectedSku(product, current.combination.valueKeys, current.combination.sku, current.index)) return false;
+    if (!current || typeof providerVariant?.sku !== 'string') return null;
+    const providerSku = providerVariant.sku.toUpperCase();
+    const identity = providerSku.match(suffix);
+    if (!identity || !Number.isSafeInteger(Number(identity[1]))
+      || identity[2] !== undefined && identity[2] !== snapshot.operationId.slice(0, 16).toUpperCase()) return null;
+    // Publication-specific suffixes consume more of the provider's 100-character
+    // SKU limit. Compare the exact retained canonical prefix, not an untruncated
+    // editor SKU, while still rejecting another operation's identity.
+    const expectedCanonical = expectedSku(product, current.combination.valueKeys, current.combination.sku, current.index);
+    if (providerSku !== `${expectedCanonical.slice(0, 100 - identity[0].length)}${identity[0]}`) return false;
   }
   return true;
 }

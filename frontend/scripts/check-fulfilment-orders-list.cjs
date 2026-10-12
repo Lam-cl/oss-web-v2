@@ -21,5 +21,10 @@ assert.equal(canonicalCatalogueSku('MUG-A-TWdeadbeefV22'),'MUG-A');
 assert.equal(canonicalCatalogueSku('MUG-A-TWDEADBEEFV1'),'MUG-A-TWDEADBEEFV1');
 assert.equal(canonicalCatalogueSku('MUG-A-TWdeadbeefV0'),'MUG-A-TWdeadbeefV0');
 assert.equal(canonicalCatalogueSku('MUG-A-TWdeadbeefV1-X'),'MUG-A-TWdeadbeefV1-X');
+assert.equal(canonicalCatalogueSku('MUG-A-TWdeadbeefV5-0123456789abcdef'),'MUG-A','display strips the exact reserved operation-specific SKU suffix');
+for(const value of ['MUG-A-TWdeadbeefV5-0123456789abcde','MUG-A-TWdeadbeefV5-0123456789abcdefx','MUG-A-TWdeadbeefV5-not-an-operation','MUG-A-TWdeadbeefV0-0123456789abcdef','MUG-A-TWdeadbeefV5-0123456789ABCDEF']){
+  assert.equal(canonicalCatalogueSku(value),value,'non-provider user SKU suffixes must not be stripped');
+}
 assert.equal(resolveAdminOrderItemPresentation({variant:{sku:'MUG-A-TWdeadbeefV22'}},indexAdminOrderItemPresentations({products:[]}),0).productCode,'MUG-A','order presentation strips the exact reserved provider SKU suffix');
+assert.equal(resolveAdminOrderItemPresentation({variant:{sku:'MUG-A-TWdeadbeefV5-0123456789abcdef'}},indexAdminOrderItemPresentations({products:[]}),0).productCode,'MUG-A','order presentation strips the exact new publication suffix');
 console.log('fulfilment orders list check passed');

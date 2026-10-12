@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addCatalogueMedia, listCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
+import { withCatalogueMutationLock } from '@/lib/admin/catalogueMutationLock.server';
 import {
   activeSimMediaMutationError,
   catalogueMediaAuthError,
@@ -30,10 +31,6 @@ export async function GET(request: NextRequest, { params }: Context) {
 export async function POST(request: NextRequest, { params }: Context) {
   const denied = await catalogueMediaAuthError(request, true);
   if (denied) return denied;
-  const { product, error } = await readCatalogueMediaProduct(params.id);
-  if (error) return error;
-  const simDenied = await activeSimMediaMutationError(product);
-  if (simDenied) return simDenied;
 
   let form: FormData;
   try { form = await readBoundedCatalogueMediaForm(request); }
@@ -46,21 +43,28 @@ export async function POST(request: NextRequest, { params }: Context) {
   const assignment = form.get('assignment');
   if (!(file instanceof Blob) || typeof (file as File).name !== 'string'
     || typeof order !== 'string' || !/^\d+$/.test(order)
-    || !isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
+    || typeof assignment !== 'string') return catalogueMediaBadRequest();
   const numericOrder = Number(order);
   if (!Number.isSafeInteger(numericOrder)) return catalogueMediaBadRequest();
 
   try {
-    const media = await addCatalogueMedia(params.id, {
+    return await withCatalogueMutationLock(params.id, async () => {
+      const { product, error } = await readCatalogueMediaProduct(params.id);
+      if (error) return error;
+      const simDenied = await activeSimMediaMutationError(product);
+      if (simDenied) return simDenied;
+      if (!isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
+      const media = await addCatalogueMedia(params.id, {
       name: (file as File).name,
       type: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
       body: file,
       order: numericOrder,
       assignment,
-    });
-    return NextResponse.json({ media: publicCatalogueMedia(media) }, {
+      });
+      return NextResponse.json({ media: publicCatalogueMedia(media) }, {
       status: 201,
       headers: { 'cache-control': 'no-store' },
+      });
     });
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }

@@ -23,6 +23,8 @@ const clone = structuredClone;
 const digest = body => crypto.createHash('sha256').update(body).digest('hex');
 const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : value && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value);
 const codeFor = keys => `CV-${crypto.createHash('sha256').update(canonical(keys)).digest('hex').slice(0,24)}`;
+const providerSuffix = (input, operationId) => `-TW${input.catalogueId.slice(0,8)}V${input.versionOrdinal}-${operationId.slice(0,16)}`;
+const legacySku = (sku, input) => { const suffix=`-TW${input.catalogueId.slice(0,8)}V${input.versionOrdinal}`;return `${sku.slice(0,100-suffix.length)}${suffix}`; };
 function spec(choiceCount=0) {
   const choices=[{key:'colour',name:'Color',values:[{key:'red',label:'Red',retired:false},{key:'blue',label:'Blue',retired:false}]},{key:'size',name:'Size',values:[{key:'small',label:'Small',retired:false},{key:'large',label:'Large',retired:false}]}].slice(0,choiceCount);
   const tuples=choiceCount===0?[[]]:choiceCount===1?[['red'],['blue']]:[['red','small'],['red','large'],['blue','small'],['blue','large']];
@@ -49,7 +51,7 @@ class FakeBundle {
     if(!p.options.length){const option={id:this.id(),name:req.optionName,values:req.values.map(code=>({id:this.id(),value:code}))};p.options.push(option);const values=this.reorderCreate?[...option.values].reverse():option.values;for(const value of values)p.productVariants.push({id:this.id(),sku:`GEN-${value.value}`,price:null,inventory:0,selectedOptions:[{optionId:option.id,valueId:value.id,value:value.value}]});if(this.extraCompiledCode){const value={id:this.id(),value:'CV-EXTRA'};option.values.push(value);p.productVariants.push({id:this.id(),sku:'GEN-EXTRA',price:null,inventory:0,selectedOptions:[{optionId:option.id,valueId:value.id,value:value.value}]});}}
     const option=p.options[0], valueIdByCode=Object.fromEntries(option.values.map(v=>[v.value,v.id])), variantIdByCode=Object.fromEntries(p.productVariants.map(v=>[v.selectedOptions[0].value,v.id]));this.hit('compiled-variants',true);if(this.badCompiledAttestation)valueIdByCode[req.values[0]]=999999;return {optionId:option.id,valueIdByCode,variantIdByCode};
   }
-  async batchUpdateVariants(id,updates){this.events.push('batch-update');this.variantUpdates.push(clone(updates));if(this.batchRejectBeforeCommit)throw new Error('batch rejected');const p=this.products.get(id);for(const u of updates)Object.assign(p.productVariants.find(x=>x.id===u.id),u);if(this.reorderAfterBatch)p.productVariants.reverse();this.hit('batch-update',true);}
+  async batchUpdateVariants(id,updates){this.events.push('batch-update');this.variantUpdates.push(clone(updates));if(this.batchRejectBeforeCommit)throw new Error('batch rejected');const occupied=new Set([...this.products.values()].filter(p=>p.id!==id).flatMap(p=>p.productVariants.map(v=>v.sku)));if(updates.some(u=>occupied.has(u.sku)))throw new Error('SKU must remain globally unique including soft-deleted rows');const p=this.products.get(id);for(const u of updates)Object.assign(p.productVariants.find(x=>x.id===u.id),u);if(this.reorderAfterBatch)p.productVariants.reverse();this.hit('batch-update',true);}
   async publishProduct(id,operationId){this.events.push('publish');const p=this.products.get(id);assert.equal(operationId,p.operationId);delete p.draftOperationId;p.draft=false;p.published=!this.forcePublishedFalse;if(this.swapValueIdsAfterPublish)[p.options[0].values[0].id,p.options[0].values[1].id]=[p.options[0].values[1].id,p.options[0].values[0].id];this.hit('publish',true);}
   async restoreDraft(id,operationId){this.events.push('restore-draft');const p=this.products.get(id);assert.equal(operationId,p.operationId);p.draftOperationId=operationId;p.draft=true;p.published=false;for(const [op,a] of this.activations)if(a.productId===id)this.activations.delete(op);this.restored.push(id);}
   async activateVersion(id,bindings,fingerprint,previousId,operationId){this.events.push('activate');if(this.activationRejectBeforeCommit)throw new Error('activation rejected before commit');this.activations.set(operationId,{active:true,operationId,productId:id,fingerprint,bindings:clone(bindings),previousProductId:previousId});this.hit('activate',true);}
@@ -64,7 +66,7 @@ const request=(count=1,previousBundleProductId=9,catalogueId=randomUUID(),versio
 async function run(fake,input){return publisher.publishCatalogueProductVersion(input,fake.deps());}
 (async()=>{let live=0;const oldFetch=global.fetch;global.fetch=async()=>{live++;throw new Error('live network forbidden')};const dirs=[];const fresh=async()=>{const d=await fsp.mkdtemp(path.join(os.tmpdir(),'tw-publisher-'));dirs.push(d);return new FakeBundle(d)};
 try {
-  for(const count of [0,1,2]){const f=await fresh(), input=request(count);const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory),p=f.products.get(40),tuples=spec(count).combinations.map(x=>x.valueKeys),codes=tuples.map(codeFor),providerSuffix=`-TW${input.catalogueId.slice(0,8)}V1`;assert.equal(job.phase,'complete');assert.equal(out.bundleProductId,40);assert.deepEqual(out.bindings.map(x=>x.valueKeys),tuples);assert.equal(p.options.length,1);assert.equal(p.options[0].name,'Catalogue Variant');assert.deepEqual(new Set(p.options[0].values.map(x=>x.value)),new Set(codes));assert.equal(f.events.filter(x=>x==='compiled-variants').length,1);assert.equal(p.productVariants.length,codes.length);assert.deepEqual(job.bindings.map(x=>x.valueKeys),codes.map(x=>[x]));assert.deepEqual(job.completedSteps.map(x=>x.name),['draft-created','images-resolved','options-resolved','variants-resolved','variants-normalized','bundle-published','activated','previous-retired','complete']);assert.ok(f.events.indexOf('batch-update')<f.events.indexOf('publish'));assert.ok(f.events.indexOf('publish')<f.events.indexOf('activate'));assert.ok(f.events.indexOf('activate')<f.events.indexOf('retire-old'));assert.ok(p.productVariants.every(v=>v.sku.endsWith(providerSuffix)&&v.sku.length<=100&&Number.isSafeInteger(v.inventory)));assert.deepEqual(f.preflightSkus[0],p.productVariants.map(v=>v.sku));}
+  for(const count of [0,1,2]){const f=await fresh(), input=request(count);const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory),p=f.products.get(40),tuples=spec(count).combinations.map(x=>x.valueKeys),codes=tuples.map(codeFor),suffix=providerSuffix(input,out.operationId);assert.equal(job.phase,'complete');assert.equal(out.bundleProductId,40);assert.deepEqual(out.bindings.map(x=>x.valueKeys),tuples);assert.equal(p.options.length,1);assert.equal(p.options[0].name,'Catalogue Variant');assert.deepEqual(new Set(p.options[0].values.map(x=>x.value)),new Set(codes));assert.equal(f.events.filter(x=>x==='compiled-variants').length,1);assert.equal(p.productVariants.length,codes.length);assert.deepEqual(job.bindings.map(x=>x.valueKeys),codes.map(x=>[x]));assert.deepEqual(job.completedSteps.map(x=>x.name),['draft-created','images-resolved','options-resolved','variants-resolved','variants-normalized','bundle-published','activated','previous-retired','complete']);assert.ok(f.events.indexOf('batch-update')<f.events.indexOf('publish'));assert.ok(f.events.indexOf('publish')<f.events.indexOf('activate'));assert.ok(f.events.indexOf('activate')<f.events.indexOf('retire-old'));assert.ok(p.productVariants.every(v=>v.sku.endsWith(suffix)&&v.sku.length<=100&&Number.isSafeInteger(v.inventory)));assert.deepEqual(f.preflightSkus[0],p.productVariants.map(v=>v.sku));}
   // Hidden values and their preserved combinations remain available to the
   // editor for Undo, but are excluded from the compiled provider matrix.
   {const f=await fresh(),input=request(1);input.spec.choices[0].values.push({key:'green',label:'Green',retired:true});input.spec.combinations.push({valueKeys:['green'],price:22,inventory:0,sku:'MUG-GREEN'});const preserved=clone(input.spec),out=await run(f,input),p=f.products.get(out.bundleProductId);assert.deepEqual(input.spec,preserved);assert.deepEqual(out.bindings.map(binding=>binding.valueKeys),[['red'],['blue']]);assert.equal(p.productVariants.length,2);assert.equal(f.preflightSkus[0].some(sku=>sku.includes('GREEN')),false);}
@@ -72,7 +74,7 @@ try {
   {const f=await fresh(),input=request(2),first=await run(f,input),before=f.events.length,second=await run(f,input);assert.deepEqual(second,first);assert.deepEqual(f.events.slice(before),[]);}
   // A completed version consumes its ordinal. Republish with unchanged model/media/previous
   // receives a new operation identity and must create a new Bundle product.
-  {const f=await fresh(),catalogueId=randomUUID(),firstInput=request(1,null,catalogueId,1),first=await run(f,firstInput),firstSkus=f.products.get(first.bundleProductId).productVariants.map(v=>v.sku);f.products.get(first.bundleProductId).deleted=true;f.products.get(first.bundleProductId).published=false;f.activations.clear();const secondInput=request(1,null,catalogueId,2),second=await run(f,secondInput),secondSkus=f.products.get(second.bundleProductId).productVariants.map(v=>v.sku);assert.notEqual(second.operationId,first.operationId);assert.notEqual(second.bundleProductId,first.bundleProductId);assert.equal(second.bundleProductId,41);assert(firstSkus.every(sku=>sku.endsWith(`-TW${catalogueId.slice(0,8)}V1`)));assert(secondSkus.every(sku=>sku.endsWith(`-TW${catalogueId.slice(0,8)}V2`)));assert.equal(new Set([...firstSkus,...secondSkus]).size,firstSkus.length+secondSkus.length);assert.equal((await store.readPublicationJob(first.operationId,f.directory)).phase,'complete');assert.equal((await store.readPublicationJob(second.operationId,f.directory)).phase,'complete');assert.equal(f.createCount,2);}
+  {const f=await fresh(),catalogueId=randomUUID(),firstInput=request(1,null,catalogueId,1),first=await run(f,firstInput),firstSkus=f.products.get(first.bundleProductId).productVariants.map(v=>v.sku);f.products.get(first.bundleProductId).deleted=true;f.products.get(first.bundleProductId).published=false;f.activations.clear();const secondInput=request(1,null,catalogueId,2),second=await run(f,secondInput),secondSkus=f.products.get(second.bundleProductId).productVariants.map(v=>v.sku);assert.notEqual(second.operationId,first.operationId);assert.notEqual(second.bundleProductId,first.bundleProductId);assert.equal(second.bundleProductId,41);assert(firstSkus.every(sku=>sku.endsWith(providerSuffix(firstInput,first.operationId))));assert(secondSkus.every(sku=>sku.endsWith(providerSuffix(secondInput,second.operationId))));assert.equal(new Set([...firstSkus,...secondSkus]).size,firstSkus.length+secondSkus.length);assert.equal((await store.readPublicationJob(first.operationId,f.directory)).phase,'complete');assert.equal((await store.readPublicationJob(second.operationId,f.directory)).phase,'complete');assert.equal(f.createCount,2);}
   // Whole same-operation invocation is serialized: one draft and one mutation per stage.
   {const f=await fresh(),input=request(2);const [a,b]=await Promise.all([run(f,input),run(f,input)]);assert.deepEqual(a,b);assert.equal(f.createCount,1);for(const event of ['compiled-variants','batch-update','publish','activate','retire-old'])assert.equal(f.events.filter(x=>x===event).length,1,event);}
   // Crash after provider draft creation but before the local ID checkpoint: retry binds the exact marker and never creates again.
@@ -84,9 +86,79 @@ try {
   {const f=await fresh(),input=request(1);f.cleanupFirstCreate=true;await assert.rejects(()=>run(f,input),/creation failed|reconciled/i);const afterFailure=await store.readPublicationJob(crypto.createHash('sha256').update(canonical({catalogueId:input.catalogueId,spec:input.spec,previous:9,versionOrdinal:1,uploads:input.uploads.map(({key,name,contentType,order,sha256})=>({key,name,contentType,order,sha256}))})).digest('hex'),f.directory);assert.equal(afterFailure.revision,2);const restarted=new FakeBundle(f.directory);restarted.products=f.products;restarted.nextProduct=f.nextProduct;const out=await run(restarted,input);assert.equal(out.bundleProductId,41);assert.deepEqual([f.createRevisions,restarted.createRevisions],[[2],[3]]);assert.equal([...restarted.products.values()].filter(x=>!x.deleted).length,1);assert.equal(new Set([...restarted.products.values()].map(x=>x.title)).size,2);}
   // A 200-character local title and 100-character canonical SKU are truncated only in provider copies.
   {const f=await fresh(),input=request(1);input.spec.details.title='L'.repeat(200);input.spec.combinations.forEach((combination,index)=>{combination.sku=`MAX-${index}`});const out=await run(f,input),provider=f.products.get(out.bundleProductId).title;assert.equal(provider.length,200);assert.match(provider,/ \[TW-[a-f0-9]{8}-a2\]$/);assert.equal(input.spec.details.title.length,200);}
-  {const f=await fresh(),input=request(1);input.spec.combinations[0].sku='S'.repeat(100);input.spec.combinations[1].sku='T'.repeat(100);const canonicalSkus=input.spec.combinations.map(x=>x.sku),out=await run(f,input),providerSkus=f.products.get(out.bundleProductId).productVariants.map(x=>x.sku),suffix=`-TW${input.catalogueId.slice(0,8)}V1`;assert.deepEqual(input.spec.combinations.map(x=>x.sku),canonicalSkus);assert(providerSkus.every(x=>x.length===100&&x.endsWith(suffix)));}
+  {const f=await fresh(),input=request(1);input.spec.combinations[0].sku='S'.repeat(100);input.spec.combinations[1].sku='T'.repeat(100);const canonicalSkus=input.spec.combinations.map(x=>x.sku),out=await run(f,input),providerSkus=f.products.get(out.bundleProductId).productVariants.map(x=>x.sku),suffix=providerSuffix(input,out.operationId);assert.deepEqual(input.spec.combinations.map(x=>x.sku),canonicalSkus);assert(providerSkus.every(x=>x.length===100&&x.endsWith(suffix)));}
+  // A normalized abandoned candidate keeps its legacy V5 SKUs after soft
+  // deletion. Changed input at that same V5 must use a new operation namespace.
+  {
+    const f=await fresh(),input=request(1,9,randomUUID(),5);
+    input.spec.combinations.forEach((c,i)=>{c.sku=`WATER-${i}`});f.activationRejectBeforeCommit=true;
+    await assert.rejects(()=>run(f,input),/activation|restored/i);
+    const abandoned=f.products.get(40),oldOperation=abandoned.operationId;
+    abandoned.productVariants.forEach((v,i)=>{v.sku=legacySku(input.spec.combinations[i].sku,input)});
+    abandoned.deleted=true;f.activationRejectBeforeCommit=false;
+    const next=clone(input);next.spec.details.description+=' Updated image order';
+    const canonicalBefore=clone(next.spec.combinations),out=await run(f,next),product=f.products.get(out.bundleProductId);
+    assert.equal(out.bundleProductId,41);assert.notEqual(out.operationId,oldOperation);
+    assert.equal(next.versionOrdinal,5);assert.equal(product.productVariants.length,2);
+    assert(product.productVariants.every(v=>v.sku.endsWith(providerSuffix(next,out.operationId))));
+    assert.equal(new Set([...abandoned.productVariants,...product.productVariants].map(v=>v.sku)).size,4);
+    assert.deepEqual(next.spec.combinations,canonicalBefore,'only provider copies change SKUs');
+    assert.equal((await store.readPublicationJob(oldOperation,f.directory)).phase,'bundle-published');
+  }
+  // A process restart preserves a whole legacy normalized plan, even when the
+  // provider returns its variants in another order. No normalization replay.
+  for(const stoppedAt of ['normalized','published']){
+    const f=await fresh(),input=request(1);input.spec.combinations.forEach((c,i)=>{c.sku=`LEGACY-${i}`});
+    if(stoppedAt==='normalized')f.forcePublishedFalse=true;else f.activationRejectBeforeCommit=true;
+    await assert.rejects(()=>run(f,input));const p=f.products.get(40),op=p.operationId;
+    const oldSkus=input.spec.combinations.map(c=>legacySku(c.sku,input));
+    p.productVariants.forEach((v,i)=>{v.sku=oldSkus[i]});p.productVariants.reverse();
+    const restarted=new FakeBundle(f.directory);restarted.products=f.products;restarted.nextProduct=f.nextProduct;
+    const out=await run(restarted,input);
+    assert.equal(out.operationId,op);assert.equal(out.bundleProductId,40);
+    assert.equal(restarted.events.includes('batch-update'),false);assert.equal(restarted.createCount,0);
+    assert.deepEqual(restarted.preflightSkus[0],oldSkus);
+    assert.deepEqual(new Set(p.productVariants.map(v=>v.sku)),new Set(oldSkus));
+    assert.equal((await store.readPublicationJob(op,f.directory)).phase,'complete');
+  }
+  // A mixed legacy/current or arbitrary checkpointed SKU set never supplies
+  // enough evidence to resume a normalized draft or mutate the provider.
+  for(const corrupted of ['mixed','foreign']){
+    const f=await fresh(),input=request(1);input.spec.combinations.forEach((c,i)=>{c.sku=`LEGACY-${i}`});
+    f.forcePublishedFalse=true;await assert.rejects(()=>run(f,input));f.forcePublishedFalse=false;
+    f.products.get(40).productVariants[0].sku=corrupted==='mixed'?legacySku('LEGACY-0',input):'FOREIGN-SKU';
+    f.events=[];await assert.rejects(()=>run(f,input),error=>error.status===503&&/SKU plan/.test(error.message));
+    assert.deepEqual(f.events,['read:40']);assert.equal(f.activations.size,0);
+  }
+  // The full operation hash stays unchanged, and completed old jobs replay
+  // without reads even if the longer new suffix would lose SKU uniqueness.
+  {
+    const f=await fresh(),input=request(1),seed=await run(f,input),evidence=await store.readPublicationJob(seed.operationId,f.directory);
+    input.spec.combinations[0].sku='S'.repeat(75)+'A';input.spec.combinations[1].sku='S'.repeat(75)+'B';
+    const operationId=publisher.cataloguePublicationOperationId(input);
+    const expected=crypto.createHash('sha256').update(canonical({catalogueId:input.catalogueId,spec:input.spec,previous:9,versionOrdinal:1,uploads:input.uploads.map(({key,name,contentType,order,sha256})=>({key,name,contentType,order,sha256}))})).digest('hex');
+    assert.equal(operationId,expected);
+    await store.createCompletedPublicationEvidence({operationId,catalogueId:input.catalogueId,modelFingerprint64:operationId,previousBundleProductId:9,draftBundleProductId:40,resolved:evidence.resolved,bindings:evidence.bindings,resultFingerprint64:evidence.resultFingerprint64},f.directory);
+    f.events=[];const replay=await run(f,input);assert.equal(replay.operationId,operationId);assert.deepEqual(f.events,[]);
+    const freshInput=clone(input);freshInput.spec.details.description+=' different operation';
+    await assert.rejects(()=>run(f,freshInput),/uniquely representable/i);assert.deepEqual(f.events,[]);
+  }
+  {const f=await fresh(),input=request(1);input.versionOrdinal=Number.MAX_SAFE_INTEGER;input.spec.combinations.forEach((c,i)=>{c.sku=(i?'T':'S').repeat(100)});const out=await run(f,input);assert(f.products.get(40).productVariants.every(v=>v.sku.length===100&&v.sku.endsWith(providerSuffix(input,out.operationId))));}
   // Every external commit-then-timeout reconciles against the same authoritative draft.
-  for(const stage of ['create-draft','upload:front','batch-update','publish','activate','retire-old']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));if(stage==='batch-update'){const files=await fsp.readdir(f.directory),checkpointed=await store.readPublicationJob(files[0].slice(0,-5),f.directory);assert(checkpointed.completedSteps.some(x=>x.name==='variants-normalized'));assert.equal(f.events.filter(x=>x==='publish').length,0);}const beforeBatch=f.events.filter(x=>x==='batch-update').length,out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');if(stage==='batch-update')assert.equal(f.events.filter(x=>x==='batch-update').length,beforeBatch);if(stage==='activate')assert.deepEqual(f.restored,[]);}
+  for(const stage of ['create-draft','upload:front']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));const out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');}
+  // Exact readback after batch/publication/activation/retirement commit-then-
+  // timeout is success, not an artificial stop requiring another user edit.
+  for(const stage of ['batch-update','publish','activate','retire-old']){
+    const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);
+    const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory);
+    assert.equal(job.phase,'complete',stage);assert.equal(f.createCount,1,stage);
+    assert.equal(f.events.filter(x=>x==='batch-update').length,1,stage);
+    assert.equal(f.events.filter(x=>x==='publish').length,1,stage);
+    assert.equal(f.events.filter(x=>x==='activate').length,1,stage);
+    assert.equal(f.events.filter(x=>x==='retire-old').length,1,stage);
+    assert.deepEqual(f.restored,[],stage);const before=f.events.length;
+    await run(f,input);assert.equal(f.events.length,before,'complete replay has no provider calls');
+  }
   // A committed compiled graph whose response fails must normalize and publish
   // within the same attempt, without duplicating variants or restoring a draft.
   for(const count of [0,1,2]){
@@ -121,7 +193,7 @@ try {
   {
     const f=await fresh(),input=request(1);input.spec.details.isPreOrder=true;
     const create=f.createDraft.bind(f);f.createDraft=async payload=>{const product=await create(payload);f.products.get(product.id).isPreOrder=payload.isPreOrder;product.isPreOrder=payload.isPreOrder;return product;};
-    f.commitTimeout.add('commit:batch-update');await assert.rejects(()=>run(f,input));
+    f.forcePublishedFalse=true;await assert.rejects(()=>run(f,input));f.forcePublishedFalse=false;
     const p=f.products.get(40),ids=p.productVariants.map(v=>v.id);p.productVariants.forEach(v=>{v.inventory=0});
     const out=await run(f,input),job=await store.readPublicationJob(out.operationId,f.directory);
     assert.deepEqual(p.productVariants.map(v=>v.inventory),Array(p.productVariants.length).fill(9_999_999));
@@ -168,7 +240,7 @@ try {
   // A rejected batch whose readback remains generated/null/0 is a resumable explicit 503, not generic verification 502.
   {const f=await fresh(),input=request(1);f.batchRejectBeforeCommit=true;await assert.rejects(()=>run(f,input),error=>error.status===503&&/batch|normaliz|variant/i.test(error.message));const files=await fsp.readdir(f.directory),job=await store.readPublicationJob(files[0].slice(0,-5),f.directory);assert(!job.completedSteps.some(x=>x.name==='variants-normalized'));}
   // Mapping uses exact code attestations and selected option/value IDs, never provider array position.
-  {const f=await fresh();f.reorderCreate=true;f.reorderAfterBatch=true;const input=request(2),out=await run(f,input),p=f.products.get(40),byId=new Map(p.productVariants.map(x=>[x.id,x])),suffix=`-TW${input.catalogueId.slice(0,8)}V1`;out.bindings.forEach((b,i)=>{const v=byId.get(b.variantId);assert.equal(v.selectedOptions[0].value,codeFor(b.valueKeys));assert.equal(v.sku,`${i===1?'TRAVEL-MUG-RED-LARGE':`MUG-${i+1}-SAFE`}${suffix}`);});}
+  {const f=await fresh();f.reorderCreate=true;f.reorderAfterBatch=true;const input=request(2),out=await run(f,input),p=f.products.get(40),byId=new Map(p.productVariants.map(x=>[x.id,x])),suffix=providerSuffix(input,out.operationId);out.bindings.forEach((b,i)=>{const v=byId.get(b.variantId);assert.equal(v.selectedOptions[0].value,codeFor(b.valueKeys));assert.equal(v.sku,`${i===1?'TRAVEL-MUG-RED-LARGE':`MUG-${i+1}-SAFE`}${suffix}`);});}
   {const f=await fresh();f.badCompiledAttestation=true;await assert.rejects(()=>run(f,request(1)),/attestation|mapping|value/i);assert.equal(f.activations.size,0);}
   {const f=await fresh();f.extraCompiledCode=true;await assert.rejects(()=>run(f,request(1)),/extra|exact|code|count/i);assert.equal(f.activations.size,0);}
   // Publication, active-list, stable-ID, explicit booleans and storage digest attestations fail closed.

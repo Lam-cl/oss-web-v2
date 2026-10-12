@@ -74,6 +74,43 @@ for (const generation of [1, 2, 5, 8]) test(`generation ${generation}: clean pub
   assert.deepEqual(evaluatePublicationChangeState(fixture(generation)), { publicationChangeState: 'clean' });
 });
 
+for (const generation of [1, 2, 5, 8]) test(`generation ${generation}: operation-specific provider SKUs stay clean`, () => {
+  const evidence=fixture(generation);
+  evidence.providerProduct.productVariants.forEach((variant:any)=>{variant.sku+=`-${operationId.slice(0,16)}`;});
+  assert.deepEqual(evaluatePublicationChangeState(evidence),{publicationChangeState:'clean'});
+  evidence.product.model.combinations[0].sku='CHANGED-SKU';
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'dirty');
+});
+
+test('100-character canonical SKUs remain clean with exact legacy or operation-specific provider truncation', () => {
+  for(const operationSpecific of [false,true]) {
+    const evidence=fixture(5),suffix=`-TW${catalogueId.slice(0,8)}V5${operationSpecific?'-'+operationId.slice(0,16):''}`;
+    evidence.product.model.combinations.forEach((combination:any,index:number)=>{
+      combination.sku=String(index?'T':'S').repeat(100);
+      evidence.providerProduct.productVariants[index].sku=combination.sku.slice(0,100-suffix.length)+suffix;
+    });
+    assert(evidence.providerProduct.productVariants.every((variant:any)=>variant.sku.length===100));
+    assert.deepEqual(evaluatePublicationChangeState(evidence),{publicationChangeState:'clean'});
+  }
+});
+
+test('operation-specific SKU evidence must match the attested catalogue and snapshot operation', () => {
+  const mutations=[
+    (sku:string)=>sku.replace(operationId.slice(0,16),'c'.repeat(16)),
+    (sku:string)=>sku.replace(catalogueId.slice(0,8),'deadbeef'),
+    (sku:string)=>sku.slice(0,-1),
+    (sku:string)=>sku+'x',
+    (sku:string)=>sku.replace(/V5-/,'V0-'),
+    (sku:string)=>sku.replace(/V5-/,'V9007199254740992-'),
+  ];
+  for(const mutate of mutations) {
+    const evidence=fixture(5);
+    evidence.providerProduct.productVariants.forEach((variant:any)=>{variant.sku+=`-${operationId.slice(0,16)}`;});
+    evidence.providerProduct.productVariants[0].sku=mutate(evidence.providerProduct.productVariants[0].sku);
+    assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState,'unknown');
+  }
+});
+
 test('pre-order defaults clean, toggling is dirty and matching publication is clean', () => {
   const evidence=fixture();
   evidence.product.model.details.isPreOrder=false;
@@ -125,12 +162,12 @@ test('missing, corrupt, duplicate, and ambiguous evidence is unknown', () => {
   for (const evidence of cases) assert.equal(evaluatePublicationChangeState(evidence as any).publicationChangeState, 'unknown');
 });
 
-test('same-ID SIM evidence permits its preserved legacy variant but remains exact', () => {
+test('SIM categories retain exact publication identity and reject unbound legacy variants', () => {
   const evidence = fixture() as any;
   evidence.product.currentBundleProductId = 39;
   evidence.product.bundleVersions[0].bundleProductId = 39;
   evidence.product.slug = 'superlite-sim';
-  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM' };
+  evidence.product.model.details = { title: 'SUPERLITE SIM', price: 10, description: 'SIM', category: 'SIM', minimumOrderQuantity: 2 };
   evidence.product.model.choices[0].values[0].key = 'tone-excel';
   evidence.product.model.choices[0].values[1].key = 'tone-plus';
   evidence.product.model.combinations = [
@@ -150,12 +187,16 @@ test('same-ID SIM evidence permits its preserved legacy variant but remains exac
     ],
   };
   evidence.providerProduct = { id: 39, productVariants: [
-    { id: 106, sku: 'SIM-SUPERLITE' }, { id: 209, sku: 'SUPER-TONE EXCEL' }, { id: 210, sku: 'SUPER-TONE PLUS' },
+    { id: 209, sku: `SUPER-TONE-EXCEL-TW${catalogueId.slice(0,8)}V1` },
+    { id: 210, sku: `SUPER-TONE-PLUS-TW${catalogueId.slice(0,8)}V1` },
   ] };
   assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'clean');
   evidence.product.model.details.category = 'SIM Card';
   evidence.snapshot.product.details.category = 'SIM Card';
   assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'clean');
+  evidence.providerProduct.productVariants.push({id:106,sku:'SIM-SUPERLITE'});
+  assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'unknown');
+  evidence.providerProduct.productVariants.pop();
   evidence.product.model.combinations[0].inventory = 43;
   assert.equal(evaluatePublicationChangeState(evidence).publicationChangeState, 'dirty');
 });

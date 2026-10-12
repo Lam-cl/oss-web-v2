@@ -16,6 +16,7 @@ import { saveProductHiddenOptionValues } from '@/lib/productImageColors.server';
 import { evaluatePublicationChangeState, type PublicationProviderProduct } from '@/lib/admin/cataloguePublicationChangeState.server';
 import { inheritShippingProductGroup } from '@/lib/shippingSettings.server';
 import { ensureCatalogueR2Assets } from '@/lib/catalogueR2Assets.server';
+import { CatalogueMutationBusyError, serializeCatalogueMutation } from '@/lib/admin/catalogueMutationLock.server';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_RECORDS = 1000;
@@ -53,6 +54,7 @@ export async function readBoundedCatalogueJson(request:NextRequest):Promise<unkn
 }
 export const catalogueAdminBadRequest=()=>safeError(400);
 export function catalogueAdminError(reason:unknown){
+  if(reason instanceof CatalogueMutationBusyError)return safeError(409,{message:reason.message});
   if(reason instanceof CatalogueAdminRouteError)return safeError(reason.status,{message:reason.message});
   if(reason instanceof CataloguePublishError||reason instanceof CatalogueBundleAdapterError||reason instanceof CatalogueArchiveError)return safeError(reason.status,{message:reason.message});
   const message=reason instanceof Error?reason.message:'';
@@ -142,7 +144,7 @@ function publishedProduct(source:CatalogueProductRecord,bundleProductId:number,b
   return {catalogueId:source.catalogueId,slug:source.slug,details,choices,combinations,images:ordered.map(item=>({url:`/catalogue-products-api?catalogueId=${encodeURIComponent(source.catalogueId)}&mediaId=${encodeURIComponent(item.mediaId)}`,order:item.order,assignment:item.assignment})),bundleProductId,minimumOrderQuantity};
 }
 
-export const catalogueAdminRoute={
+const catalogueAdminActions={
   async list(){return {products:await listProducts()};},
   async get(id:string){return {product:await enrichAdminProduct(await requireProduct(id))};},
   async inventory(id:string,token:string){ensureId(id);const state=await activeCatalogueInventory(id,token);return {bundleProductId:state.bundleProductId,inventory:state.rows};},
@@ -287,4 +289,13 @@ export const catalogueAdminRoute={
     await inheritShippingProductGroup({catalogueId:id,previousBundleProductId:product.currentBundleProductId,bundleProductId:publication.bundleProductId,slug:product.slug});
     return {product:updated,publication};
   },
+};
+
+export const catalogueAdminRoute={
+  ...catalogueAdminActions,
+  update:serializeCatalogueMutation(catalogueAdminActions.update),
+  updateInventory:serializeCatalogueMutation(catalogueAdminActions.updateInventory),
+  archive:serializeCatalogueMutation(catalogueAdminActions.archive),
+  unpublish:serializeCatalogueMutation(catalogueAdminActions.unpublish),
+  publish:serializeCatalogueMutation(catalogueAdminActions.publish),
 };

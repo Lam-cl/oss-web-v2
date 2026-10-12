@@ -20,6 +20,7 @@ function compile(relative, injected = {}, cache = new Map()) {
     return nativeRequire(id);
   };
   const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+    fileName: file,
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
   new Function('exports', 'require', 'module', '__filename', '__dirname', output)(module.exports, localRequire, module, file, path.dirname(file));

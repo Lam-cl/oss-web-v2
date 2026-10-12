@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { finalizeCatalogueMediaRemoval, getCatalogueMediaRemoval } from '@/lib/admin/catalogueMedia.server';
+import { withCatalogueMutationLock } from '@/lib/admin/catalogueMutationLock.server';
 import { catalogueAdminError, readBoundedCatalogueJson } from '@/lib/admin/catalogueAdminRoute.server';
 import {
   activeSimMediaMutationError,
@@ -22,12 +23,14 @@ export async function GET(request: NextRequest, { params }: Context) {
   const denied = await catalogueMediaAuthError(request, true);
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.operationId)) return catalogueMediaBadRequest();
-  const { error } = await readCatalogueMediaProduct(params.id);
-  if (error) return error;
   try {
-    const operation = await getCatalogueMediaRemoval(params.id, params.operationId);
-    if (!operation) return new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
-    return response(operation);
+    return await withCatalogueMutationLock(params.id, async () => {
+      const { error } = await readCatalogueMediaProduct(params.id);
+      if (error) return error;
+      const operation = await getCatalogueMediaRemoval(params.id, params.operationId);
+      if (!operation) return new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+      return response(operation);
+    });
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }
 
@@ -35,10 +38,6 @@ export async function POST(request: NextRequest, { params }: Context) {
   const denied = await catalogueMediaAuthError(request, true);
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.operationId)) return catalogueMediaBadRequest();
-  const { product, error } = await readCatalogueMediaProduct(params.id);
-  if (error) return error;
-  const simDenied = await activeSimMediaMutationError(product);
-  if (simDenied) return simDenied;
   let body: unknown;
   try { body = await readBoundedCatalogueJson(request); }
   catch (reason) { return catalogueAdminError(reason); }
@@ -47,6 +46,14 @@ export async function POST(request: NextRequest, { params }: Context) {
   const mediaIds = (body as { mediaIds?: unknown }).mediaIds;
   if (!Array.isArray(mediaIds) || mediaIds.length === 0 || mediaIds.length > 100
     || mediaIds.some(mediaId => !isValidCatalogueMediaId(mediaId)) || new Set(mediaIds).size !== mediaIds.length) return catalogueMediaBadRequest();
-  try { return response(await finalizeCatalogueMediaRemoval(params.id, params.operationId, mediaIds)); }
+  try {
+    return await withCatalogueMutationLock(params.id, async () => {
+      const { product, error } = await readCatalogueMediaProduct(params.id);
+      if (error) return error;
+      const simDenied = await activeSimMediaMutationError(product);
+      if (simDenied) return simDenied;
+      return response(await finalizeCatalogueMediaRemoval(params.id, params.operationId, mediaIds));
+    });
+  }
   catch (reason) { return catalogueMediaRequestError(reason); }
 }

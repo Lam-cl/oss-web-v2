@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readVerifiedCatalogueMedia, removeCatalogueMedia, updateCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
+import { withCatalogueMutationLock } from '@/lib/admin/catalogueMutationLock.server';
 import {
   activeSimMediaMutationError,
   catalogueMediaAuthError,
@@ -38,10 +39,6 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const denied = await catalogueMediaAuthError(request, true);
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.mediaId)) return catalogueMediaBadRequest();
-  const { product, error } = await readCatalogueMediaProduct(params.id);
-  if (error) return error;
-  const simDenied = await activeSimMediaMutationError(product);
-  if (simDenied) return simDenied;
 
   let patch: unknown;
   try { patch = await request.json(); } catch { return catalogueMediaBadRequest(); }
@@ -49,12 +46,17 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const keys = Object.keys(patch);
   if (keys.length === 0 || keys.some((key) => key !== 'order' && key !== 'assignment')) return catalogueMediaBadRequest();
   const assignment = (patch as { assignment?: unknown }).assignment;
-  if (Object.prototype.hasOwnProperty.call(patch, 'assignment')
-    && !isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
 
   try {
-    const media = await updateCatalogueMedia(params.id, params.mediaId, patch as { order?: number; assignment?: string });
-    return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
+    return await withCatalogueMutationLock(params.id, async () => {
+      const { product, error } = await readCatalogueMediaProduct(params.id);
+      if (error) return error;
+      const simDenied = await activeSimMediaMutationError(product);
+      if (simDenied) return simDenied;
+      if (Object.prototype.hasOwnProperty.call(patch, 'assignment') && !isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
+      const media = await updateCatalogueMedia(params.id, params.mediaId, patch as { order?: number; assignment?: string });
+      return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
+    });
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }
 
@@ -62,12 +64,14 @@ export async function DELETE(request: NextRequest, { params }: Context) {
   const denied = await catalogueMediaAuthError(request, true);
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.mediaId)) return catalogueMediaBadRequest();
-  const { product, error } = await readCatalogueMediaProduct(params.id);
-  if (error) return error;
-  const simDenied = await activeSimMediaMutationError(product);
-  if (simDenied) return simDenied;
   try {
-    const media = await removeCatalogueMedia(params.id, params.mediaId);
-    return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
+    return await withCatalogueMutationLock(params.id, async () => {
+      const { product, error } = await readCatalogueMediaProduct(params.id);
+      if (error) return error;
+      const simDenied = await activeSimMediaMutationError(product);
+      if (simDenied) return simDenied;
+      const media = await removeCatalogueMedia(params.id, params.mediaId);
+      return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
+    });
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }

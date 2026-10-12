@@ -7,6 +7,8 @@ const path = require('node:path');
 const ts = require('typescript');
 const root = process.cwd();
 function compile(rel, injected = {}) {
+  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), ...injected };
+  if (rel !== 'src/lib/catalogueR2AssetPaths.ts' && !injected['@/lib/catalogueR2AssetPaths']) injected['@/lib/catalogueR2AssetPaths'] = compile('src/lib/catalogueR2AssetPaths.ts');
   const file = path.join(root, rel);
   const out = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };

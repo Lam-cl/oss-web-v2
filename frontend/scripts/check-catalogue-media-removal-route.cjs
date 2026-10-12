@@ -5,6 +5,7 @@ const ts = require('typescript');
 const root = process.cwd();
 const file = path.join(root, 'src/app/api/admin/catalogue-products/[id]/media-removals/[operationId]/route.ts');
 function compile(file, injected) {
+  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), ...injected };
   const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
   new Function('exports','require','module','__filename','__dirname',output)(module.exports, id => id in injected ? injected[id] : require(id), module, file, path.dirname(file));
@@ -19,7 +20,7 @@ const removal = { operationId, catalogueId, status: 'committed', removed: [], cr
 const media = [{ mediaId: '79a00000-0000-4000-8000-000000000079', catalogueId, originalName:'keep.png', contentType:'image/png', bytes:8, sha256:'a'.repeat(64), order:0, assignment:'all', createdAt:new Date().toISOString() }];
 const helper = {
   catalogueMediaAuthError: async (request, mutation) => !request.auth ? json({},401) : mutation && !request.sameOrigin ? json({},403) : null,
-  catalogueMediaBadRequest: () => json({},400), catalogueMediaRequestError: () => json({},500),
+  catalogueMediaBadRequest: () => json({},400), catalogueMediaRequestError: reason => json({}, reason?.status || (/valid catalogue ID/i.test(reason?.message || '') ? 400 : 500)),
   readCatalogueMediaProduct: async id => id === catalogueId ? ({ product:{}, error:null }) : ({ product:null, error:json({},400) }), activeSimMediaMutationError: async () => sim ? json({},409) : null,
   isValidCatalogueMediaId: value => /^[0-9a-f-]{36}$/.test(value), publicCatalogueMedia: item => item,
 };

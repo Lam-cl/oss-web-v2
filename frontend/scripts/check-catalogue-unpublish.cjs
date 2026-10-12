@@ -30,6 +30,7 @@ function harness(options = {}) {
     async readActiveVersions() { events.push(['active-list']); if (options.activeError) throw new Error('active list timeout'); return options.activeVersions || []; },
   };
   const actual = compile('src/lib/admin/catalogueAdminRoute.server.ts', {
+    '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'),
     'node:fs/promises': {readdir:async directory=>directory.endsWith('catalogue-publications')&&options.job?[{name:`${options.job.operationId}.json`,isFile:()=>true}]:[]},
     'next/server': next,
     '@/lib/admin/server': {getAdminSession:async()=>null,requestIsSameOrigin:()=>false,safeError:(s,p)=>response(p||{},s),BUNDLE_API:'https://bundle.test/api'},

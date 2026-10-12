@@ -93,6 +93,76 @@ function multipartStrings(value:unknown,label:string,max:number){const values=st
 function ids(value:unknown,label:string,max=10_000){if(!Array.isArray(value)||value.length>max||value.some(item=>!positive(item))||new Set(value).size!==value.length)throw new CatalogueBundleAdapterError(`Valid unique ${label} are required.`,400);return [...value] as number[];}
 function productRow(value:unknown){const row=unwrap(value);if(!object(row)||!positive(row.id))throw new CatalogueBundleAdapterError('Bundle product readback is invalid.');return row;}
 
+// Provider arrays have no stable ordering. An empty selectedOptions response is
+// common, so generated SKUs are the other explicit source of code identity.
+// After normalization removes those generated SKUs, retain a durable binding
+// only when all remaining structural and explicit evidence agrees with it.
+function compiledVariantAttestation(
+  product:Row,
+  codes:string[],
+  expected?:CatalogueCompiledVariantsAttestation,
+):CatalogueCompiledVariantsAttestation {
+  const options=rows(product.options),variants=rows(product.productVariants);
+  if(!codes.length||new Set(codes).size!==codes.length||new Set(codes.map(code=>code.toUpperCase())).size!==codes.length
+    ||options.length!==1||options[0].name!=='Catalogue Variant'||!positive(options[0].id)
+    ||variants.length!==codes.length||variants.some(variant=>!positive(variant.id))
+    ||new Set(variants.map(variant=>variant.id)).size!==variants.length) {
+    throw new CatalogueBundleAdapterError('Bundle compiled variant structure or IDs are ambiguous.');
+  }
+  const option=options[0],values=rows(option.values),wanted=new Set(codes);
+  if(values.length!==codes.length||values.some(value=>!positive(value.id)||typeof value.value!=='string'||!wanted.has(value.value))
+    ||new Set(values.map(value=>value.id)).size!==values.length||new Set(values.map(value=>value.value)).size!==values.length) {
+    throw new CatalogueBundleAdapterError('Bundle compiled option/value code mapping is ambiguous.');
+  }
+  const valueIdForCode=new Map(values.map(value=>[value.value as string,value.id as number]));
+  const valueIdByCode=Object.fromEntries(codes.map(code=>[code,valueIdForCode.get(code)!]));
+  const codeByValueId=new Map(values.map(value=>[value.id,value.value as string]));
+  const codeByUppercase=new Map(codes.map(code=>[code.toUpperCase(),code]));
+  const variantIds=new Set(variants.map(variant=>variant.id));
+  if(expected&&(expected.optionId!==option.id
+    ||Object.keys(expected.valueIdByCode).length!==codes.length||Object.keys(expected.variantIdByCode).length!==codes.length
+    ||codes.some(code=>expected.valueIdByCode[code]!==valueIdByCode[code]
+      ||!positive(expected.variantIdByCode[code])||!variantIds.has(expected.variantIdByCode[code]))
+    ||new Set(Object.values(expected.variantIdByCode)).size!==codes.length)) {
+    throw new CatalogueBundleAdapterError('Bundle compiled IDs do not match durable publication bindings.',409);
+  }
+  const expectedCodeByVariant=new Map(expected?codes.map(code=>[expected.variantIdByCode[code],code]):[]);
+  const variantIdByCode:Record<string,number>={};
+  for(const variant of variants) {
+    let selectedCode:string|undefined;
+    if(variant.selectedOptions!==undefined&&variant.selectedOptions!==null) {
+      if(!Array.isArray(variant.selectedOptions))throw new CatalogueBundleAdapterError('Bundle compiled selected-option mapping is invalid.');
+      if(variant.selectedOptions.length) {
+        const selected=variant.selectedOptions[0];
+        if(variant.selectedOptions.length!==1||!object(selected)||selected.optionId!==option.id
+          ||!positive(selected.valueId)||!codeByValueId.has(selected.valueId)) {
+          throw new CatalogueBundleAdapterError('Bundle compiled selected-option mapping is invalid.');
+        }
+        selectedCode=codeByValueId.get(selected.valueId)!;
+        if(selected.value!==undefined&&selected.value!==selectedCode) {
+          throw new CatalogueBundleAdapterError('Bundle compiled selected-option code/value IDs contradict each other.');
+        }
+      }
+    }
+    const generatedCode=typeof variant.sku==='string'?variant.sku.match(/(?:^|-)(CV-[A-Z0-9]+)$/i)?.[1]:undefined;
+    const skuCode=generatedCode?codeByUppercase.get(generatedCode.toUpperCase()):undefined;
+    const unknownGeneratedCode=generatedCode&&!skuCode&&/^CV-[A-F0-9]{24}$/i.test(generatedCode);
+    if(unknownGeneratedCode||selectedCode&&skuCode&&selectedCode!==skuCode) {
+      throw new CatalogueBundleAdapterError('Bundle compiled generated SKU and selected-option mappings contradict each other.');
+    }
+    const explicitCode=selectedCode??skuCode,durableCode=expectedCodeByVariant.get(variant.id as number);
+    if(explicitCode&&expected&&explicitCode!==durableCode) {
+      throw new CatalogueBundleAdapterError('Bundle compiled variant evidence contradicts durable publication bindings. Retire the inactive draft before retrying.',409);
+    }
+    const code=explicitCode??durableCode;
+    if(!code||Object.hasOwn(variantIdByCode,code)) {
+      throw new CatalogueBundleAdapterError('Bundle compiled variant code identity is missing or ambiguous.');
+    }
+    variantIdByCode[code]=variant.id as number;
+  }
+  return {optionId:option.id as number,valueIdByCode,variantIdByCode:Object.fromEntries(codes.map(code=>[code,variantIdByCode[code]]))};
+}
+
 export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptions):CataloguePublishDependencies {
   const expected=options?.fetcher===undefined?['baseUrl','local','token']:['baseUrl','fetcher','local','token'];
   if(!object(options)||!exactKeys(options,expected)||!object(options.local))throw new CatalogueBundleAdapterError('Exact Bundle adapter options are required.',500);
@@ -135,8 +205,25 @@ export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptio
     for(const [key,item] of Object.entries(memory?.images??{}))imageMeta[item.id]={key,name:item.name,contentType:item.contentType,order:item.order,sha256:item.sha256};
     composed.images=rows(composed.images).map(image=>{const meta=positive(image.id)?imageMeta[image.id]:undefined;return meta?{...image,uploadKey:meta.key,contentType:meta.contentType,order:meta.order,sha256:meta.sha256}:image;});
     let option=memory?.option;
-    if(!option&&job&&positive(job.resolved.options['catalogue-variant']))option={optionId:job.resolved.options['catalogue-variant'],valueIdByCode:{...job.resolved.values},variantIdByCode:Object.fromEntries(job.bindings.filter(x=>x.valueKeys.length===1).map(x=>[x.valueKeys[0],x.variantId]))};
-    if(!option){const productOptions=rows(composed.options),variants=rows(composed.productVariants),values=productOptions.length===1?rows(productOptions[0].values):[];if(productOptions.length===1&&productOptions[0].name==='Catalogue Variant'&&positive(productOptions[0].id)&&values.length===variants.length&&values.length>0&&values.every(value=>positive(value.id)&&typeof value.value==='string')&&variants.every(variant=>positive(variant.id))){option={optionId:productOptions[0].id as number,valueIdByCode:Object.fromEntries(values.map(value=>[value.value as string,value.id as number])),variantIdByCode:Object.fromEntries(values.map((value,index)=>[value.value as string,variants[index].id as number]))};await options.local.hideOptionValues(id,Object.values(option.valueIdByCode));}}
+    if(job&&positive(job.resolved.options['catalogue-variant'])) {
+      const durable={optionId:job.resolved.options['catalogue-variant'],valueIdByCode:{...job.resolved.values},variantIdByCode:Object.fromEntries(job.bindings.filter(binding=>binding.valueKeys.length===1).map(binding=>[binding.valueKeys[0],binding.variantId]))};
+      const attested=compiledVariantAttestation(product,Object.keys(durable.valueIdByCode),durable);
+      if(option&&(option.optionId!==attested.optionId||Object.keys(option.valueIdByCode).length!==Object.keys(attested.valueIdByCode).length
+        ||Object.keys(attested.valueIdByCode).some(code=>option!.valueIdByCode[code]!==attested.valueIdByCode[code]||option!.variantIdByCode[code]!==attested.variantIdByCode[code]))) {
+        throw new CatalogueBundleAdapterError('Bundle compiled in-memory and durable publication bindings disagree.',409);
+      }
+      option=attested;
+    } else if(option) {
+      option=compiledVariantAttestation(product,Object.keys(option.valueIdByCode),option);
+    } else {
+      const productOptions=rows(product.options);
+      if(productOptions.length===1&&productOptions[0].name==='Catalogue Variant') {
+        const codes=rows(productOptions[0].values).map(value=>value.value);
+        if(codes.some(code=>typeof code!=='string'))throw new CatalogueBundleAdapterError('Bundle compiled variant codes are invalid.');
+        option=compiledVariantAttestation(product,codes as string[]);
+        await options.local.hideOptionValues(id,Object.values(option.valueIdByCode));
+      }
+    }
     if(option){const codeByVariant=new Map(Object.entries(option.variantIdByCode).map(([code,variantId])=>[variantId,code]));composed.productVariants=rows(composed.productVariants).map(variant=>{const code=positive(variant.id)?codeByVariant.get(variant.id):undefined;return code?{...variant,selectedOptions:[{optionId:option!.optionId,valueId:option!.valueIdByCode[code],value:code}]}:variant;});}
     return composed;
   }
@@ -166,7 +253,7 @@ export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptio
       const before=await readRaw(id),marker=descriptionState(before.description);if(marker.operationId!==upload.operationId)throw new CatalogueBundleAdapterError('Bundle image upload draft identity is invalid.',409);const beforeIds=new Set(rows(before.images).map(x=>x.id));const copy=new Uint8Array(bytes);let after=await putMetadata(id,before,marker.raw,{bytes:copy,contentType:upload.contentType,name:upload.name}),added=rows(after.images).filter(x=>positive(x.id)&&!beforeIds.has(x.id));if(added.length!==1)throw new CatalogueBundleAdapterError('Bundle image upload ID readback is ambiguous.');const imageId=added[0].id as number;const current=state(id,upload.operationId);current.images[upload.key]={id:imageId,name:upload.name,contentType:upload.contentType,order:upload.order,sha256:upload.sha256};const composed=await composition(id,after),ordering=rows(composed.images).filter(image=>positive(image.id)&&Number.isSafeInteger(image.order)).sort((a,b)=>(a.order as number)-(b.order as number)).map(image=>({id:image.id as number,order:image.order as number}));if(ordering.length!==rows(after.images).length||ordering.some((item,index)=>item.order!==index))throw new CatalogueBundleAdapterError('Bundle image order composition is incomplete.');await json(`products/${id}/images/order`,'PATCH',{images:ordering});after=await readRaw(id);if(descriptionState(after.description).operationId!==upload.operationId||!rows(after.images).some(x=>x.id===imageId))throw new CatalogueBundleAdapterError('Bundle image upload positive readback failed.');return {imageId,sha256:upload.sha256};
     },
     async createCompiledVariants(id:number,request:CatalogueCompiledVariantsRequest){
-      id=productId(id);if(!object(request)||!exactKeys(request,['autoGenerateSku','defaultInventory','hidden','operationId','optionName','values'])||request.optionName!=='Catalogue Variant'||request.hidden!==true||request.autoGenerateSku!==true||request.defaultInventory!==0||!operation(request.operationId))throw new CatalogueBundleAdapterError('A valid explicit compiled variant request is required.',400);const codes=strings(request.values,'compiled variant codes');await json(`products/${id}/variants`,'POST',{optionName:'Catalogue Variant',values:codes.map(value=>({value})),autoGenerateSku:true,defaultInventory:0});const product=await readRaw(id),productOptions=rows(product.options),variants=rows(product.productVariants);if(productOptions.length!==1||productOptions[0].name!=='Catalogue Variant'||variants.length!==codes.length||rows(productOptions[0].values).length!==codes.length)throw new CatalogueBundleAdapterError('Bundle compiled variant readback is ambiguous.');const optionValues=rows(productOptions[0].values);if(!positive(productOptions[0].id)||optionValues.some((value,index)=>!positive(value.id)||value.value!==codes[index])||variants.some(variant=>!positive(variant.id))||new Set(variants.map(x=>x.id)).size!==variants.length)throw new CatalogueBundleAdapterError('Bundle compiled variant IDs are invalid.');const attestation={optionId:productOptions[0].id as number,valueIdByCode:Object.fromEntries(codes.map((code,index)=>[code,optionValues[index].id as number])),variantIdByCode:Object.fromEntries(codes.map((code,index)=>[code,variants[index].id as number]))};state(id,request.operationId).option=attestation;await options.local.hideOptionValues(id,Object.values(attestation.valueIdByCode));return attestation;
+      id=productId(id);if(!object(request)||!exactKeys(request,['autoGenerateSku','defaultInventory','hidden','operationId','optionName','values'])||request.optionName!=='Catalogue Variant'||request.hidden!==true||request.autoGenerateSku!==true||request.defaultInventory!==0||!operation(request.operationId))throw new CatalogueBundleAdapterError('A valid explicit compiled variant request is required.',400);const codes=strings(request.values,'compiled variant codes');await json(`products/${id}/variants`,'POST',{optionName:'Catalogue Variant',values:codes.map(value=>({value})),autoGenerateSku:true,defaultInventory:0});const attestation=compiledVariantAttestation(await readRaw(id),codes);state(id,request.operationId).option=attestation;await options.local.hideOptionValues(id,Object.values(attestation.valueIdByCode));return attestation;
     },
     async batchUpdateVariants(id:number,variants:CatalogueVariantUpdate[]){id=productId(id);if(!Array.isArray(variants)||!variants.length||variants.length>10_000||variants.some(v=>!object(v)||!exactKeys(v,['id','inventory','price','sku'])||!positive(v.id)||typeof v.sku!=='string'||!v.sku||v.sku.length>100||typeof v.price!=='number'||!Number.isFinite(v.price)||v.price<0||!Number.isSafeInteger(v.inventory)||v.inventory<0))throw new CatalogueBundleAdapterError('Valid explicit variant updates are required.',400);await json(`products/${id}/batch-update`,'POST',{variants});},
     async publishProduct(id:number,op:string){id=productId(id);op=operationId(op);const product=await readRaw(id),marker=descriptionState(product.description);if(marker.operationId!==op)throw new CatalogueBundleAdapterError('Bundle publication draft identity is invalid.',409);await putMetadata(id,product,marker.description);const state=await publicationState(id);if(state.published!==true||state.draft!==false)throw new CatalogueBundleAdapterError('Bundle publication positive readback failed.');},

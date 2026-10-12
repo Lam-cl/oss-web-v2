@@ -43,7 +43,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
     if (u.pathname.endsWith('/products') && init.method === 'GET') return json({ data: product ? [product] : [] });
     if (u.pathname.endsWith('/products/7/variants')) {
       product.options = [{ id:10, name:'Catalogue Variant', values:[{id:11,value:'CV-A'}] }];
-      product.productVariants = [{id:12,sku:'AUTO',price:null,inventory:0,selectedOptions:[]}];
+      product.productVariants = [{id:12,sku:'WATER-CV-A',price:null,inventory:0,selectedOptions:[]}];
       return json({ success:true }, 201);
     }
     if (u.pathname.endsWith('/products/7/batch-update')) { Object.assign(product.productVariants[0], JSON.parse(init.body).variants[0]); return json({success:true},201); }
@@ -90,6 +90,11 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   const compiled = await adapter.createCompiledVariants(7,{optionName:'Catalogue Variant',values:['CV-A'],hidden:true,autoGenerateSku:true,defaultInventory:0,operationId:op});
   assert.deepEqual(compiled,{optionId:10,valueIdByCode:{'CV-A':11},variantIdByCode:{'CV-A':12}});
   assert.deepEqual(hidden,[[7,[11]]]);
+  // Normalized SKUs intentionally lose the generated CV code. The persisted
+  // checkpoint, not provider row order, is the binding evidence after restart.
+  job.resolved.options={'catalogue-variant':compiled.optionId};
+  job.resolved.values={...compiled.valueIdByCode};
+  job.bindings=Object.entries(compiled.variantIdByCode).map(([code,variantId])=>({valueKeys:[code],variantId}));
   await adapter.batchUpdateVariants(7,[{id:12,sku:providerSku,price:10,inventory:2}]);
   // Restart has no pending-memory state; durable job + suffix recover composition.
   const resumed = make();
@@ -132,11 +137,90 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   assert(calls.some(([m,p,,body])=>m==='PUT'&&p==='/api/products/7'&&body.get('images')&&body.get('description')===`Keeps warm${suffix}`));
   assert.equal(product.isPreOrder,true,'image PUT, publish and restore preserve pre-order');
   for (const isPreOrder of [false,true,false]) {
+    job.resolved.options={};job.resolved.values={};job.bindings=[];
     const fresh=make();
     await fresh.createDraft({draft:true,draftMarker:fresh.draftMarker,operationId:op,attemptRevision:2,title:'Pre-order test',description:'Test',price:10,categories:[],tags:[],isPreOrder});
     assert.equal(product.isPreOrder,isPreOrder);
     await fresh.publishProduct(7,op);assert.equal(product.isPreOrder,isPreOrder);
   }
   for (const [,p] of calls) assert.doesNotMatch(p,/catalogue\/(drafts|activations|retirements|sku-availability)|compiled-variants|publication-state|publish|restore-draft|catalogue-images/);
+
+  // Production-like Water Bottle response: every selectedOptions array is
+  // empty, generated SKUs upper-case the codes, and neither array is stable.
+  const codes=['CV-52d472e72faae6f5af0a143a','CV-ef9fbefa5b5beb61fd03ac9e','CV-262f104b4c868211311bb4c3'];
+  const correct={optionId:175,valueIdByCode:{[codes[0]]:725,[codes[1]]:726,[codes[2]]:727},variantIdByCode:{[codes[0]]:778,[codes[1]]:779,[codes[2]]:780}};
+  const unnormalized={id:195,title:'Water Bottle 500ml'+titleSuffix,description:'Bottle'+suffix,images:[],options:[{id:175,name:'Catalogue Variant',values:[{id:727,value:codes[2]},{id:725,value:codes[0]},{id:726,value:codes[1]}]}],productVariants:[
+    {id:779,sku:'WATER-'+codes[1].toUpperCase(),price:null,inventory:0,selectedOptions:[]},
+    {id:780,sku:'WATER-'+codes[2].toUpperCase(),price:null,inventory:0,selectedOptions:[]},
+    {id:778,sku:'WATER-'+codes[0].toUpperCase(),price:null,inventory:0,selectedOptions:[]},
+  ]};
+  const emptyMappingJob={operationId:op,draftBundleProductId:195,revision:6,catalogueId:job.catalogueId,resolved:{images:{},options:{},values:{},variants:{}},bindings:[]};
+  const checkpoint={...emptyMappingJob,resolved:{...emptyMappingJob.resolved,options:{'catalogue-variant':175},values:correct.valueIdByCode},bindings:codes.map(code=>({valueKeys:[code],variantId:correct.variantIdByCode[code]}))};
+  function mappingFixture(raw=unnormalized,stored=emptyMappingJob) {
+    const result={raw:structuredClone(raw),stored:structuredClone(stored),writes:[],hidden:[]};
+    result.make=()=>createCatalogueBundleAdapter({baseUrl:'https://bundle.test/api',token:'mock-token',local:{...local,
+      readPublication:async()=>result.stored,readProductPublication:async()=>result.stored,readMedia:async()=>[],
+      hideOptionValues:async(id,valueIds)=>result.hidden.push([id,valueIds]),
+    },fetcher:async(url,init)=>{
+      const pathname=new URL(String(url)).pathname;
+      if(init.method==='POST'&&pathname==='/api/products/195/variants'){result.writes.push(JSON.parse(init.body));return json({success:true},201);}
+      if(init.method==='GET'&&pathname==='/api/products/195')return json(result.raw);
+      throw new Error('Unexpected mapping fixture request');
+    }});
+    result.adapter=result.make();return result;
+  }
+  const compileRequest={optionName:'Catalogue Variant',values:codes,hidden:true,autoGenerateSku:true,defaultInventory:0,operationId:op};
+  const shuffled=mappingFixture();
+  assert.deepEqual(await shuffled.adapter.createCompiledVariants(195,compileRequest),correct,'compiled bindings use code identity, not either shuffled array position');
+  assert.deepEqual(Object.keys(correct.variantIdByCode),codes,'request code order is retained');
+  assert.deepEqual(shuffled.hidden,[[195,[725,726,727]]]);
+  shuffled.stored=structuredClone(checkpoint);
+  const rawOrder=shuffled.raw.productVariants.map(variant=>variant.id);
+  const composedMapping=(await shuffled.make().readProduct(195)).data;
+  assert.deepEqual(composedMapping.productVariants.map(variant=>variant.id),rawOrder,'provider row order is irrelevant and need not be rewritten');
+  composedMapping.productVariants.forEach(variant=>assert.equal(correct.variantIdByCode[variant.selectedOptions[0].value],variant.id));
+  assert.deepEqual(shuffled.raw,unnormalized,'composition does not mutate the raw provider response');
+
+  const selected=mappingFixture();
+  selected.raw.productVariants.forEach(variant=>{
+    const code=codes.find(code=>correct.variantIdByCode[code]===variant.id);
+    variant.sku='CANONICAL-'+variant.id;
+    variant.selectedOptions=[{optionId:175,valueId:correct.valueIdByCode[code]}];
+  });
+  assert.deepEqual(await selected.adapter.createCompiledVariants(195,compileRequest),correct,'explicit option/value IDs independently prove a binding without generated SKUs');
+
+  for(const [label,mutate]of [
+    ['missing evidence',raw=>{raw.productVariants[0].sku='NO-CODE';}],
+    ['duplicate SKU code',raw=>{raw.productVariants[0].sku=raw.productVariants[1].sku;}],
+    ['unknown SKU code',raw=>{raw.productVariants[0].sku='WATER-CV-'+ 'f'.repeat(24);}],
+    ['duplicate value ID',raw=>{raw.options[0].values[0].id=raw.options[0].values[1].id;}],
+    ['duplicate value code',raw=>{raw.options[0].values[0].value=raw.options[0].values[1].value;}],
+    ['duplicate variant ID',raw=>{raw.productVariants[0].id=raw.productVariants[1].id;}],
+    ['selected option/SKU disagreement',raw=>{raw.productVariants[0].selectedOptions=[{optionId:175,valueId:725,value:codes[0]}];}],
+    ['selected code/value disagreement',raw=>{raw.productVariants[0].selectedOptions=[{optionId:175,valueId:726,value:codes[0]}];}],
+    ['wrong option ID',raw=>{raw.productVariants[0].selectedOptions=[{optionId:999,valueId:726,value:codes[1]}];}],
+  ]){
+    const invalid=mappingFixture();mutate(invalid.raw);
+    await assert.rejects(()=>invalid.adapter.createCompiledVariants(195,compileRequest),/ambiguous|missing|invalid|contradict/i,label+' fails closed');
+    assert.equal(invalid.hidden.length,0,label+' never persists a fabricated mapping');
+  }
+
+  const incorrectCheckpoint=structuredClone(checkpoint);
+  incorrectCheckpoint.bindings=codes.map((code,index)=>({valueKeys:[code],variantId:[779,780,778][index]}));
+  const stale=mappingFixture(unnormalized,incorrectCheckpoint),originalCheckpoint=structuredClone(stale.stored);
+  await assert.rejects(()=>stale.adapter.readProduct(195),/contradicts durable publication bindings/i,'the actual old wrong 195 checkpoint is rejected before price or stock writes');
+  assert.deepEqual(stale.stored,originalCheckpoint,'wrong durable bindings are never silently overwritten');
+  assert.deepEqual(stale.writes,[],'readback does not attempt to repair the provider graph');
+
+  const normalized=mappingFixture(unnormalized,checkpoint);
+  normalized.raw.description='Bottle';
+  normalized.raw.productVariants.forEach(variant=>{variant.sku='WATER-CANONICAL-'+variant.id+'-TWddbee112V5';variant.price=29;variant.inventory=12;});
+  const historical=(await normalized.adapter.readPublicationState(195)).data;
+  assert.equal(historical.published,true,'legacy normalized/published products remain readable from valid durable bindings');
+  historical.productVariants.forEach(variant=>assert.equal(correct.variantIdByCode[variant.selectedOptions[0].value],variant.id));
+  normalized.raw.productVariants[0].sku='WATER-CV-LEGACY';
+  await normalized.make().readProduct(195); // Ordinary canonical suffixes are not compiler CV hashes.
+  normalized.stored=structuredClone(emptyMappingJob);
+  await assert.rejects(()=>normalized.make().readProduct(195),/missing|ambiguous/i,'normalized SKUs without durable bindings never fall back to row positions');
   console.log('Catalogue durable-marker Bundle adapter check passed');
 })().catch(e => { console.error(e); process.exit(1); });

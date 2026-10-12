@@ -25,7 +25,8 @@ export const paginationPages = (current: number, total: number) => {
 };
 
 export const asLabel = (value: string | { name?: string; title?: string }) => typeof value === 'string' ? value : value.name || value.title || '';
-export const canonicalCatalogueSku = (value: unknown) => typeof value === 'string' ? value.replace(/-TW[0-9a-f]{8}V[1-9][0-9]*$/, '') : '';
+export const canonicalCatalogueSku = (value: unknown) => typeof value === 'string'
+  ? value.replace(/-TW[0-9a-f]{8}V[1-9][0-9]*(?:-[0-9a-f]{16})?$/, '') : '';
 export const money = (value: unknown) => `RM ${Number(value || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const dateTime = (value: unknown) => value ? new Intl.DateTimeFormat('en-MY', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(String(value))) : '—';
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';

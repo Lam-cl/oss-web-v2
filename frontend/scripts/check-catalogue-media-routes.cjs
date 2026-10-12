@@ -14,6 +14,7 @@ const collectionAlias = '@/app/api/admin/catalogue-products/[id]/media/route';
 const itemAlias = '@/app/api/admin/catalogue-products/[id]/media/[mediaId]/route';
 
 function compile(file, injected = {}) {
+  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), ...injected };
   const source = fs.readFileSync(file, 'utf8');
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },

@@ -551,7 +551,7 @@ function ProductsContent() {
         <td data-label="Inventory">{isPreOrder ? 'Unlimited' : stock}</td>
         <td data-label="Status"><StatusBadge status={row.kind === 'catalogue' && row.catalogue.status === 'draft' ? 'DRAFT' : stock === 0 && !isPreOrder ? 'OUT' : 'ACTIVE'} /></td>
         <td><div className="adm-actions">{row.kind === 'catalogue' ? <>
-          <button className="adm-icon-btn" title="Edit product" aria-label={`Edit ${title}`} onClick={() => setEditor({ kind: 'existing', product: row.catalogue })}><Icon name="edit" /></button>
+          <button className="adm-icon-btn" title={publishingCatalogueId === row.catalogue.catalogueId ? 'Wait for publication to finish before editing.' : 'Edit product'} aria-label={`Edit ${title}`} disabled={publishingCatalogueId === row.catalogue.catalogueId || unpublishingCatalogueId === row.catalogue.catalogueId || archivingCatalogueId === row.catalogue.catalogueId} onClick={() => { if (publishingCatalogueIdRef.current === row.catalogue.catalogueId) return; setEditor({ kind: 'existing', product: row.catalogue }); }}><Icon name="edit" /></button>
           {genericLifecycleAllowed && publishAvailable && <button
             className="adm-button secondary"
             title={publishHazardReason || `${publishLabel} for ${title} to OSS`}
@@ -561,7 +561,7 @@ function ProductsContent() {
             aria-busy={publishingCatalogueId === row.catalogue.catalogueId}
             onClick={() => void publish(row.catalogue)}
           >{publishingCatalogueId === row.catalogue.catalogueId && <span className="adm-publish-spinner" aria-hidden="true" />}{publishingCatalogueId === row.catalogue.catalogueId ? publicationRecovery.pending ? 'Resuming…' : 'Publishing…' : publishLabel}</button>}
-          {genericLifecycleAllowed && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
+          {genericLifecycleAllowed && row.catalogue.status === 'published' && row.catalogue.currentBundleProductId !== null && <button className="adm-button secondary" aria-label={`Unpublish ${title}`} disabled={unpublishingCatalogueId !== null || publishingCatalogueId !== null} onClick={() => void unpublish(row.catalogue)}>{unpublishingCatalogueId === row.catalogue.catalogueId ? 'Unpublishing…' : 'Unpublish'}</button>}
           {genericLifecycleAllowed && localDraft && <button
             className="adm-button secondary"
             title={archiveHazardReason || `Archive ${title}`}

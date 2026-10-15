@@ -282,7 +282,9 @@ const getInitialPackageChoice = (simID: string | null, modeParam: string | null,
 };
 
 const getInitialStep = (simID: string | null): number => {
-  if (simID === 'superlite' || simID === 'superliteplus') return 1;
+   if (simID === 'superliteplus') return 1;
+  if (simID === 'superlite') return 2; // skip Choose SIM Type, terus Choose Plan
+  
   return 0;
 };
 
@@ -440,7 +442,7 @@ function SIMPurchaseWizard() {
       setSimType('physical');
       setStep(4);
     } else {
-      setStep(1);
+      setStep(2);
     }
   }, [simID, modeParam, bundleParam]);
 
@@ -967,7 +969,7 @@ if (!canGoNext() || step >= 4) return;
 
  const goBack = () => {
     if (directCheckout) return;
-    if (isSuperliteDirectFlow && step <= 1) return;
+    if (isSuperliteDirectFlow && step <= 2) return;
     if (isSuperlitePlusMode) {
       if (step === 4) { setDirection(-1); setStep(1); return; }
       if (step === 1) return; // block going further back than SIM Type step for superliteplus
@@ -1152,7 +1154,7 @@ if (!canGoNext() || step >= 4) return;
   };
   const isStepActive = (i: number) => i === step;
   const canNavigateToStep = (i: number) => !directCheckout && !isAdxDirectFlow && isStepCompleted(i) && !selectedNumber && !(readyBundle && i !== 0 && i !== 1);
-const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 1) && !(isSuperlitePlusMode && step === 1);
+const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2) && !(isSuperlitePlusMode && step === 1);
   const showOrderDetailsShipping = step === 4 && simType !== 'esim';
   const resolvedPackageBenefits = (choice: PackageChoice) => {
     if (choice === 'superlite' || choice === 'lite') return PACKAGE_OPTIONS[choice].benefits;

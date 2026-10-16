@@ -1243,6 +1243,7 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
     <span style={{ color: '#16a34a', fontWeight: 700 }}>-{formatRM(superliteDiscount)}</span>
   </div>
 )}
+        
         <IncludedBenefits items={packageIncludedBenefits} />
         {insurancePrice > 0 && (
           <div className="sidebar-order-row">
@@ -1250,13 +1251,6 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
             <span>{formatRM(insurancePrice)}</span>
           </div>
         )}
-
-        {superliteDiscount > 0 && (
-  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-    <span>Discount</span>
-    <span style={{ fontWeight: 600, color: '#16a34a' }}>-{formatRM(superliteDiscount)}</span>
-  </div>
-)}
         {showOrderDetailsShipping && (
           <div className="sidebar-order-row" style={{ marginTop: 6 }}>
             <span>Shipping</span>
@@ -1982,6 +1976,12 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
                               <span style={{ fontWeight: 600 }}>{formatRM(planAddon)}</span>
                             </div>
                           )}
+                          {superliteDiscount > 0 && (
+  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+    <span>Discount</span>
+    <span style={{ fontWeight: 600, color: '#16a34a' }}>-{formatRM(superliteDiscount)}</span>
+  </div>
+)}
                           {insurancePrice > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                               <span>{selectedInsuranceOption.name}</span>

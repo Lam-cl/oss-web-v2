@@ -1698,9 +1698,16 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
           {step === 2 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Pick Your Data Plan</h2>
-              {!isSuperliteMode && (
-                <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
-              )}
+             {!isSuperliteMode && (
+  <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
+)}
+{purchaseMode === 'superlite' && isHqOrAdx && (
+  <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>
+    Subscribe to a plan and get your SIM for RM 5.00
+  </p>
+)}
+
+
 
               <div className="plans-grid-fu">
                 {FU_PLANS.map(plan => {

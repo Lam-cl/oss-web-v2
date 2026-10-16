@@ -280,6 +280,11 @@ export default function CheckoutPage() {
         paymentMethod: 'Online Payment (GKash)', // checkout ni tak pilih kaedah bayaran, tanya marketing
         addressOne: shippingAddr.address1,
         addressTwo: '',
+         items: items.map((item) => ({
+    prid: item.productId || item.id,
+    image: item.image || '',
+    prqt: item.quantity,
+  })),
       };
       trackMerchPurchaseInitiated(merchOrder);
       if (payment.orderId) {

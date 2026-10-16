@@ -35,6 +35,9 @@ export type SimOrderData = {
   paymentMethod: string;
   addressOne: string;
   addressTwo: string;
+  prid?: string;
+  image?: string;
+  prqt?: number;
 };
 
 function sendSimOrderEvent(eventName: string, d: SimOrderData) {
@@ -51,6 +54,9 @@ function sendSimOrderEvent(eventName: string, d: SimOrderData) {
   });
   smartechIdentify(d.icNumber);
   smartechDispatch(eventName, {
+      prid: d.prid ?? '',
+    image: d.image ?? '',
+    prqt: d.prqt ?? 1,
     ic_number: d.icNumber,
     name: d.name,
     email: d.email,

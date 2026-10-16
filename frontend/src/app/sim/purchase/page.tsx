@@ -1096,6 +1096,9 @@ const goBack = () => {
       }
 
             const smartechOrder: SimOrderData = {
+               prid: String(determinePlanId()),
+  image: '',
+  prqt: 1,
         icNumber: form.nric,
         name: customerName,
         email: form.email,
@@ -1113,7 +1116,8 @@ const goBack = () => {
      
       trackSimPurchaseInitiated(smartechOrder);
       localStorage.setItem('tw_smartech_sim_order', JSON.stringify({ paymentRefNo, ...smartechOrder }));
-      window.location.href = `${getOssPaymentUrl()}?${params.toString()}`;
+      const paymentUrl = `${getOssPaymentUrl()}?${params.toString()}`;
+setTimeout(() => { window.location.href = paymentUrl; }, 500);
     } catch (err: any) { setError(err.message || 'Something went wrong. Please try again.'); setSubmitting(false); }
   };
 

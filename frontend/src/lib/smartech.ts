@@ -123,6 +123,12 @@ export const trackCheckout = (items: MerchItem[], amount: number) =>
   });
 
 /* ── Merchandise purchase (list '24') ── */
+export type MerchOrderItem = {
+  prid: string;
+  image: string;
+  prqt: number;
+};
+
 export type MerchOrderData = {
   icNumber: string;
   firstName: string;
@@ -136,13 +142,13 @@ export type MerchOrderData = {
   paymentMethod: string;
   addressOne: string;
   addressTwo: string;
+  items?: MerchOrderItem[];
 };
 
 const MERCH_INITIATED_EVENT = 'online merchandise purchase initiated';
 const MERCH_SUCCESS_EVENT = 'online merchandise purchase success';
 
 function sendMerchOrderEvent(eventName: string, d: MerchOrderData) {
-    
   if (!d.icNumber) return;
   smartechContact('24', {
     'pk^ic_number': d.icNumber,
@@ -155,11 +161,10 @@ function sendMerchOrderEvent(eventName: string, d: MerchOrderData) {
     POSTCODE: d.postcode,
   });
   smartechIdentify(d.icNumber);
-  smartechDispatch(eventName, {
+
+  const customer = {
     ic_number: d.icNumber,
     name: `${d.firstName} ${d.lastName}`.trim(),
-    first_name: d.firstName,
-    last_name: d.lastName,
     email: d.email,
     mobile: d.mobile,
     city: d.city,
@@ -172,6 +177,19 @@ function sendMerchOrderEvent(eventName: string, d: MerchOrderData) {
     payment_method: d.paymentMethod,
     address_one: d.addressOne,
     address_two: d.addressTwo,
+  };
+  const orderItems = d.items?.length ? d.items : [{ prid: '', image: '', prqt: 0 }];
+
+  smartechDispatch(eventName, {
+    amount: d.totalAmount,
+    amount_txt: d.totalAmount,
+    total_prqt: orderItems.reduce((n, i) => n + i.prqt, 0),
+    items: orderItems.map((i) => ({
+      prid: i.prid,
+      image: i.image,
+      prqt: i.prqt,
+      ...customer,
+    })),
   });
 }
 

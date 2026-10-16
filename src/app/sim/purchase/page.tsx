@@ -1239,7 +1239,7 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
 
         {superliteDiscount > 0 && (
   <div className="sidebar-order-row">
-    <span>Discount</span>
+    <span>SIM Discount (FU Subscription)</span>
     <span style={{ color: '#16a34a', fontWeight: 700 }}>-{formatRM(superliteDiscount)}</span>
   </div>
 )}
@@ -1978,7 +1978,7 @@ const showBackButton = !directCheckout && !(isSuperliteDirectFlow && step === 2)
                           )}
                           {superliteDiscount > 0 && (
   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-    <span>Discount</span>
+    <span>SIM Discount (FU Subscription)</span>
     <span style={{ fontWeight: 600, color: '#16a34a' }}>-{formatRM(superliteDiscount)}</span>
   </div>
 )}

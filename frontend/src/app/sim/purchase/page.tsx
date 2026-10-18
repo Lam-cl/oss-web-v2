@@ -36,6 +36,8 @@ const STEPS = [
 ];
 
 const DEFAULT_BASE_SIM_PRICE = 19.50;
+const SUPERLITE_BASE_PRICE = 10;      // default / with referrer
+const SUPERLITE_HQ_BASE_PRICE = 5;    // for HQ users and adx
 const PRODUCTION_OSS_PAYMENT_URL = 'https://www.tonewow.net/gkashwebservice/osspay.jsp';
 const STAGING_OSS_PAYMENT_URL = 'https://qa.tonegroup.net/gkashwebservice/osspay.jsp';
 const STAGING_PAYMENT_HOSTS = new Set(['tonewow-v2.xifuhalim.com']);
@@ -803,8 +805,27 @@ function SIMPurchaseWizard() {
   const planAddon = selectedDataPlan?.price || 0;
   const selectedInsuranceOption = insuranceById[selectedInsurance] || insuranceById.basic || insuranceOptions[0];
   const insurancePrice = selectedInsuranceOption.price;
-  const effectiveBasePrice = readyBundle ? readyBundle.price : directCheckout || purchaseMode === 'superlite' ? 10 : isSuperlitePlusMode ? 0 : BASE_SIM_PRICE;
   const hasPromoter = !isAdxDirectFlow && !!(form.promoterCode && form.promoterCode.trim());
+const isHqOrAdx = isAdxDirectFlow || !hasPromoter;
+const superliteBasePrice = isHqOrAdx && !!selectedDataPlan ? SUPERLITE_HQ_BASE_PRICE : SUPERLITE_BASE_PRICE;
+
+const effectiveBasePrice = readyBundle
+  ? readyBundle.price
+  : directCheckout
+    ? 10
+    : purchaseMode === 'superlite'
+      ? superliteBasePrice
+      : isSuperlitePlusMode
+        ? 0
+        : BASE_SIM_PRICE;
+
+const superliteDiscount =
+  purchaseMode === 'superlite' && !readyBundle && !directCheckout && isHqOrAdx && !!selectedDataPlan
+    ? SUPERLITE_BASE_PRICE - SUPERLITE_HQ_BASE_PRICE
+    : 0;
+
+const displayBasePrice = effectiveBasePrice + superliteDiscount;
+ 
   const isBareOrder = !hasPromoter && !selectedDataPlan && insurancePrice === 0 && !selectedNumber;
   const shippingFee = simType === 'esim' ? 0 : hasPromoter ? 10 : readyBundle ? 0 : isBareOrder ? 5 : 0;
 
@@ -828,7 +849,7 @@ function SIMPurchaseWizard() {
     : !selectedPackage && !directCheckout
       ? 0
       : effectiveBasePrice + planAddon + insurancePrice;
-  const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(effectiveBasePrice);
+const baseSimDisplay = isSuperlitePlusMode && effectiveBasePrice === 0 ? 'FREE' : formatRM(displayBasePrice);
   const simOrderLabel = simType === 'esim'
     ? readyBundle
       ? 'eSIM (' + readyBundle.label + ')'
@@ -1205,6 +1226,12 @@ setTimeout(() => { window.location.href = paymentUrl; }, 500);
             <span>{formatRM(planAddon)}</span>
           </div>
         )}
+        {superliteDiscount > 0 && (
+  <div className="sidebar-order-row">
+    <span>SIM Discount (FU Subscription)</span>
+    <span style={{ color: '#16a34a', fontWeight: 700 }}>- {formatRM(superliteDiscount)}</span>
+  </div>
+)}
         <IncludedBenefits items={packageIncludedBenefits} />
         {insurancePrice > 0 && (
           <div className="sidebar-order-row">
@@ -1661,6 +1688,12 @@ setTimeout(() => { window.location.href = paymentUrl; }, 500);
                 <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>Enjoy RM30,000 Insurance Included</p>
               )}
 
+              {purchaseMode === 'superlite' && isHqOrAdx && (
+  <p style={{ color: '#64748b', marginBottom: 24, fontSize: 14 }}>
+    Subscribe to a plan and get your SIM for RM 5.00
+  </p>
+)}
+
               <div className="plans-grid-fu">
                 {FU_PLANS.map(plan => {
                   const active = selectedDataPlan?.id === plan.id;
@@ -1935,6 +1968,12 @@ setTimeout(() => { window.location.href = paymentUrl; }, 500);
                               <span style={{ fontWeight: 600 }}>{formatRM(planAddon)}</span>
                             </div>
                           )}
+                          {superliteDiscount > 0 && (
+  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+    <span>SIM Discount (FU Subscription)</span>
+    <span style={{ fontWeight: 600, color: '#16a34a' }}>- {formatRM(superliteDiscount)}</span>
+  </div>
+)}
                           {insurancePrice > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                               <span>{selectedInsuranceOption.name}</span>

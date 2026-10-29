@@ -145,7 +145,34 @@ try {
   }
   {const f=await fresh(),input=request(1);input.versionOrdinal=Number.MAX_SAFE_INTEGER;input.spec.combinations.forEach((c,i)=>{c.sku=(i?'T':'S').repeat(100)});const out=await run(f,input);assert(f.products.get(40).productVariants.every(v=>v.sku.length===100&&v.sku.endsWith(providerSuffix(input,out.operationId))));}
   // Every external commit-then-timeout reconciles against the same authoritative draft.
-  for(const stage of ['create-draft','upload:front']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));const out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');}
+  for(const stage of ['create-draft']){const f=await fresh(),input=request(2);f.commitTimeout.add(`commit:${stage}`);await assert.rejects(()=>run(f,input));const out=await run(f,input);assert.equal(out.bundleProductId,40,stage);assert.equal(f.createCount,1,stage);assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');}
+  // Image mappings survive the next upload failing or the invocation stopping.
+  // Never wait until the entire gallery has uploaded before checkpointing.
+  {
+    const f=await fresh(),input=request(1),op=publisher.cataloguePublicationOperationId(input),upload=f.uploadImage.bind(f);
+    f.uploadImage=async(id,u)=>{
+      if(u.key==='back'){
+        const saved=await store.readPublicationJob(op,f.directory);
+        assert.equal(saved.resolved.images.front,f.products.get(id).images[0].id,'front image is durable before the back PUT starts');
+        assert.equal(saved.completedSteps.some(s=>s.name==='images-resolved'),false);
+        throw Error('Invocation stopped before second upload');
+      }
+      return upload(id,u);
+    };
+    await assert.rejects(()=>run(f,input),/digest readback mismatch/);
+    const saved=await store.readPublicationJob(op,f.directory),firstId=f.products.get(40).images[0].id;
+    assert.deepEqual(saved.resolved.images,{front:firstId});
+    const restarted=new FakeBundle(f.directory);restarted.products=f.products;restarted.nextProduct=f.nextProduct;restarted.ids=[...f.ids];
+    const out=await run(restarted,input);
+    assert.equal(out.bundleProductId,40);assert.equal(restarted.events.includes('upload:front'),false);
+    assert.equal(f.products.get(40).images.length,2);assert.equal((await store.readPublicationJob(op,f.directory)).phase,'complete');
+  }
+  {
+    const f=await fresh(),input=request(2);f.commitTimeout.add('commit:upload:front');
+    const out=await run(f,input);
+    assert.equal((await store.readPublicationJob(out.operationId,f.directory)).phase,'complete');
+    assert.equal(f.events.filter(x=>x==='upload:front').length,1,'exact upload commit readback continues without a duplicate PUT');
+  }
   // Exact readback after batch/publication/activation/retirement commit-then-
   // timeout is success, not an artificial stop requiring another user edit.
   for(const stage of ['batch-update','publish','activate','retire-old']){

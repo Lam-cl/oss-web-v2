@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   CatalogueActivationState,
   CatalogueCompiledVariantsAttestation,
@@ -17,6 +18,7 @@ type PublicationSnapshot = {
   draftBundleProductId?: number|null;
   revision: number;
   catalogueId: string;
+  phase?: string;
   resolved: { images:Record<string,number>; options:Record<string,number>; values:Record<string,number>; variants:Record<string,number> };
   bindings: Array<{valueKeys:string[];variantId:number}>;
 };
@@ -188,6 +190,29 @@ export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptio
   const get=(path:string,query?:Record<string,string|number>)=>call(`${path}${query?`?${new URLSearchParams(Object.entries(query).map(([k,v])=>[k,String(v)]))}`:''}`,'GET');
   const json=(path:string,method:'POST'|'PATCH',value:unknown)=>call(path,method,JSON.stringify(value));
   async function readRaw(id:number){return productRow(await get(`products/${productId(id)}`));}
+  // A provider PUT may commit before the response or local checkpoint survives.
+  // Never append another copy merely because per-request metadata was lost.
+  // Only bytes from the fixed provider bucket can attest an unbound image.
+  const imageDigests=new Map<string,Promise<string>>();
+  function imageDigest(image:Row):Promise<string>{
+    const key=JSON.stringify([image.id,image.url]);
+    let promise=imageDigests.get(key);
+    if(!promise){promise=downloadImageDigest(image);imageDigests.set(key,promise);}
+    return promise;
+  }
+  async function downloadImageDigest(image:Row):Promise<string>{
+    let url:URL;
+    try{url=new URL(String(image.url));}catch{throw new CatalogueBundleAdapterError('Uncheckpointed image URL cannot be verified.',503);}
+    if(url.protocol!=='https:'||url.hostname!=='oss-bucket.s3.us-east-2.amazonaws.com'||url.port||url.username||url.password||url.hash)throw new CatalogueBundleAdapterError('Uncheckpointed image storage origin is not approved.',503);
+    let response:Response;
+    try{response=await fetcher(url,{method:'GET',headers:{accept:'image/*'},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10_000)});}catch{throw new CatalogueBundleAdapterError('Existing image bytes are unavailable. No duplicate upload was attempted.',503);}
+    const length=response.headers.get('content-length');
+    if(!response.ok||!response.body||length!==null&&(!/^\d+$/.test(length)||Number(length)>10*1024*1024))throw new CatalogueBundleAdapterError('Existing image bytes cannot be safely verified.',503);
+    const reader=response.body.getReader(),hash=createHash('sha256');let bytes=0;
+    try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>10*1024*1024){await reader.cancel();throw new CatalogueBundleAdapterError('Existing image exceeds the safe verification limit.',503);}hash.update(value);}}finally{reader.releaseLock();}
+    if(bytes===0)throw new CatalogueBundleAdapterError('Existing image is empty. No duplicate upload was attempted.',503);
+    return hash.digest('hex');
+  }
   async function listProducts(query:Record<string,string|number>={}){
     const all:Row[]=[];
     for(let page=1;page<=MAX_PAGES;page+=1){const raw=unwrap(await get('products',{...query,page,limit:PAGE_LIMIT}));const pageRows=Array.isArray(raw)?rows(raw):object(raw)&&Array.isArray(raw.data)?rows(raw.data):[];if(!Array.isArray(raw)&&!(object(raw)&&Array.isArray(raw.data)))throw new CatalogueBundleAdapterError('Bundle product list readback is invalid.');all.push(...pageRows);if(pageRows.length<PAGE_LIMIT)return all;}
@@ -208,7 +233,9 @@ export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptio
     const imageMeta:Record<number,{key:string;name:string;contentType:string;order:number;sha256:string}>={};
     if(job){const media=await options.local.readMedia(job.catalogueId);for(const item of media){const imageId=job.resolved.images[item.mediaId];if(positive(imageId))imageMeta[imageId]={key:item.mediaId,name:item.originalName,contentType:item.contentType,order:item.order,sha256:item.sha256};}}
     for(const [key,item] of Object.entries(memory?.images??{}))imageMeta[item.id]={key,name:item.name,contentType:item.contentType,order:item.order,sha256:item.sha256};
-    composed.images=rows(composed.images).map(image=>{const meta=positive(image.id)?imageMeta[image.id]:undefined;return meta?{...image,uploadKey:meta.key,contentType:meta.contentType,order:meta.order,sha256:meta.sha256}:image;});
+    // Keep the provider's actual order. Local intent is not evidence that an
+    // image-order mutation committed.
+    composed.images=rows(composed.images).map(image=>{const meta=positive(image.id)?imageMeta[image.id]:undefined;return meta?{...image,uploadKey:meta.key,contentType:meta.contentType,sha256:meta.sha256}:image;});
     let option=memory?.option;
     if(job&&positive(job.resolved.options['catalogue-variant'])) {
       const durable={optionId:job.resolved.options['catalogue-variant'],valueIdByCode:{...job.resolved.values},variantIdByCode:Object.fromEntries(job.bindings.filter(binding=>binding.valueKeys.length===1).map(binding=>[binding.valueKeys[0],binding.variantId]))};
@@ -255,7 +282,53 @@ export function createCatalogueBundleAdapter(options:CatalogueBundleAdapterOptio
     async readPublicationState(id:number){return {data:await publicationState(productId(id))};},
     async uploadImage(id:number,upload:CataloguePreparedImageUpload){
       id=productId(id);if(!object(upload)||!exactKeys(upload,['body','contentType','key','name','operationId','order','sha256'])||!operation(upload.operationId)||!digest(upload.sha256)||!Number.isSafeInteger(upload.order)||upload.order<0||!['image/jpeg','image/png','image/webp'].includes(upload.contentType))throw new CatalogueBundleAdapterError('A valid explicit catalogue image upload is required.',400);boundedText(upload.key,'upload key',128);boundedText(upload.name,'upload name',255);const bytes=upload.body instanceof Uint8Array?upload.body:null;if(!bytes||!bytes.byteLength||bytes.byteLength>10*1024*1024)throw new CatalogueBundleAdapterError('Catalogue image bytes are invalid.',400);
-      const before=await readRaw(id),marker=descriptionState(before.description);if(marker.operationId!==upload.operationId)throw new CatalogueBundleAdapterError('Bundle image upload draft identity is invalid.',409);const beforeIds=new Set(rows(before.images).map(x=>x.id));const copy=new Uint8Array(bytes);let after=await putMetadata(id,before,marker.raw,{bytes:copy,contentType:upload.contentType,name:upload.name}),added=rows(after.images).filter(x=>positive(x.id)&&!beforeIds.has(x.id));if(added.length!==1)throw new CatalogueBundleAdapterError('Bundle image upload ID readback is ambiguous.');const imageId=added[0].id as number;const current=state(id,upload.operationId);current.images[upload.key]={id:imageId,name:upload.name,contentType:upload.contentType,order:upload.order,sha256:upload.sha256};const composed=await composition(id,after),ordering=rows(composed.images).filter(image=>positive(image.id)&&Number.isSafeInteger(image.order)).sort((a,b)=>(a.order as number)-(b.order as number)).map(image=>({id:image.id as number,order:image.order as number}));if(ordering.length!==rows(after.images).length||ordering.some((item,index)=>item.order!==index))throw new CatalogueBundleAdapterError('Bundle image order composition is incomplete.');await json(`products/${id}/images/order`,'PATCH',{images:ordering});after=await readRaw(id);if(descriptionState(after.description).operationId!==upload.operationId||!rows(after.images).some(x=>x.id===imageId))throw new CatalogueBundleAdapterError('Bundle image upload positive readback failed.');return {imageId,sha256:upload.sha256};
+      if(createHash('sha256').update(bytes).digest('hex')!==upload.sha256)throw new CatalogueBundleAdapterError('Catalogue image upload digest does not match its bytes.',400);
+      const before=await readRaw(id),marker=descriptionState(before.description);
+      if(marker.operationId!==upload.operationId||before.deletedAt!=null||before.deleted===true)throw new CatalogueBundleAdapterError('Bundle image upload draft identity is invalid.',409);
+      const job=await options.local.readPublication(upload.operationId);
+      if(!job||job.operationId!==upload.operationId||job.draftBundleProductId!==id||job.phase!==undefined&&job.phase!=='building')throw new CatalogueBundleAdapterError('Image recovery requires the exact building publication identity.',409);
+      const media=await options.local.readMedia(job.catalogueId),source=media.find(item=>item.mediaId===upload.key);
+      if(!source||media.filter(item=>item.mediaId===upload.key).length!==1||source.sha256!==upload.sha256||source.contentType!==upload.contentType||source.originalName!==upload.name||source.order!==upload.order)throw new CatalogueBundleAdapterError('Image recovery source manifest does not match this upload.',409);
+      const images=rows(before.images),beforeIds=new Set(images.map(image=>image.id));
+      if(!Array.isArray(before.images)||images.length!==before.images.length||images.length>100||images.some(image=>!positive(image.id)||image.productId!==undefined&&image.productId!==id)||beforeIds.size!==images.length)throw new CatalogueBundleAdapterError('Image recovery provider identities are ambiguous.',503);
+      const current=state(id,upload.operationId),known={...job.resolved.images,...Object.fromEntries(Object.entries(current.images).map(([key,image])=>[key,image.id]))};
+      if(new Set(Object.values(known)).size!==Object.keys(known).length)throw new CatalogueBundleAdapterError('Checkpointed image identities are ambiguous.',503);
+      const verifiedOrders=new Map<number,number>();
+      for(const [key,imageId]of Object.entries(known)){
+        const item=media.find(item=>item.mediaId===key),image=images.find(image=>image.id===imageId);
+        if(!item||!image||await imageDigest(image)!==item.sha256)throw new CatalogueBundleAdapterError('Checkpointed image bytes contradict the source manifest. No duplicate upload was attempted.',503);
+        verifiedOrders.set(imageId,item.order);
+      }
+      const expectedId=known[upload.key],otherIds=new Set(Object.entries(known).filter(([key])=>key!==upload.key).map(([,imageId])=>imageId));
+      if(expectedId!==undefined&&(!positive(expectedId)||!beforeIds.has(expectedId)||otherIds.has(expectedId)))throw new CatalogueBundleAdapterError('Checkpointed image identity is missing or ambiguous. No duplicate upload was attempted.',503);
+      const candidates=images.filter(image=>!otherIds.has(image.id as number)),matches:Row[]=[];
+      // A failed read cannot prove absence: fail closed rather than duplicate.
+      for(const image of candidates){
+        const sha256=await imageDigest(image);
+        if(!media.some(item=>item.sha256===sha256))throw new CatalogueBundleAdapterError('An existing draft image does not match the source manifest. No duplicate upload was attempted.',503);
+        if(sha256===upload.sha256)matches.push(image);
+      }
+      if(matches.length>1||matches.length===1&&(expectedId!==undefined&&matches[0].id!==expectedId||expectedId===undefined&&media.filter(item=>item.sha256===upload.sha256&&!Object.hasOwn(known,item.mediaId)).length!==1))throw new CatalogueBundleAdapterError('Existing image content mapping is ambiguous. No duplicate upload was attempted.',503);
+      if(expectedId!==undefined&&matches.length!==1)throw new CatalogueBundleAdapterError('Checkpointed image bytes no longer match the source. No duplicate upload was attempted.',503);
+      let after=before,imageId:number;
+      if(matches.length===1){imageId=matches[0].id as number;}
+      else{
+        try{after=await putMetadata(id,before,marker.raw,{bytes:new Uint8Array(bytes),contentType:upload.contentType,name:upload.name});}
+        catch{after=await readRaw(id);verifyRawMetadata(before,after,marker.raw);}
+        const added=rows(after.images).filter(image=>positive(image.id)&&!beforeIds.has(image.id));
+        if(added.length!==1||descriptionState(after.description).operationId!==upload.operationId||await imageDigest(added[0])!==upload.sha256)throw new CatalogueBundleAdapterError('Image upload outcome could not be verified. Retry the same draft; do not add another image.',503);
+        imageId=added[0].id as number;
+      }
+      verifiedOrders.set(imageId,upload.order);
+      const ordering=rows(after.images).map(image=>({id:image.id as number,order:verifiedOrders.get(image.id as number)??image.order as number})).sort((a,b)=>a.order-b.order);
+      if(ordering.length!==rows(after.images).length||ordering.some((item,index)=>item.order!==index))throw new CatalogueBundleAdapterError('Bundle image order composition is incomplete.');
+      try{await json(`products/${id}/images/order`,'PATCH',{images:ordering});}catch{/* Exact readback also reconciles an order commit with a lost response. */}
+      after=await readRaw(id);
+      if(descriptionState(after.description).operationId!==upload.operationId||rows(after.images).length!==ordering.length||ordering.some(item=>!rows(after.images).some(image=>image.id===item.id&&image.order===item.order)))throw new CatalogueBundleAdapterError('Bundle image upload/order positive readback failed.');
+      // Promote the binding only after the provider's raw ordering is proven.
+      // A failed order write must not manufacture positive publisher evidence.
+      current.images[upload.key]={id:imageId,name:upload.name,contentType:upload.contentType,order:upload.order,sha256:upload.sha256};
+      return {imageId,sha256:upload.sha256};
     },
     async createCompiledVariants(id:number,request:CatalogueCompiledVariantsRequest){
       id=productId(id);if(!object(request)||!exactKeys(request,['autoGenerateSku','defaultInventory','hidden','operationId','optionName','values'])||request.optionName!=='Catalogue Variant'||request.hidden!==true||request.autoGenerateSku!==true||request.defaultInventory!==0||!operation(request.operationId))throw new CatalogueBundleAdapterError('A valid explicit compiled variant request is required.',400);const codes=strings(request.values,'compiled variant codes');await json(`products/${id}/variants`,'POST',{optionName:'Catalogue Variant',values:codes.map(value=>({value})),autoGenerateSku:true,defaultInventory:0});const attestation=compiledVariantAttestation(await readRaw(id),codes);state(id,request.operationId).option=attestation;await options.local.hideOptionValues(id,Object.values(attestation.valueIdByCode));return attestation;

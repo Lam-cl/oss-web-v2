@@ -138,7 +138,25 @@ async function runPublication(request:CataloguePublishRequest,d:CataloguePublish
   if(job.phase==='building'){
     try{
       let current=await read(d,id,'building');metadata(current,spec);
-      if(!job.completedSteps.some(x=>x.name==='images-resolved')){const resolved:Record<string,number>={...job.resolved.images};for(const u of uploads){let image=imageRows(current).find(x=>x.uploadKey===u.key),mutationError=false,attestation:{imageId:number;sha256:string}|undefined;if(!image||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256){try{attestation=await d.uploadImage(id,{...u,operationId:op});}catch{mutationError=true;}current=await read(d,id,`image ${u.key}`);image=imageRows(current).find(x=>x.uploadKey===u.key);}if(!image||!positive(image.id)||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256)throw new CataloguePublishError(`Image ${u.key} storage digest readback mismatch.`,502,id);if(attestation&&(!positive(attestation.imageId)||attestation.sha256!==u.sha256||image.id!==attestation.imageId))throw new CataloguePublishError(`Image ${u.key} callback attestation mismatch.`,502,id);resolved[u.key]=image.id;if(mutationError){job=await checkpoint(job,d,j=>{j.resolved.images=resolved;});throw new CataloguePublishError(`Image ${u.key} upload timed out after a reconciled commit.`,503,id);}}verifyImages(current,uploads,resolved);job=await checkpoint(job,d,j=>{j.resolved.images=resolved;},'images-resolved');}else verifyImages(current,uploads,job.resolved.images);
+      if(!job.completedSteps.some(x=>x.name==='images-resolved')){
+        const resolved:Record<string,number>={...job.resolved.images};
+        for(const u of uploads){
+          let image=imageRows(current).find(x=>x.uploadKey===u.key),attestation:{imageId:number;sha256:string}|undefined;
+          if(!image||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256){
+            try{attestation=await d.uploadImage(id,{...u,operationId:op});}catch{/* Authoritative readback decides whether the upload committed. */}
+            current=await read(d,id,`image ${u.key}`);
+            image=imageRows(current).find(x=>x.uploadKey===u.key);
+          }
+          if(!image||!positive(image.id)||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256)throw new CataloguePublishError(`Image ${u.key} storage digest readback mismatch.`,502,id);
+          if(attestation&&(!positive(attestation.imageId)||attestation.sha256!==u.sha256||image.id!==attestation.imageId))throw new CataloguePublishError(`Image ${u.key} callback attestation mismatch.`,502,id);
+          resolved[u.key]=image.id;
+          // Persist every verified image before starting the next provider PUT.
+          // A killed invocation must not lose all preceding successful uploads.
+          if(job.resolved.images[u.key]!==image.id)job=await checkpoint(job,d,j=>{j.resolved.images={...resolved};});
+        }
+        verifyImages(current,uploads,resolved);
+        job=await checkpoint(job,d,j=>{j.resolved.images={...resolved};},'images-resolved');
+      }else verifyImages(current,uploads,job.resolved.images);
       current=await read(d,id,'compiled variants');
       let compileError=false,attestation:CatalogueCompiledVariantsAttestation|undefined;
       if(optionRows(current).length===0){

@@ -22,6 +22,7 @@ import {
   type CatalogueVariantBindingRow,
 } from '@/lib/admin/catalogueVariantBindings';
 import { adminMediaUrl } from '@/lib/admin/mediaUrl';
+import { catalogueProviderRows } from '@/lib/admin/catalogueProductRows';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
 import {
@@ -49,6 +50,7 @@ type CatalogueProductRecord = {
   minimumOrderQuantity?: number;
   publicationChangeState: 'clean' | 'dirty' | 'unknown';
   publicationChangeReason?: string;
+  pendingBundleProductIds?: number[];
 };
 
 
@@ -365,11 +367,7 @@ function ProductsContent() {
 
   const rows = useMemo<ProductRow[]>(() => {
     if (!data || !catalogue) return [];
-    const byPublishedId = new Map(catalogue.flatMap((product) => product.currentBundleProductId === null ? [] : [[product.currentBundleProductId, product] as const]));
-    const listed = data.data.filter((product) => !isSystemCatalogueProduct(product)).map<ProductRow>((product) => {
-      const migrated = byPublishedId.get(product.id);
-      return migrated ? { kind: 'catalogue', catalogue: migrated, product } : { kind: 'legacy', product };
-    });
+    const listed = catalogueProviderRows(catalogue, data.data.filter((product) => !isSystemCatalogueProduct(product)));
     const drafts = page === 1 && type === 'MERCHANDISE'
       ? catalogue.filter((product) => product.currentBundleProductId === null).map<ProductRow>((product) => ({ kind: 'catalogue', catalogue: product }))
       : [];

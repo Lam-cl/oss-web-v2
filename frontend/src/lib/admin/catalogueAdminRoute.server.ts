@@ -71,6 +71,55 @@ async function filenames(directory:string, pattern:RegExp){
   return entries.filter(entry=>entry.isFile()&&pattern.test(entry.name)).map(entry=>entry.name);
 }
 type PublicationJobIndex={byCatalogue:Map<string,CataloguePublicationJob[]>;uncertain:boolean};
+type IndexedProviderProduct=PublicationProviderProduct&{description?:unknown;deletedAt?:unknown;deleted?:unknown};
+
+// A provider draft belongs to its catalogue row, not to the Legacy product list.
+// Hide only positively identified pending work; absent or conflicting evidence
+// must leave the provider row visible for investigation.
+export function pendingPublicationDraftIds(
+  records:readonly CatalogueProductRecord[],
+  jobs:PublicationJobIndex,
+  providers:Map<number,IndexedProviderProduct>|null,
+):Map<string,number[]> {
+  const result=new Map<string,number[]>();
+  if(jobs.uncertain||!providers)return result;
+  const pendingPhases=new Set(['building','bundle-published','activation-uncertain','activated','retirement-uncertain','previous-retired']);
+  const catalogueCounts=new Map<string,number>(),boundIds=new Set<number>();
+  for(const product of records){
+    catalogueCounts.set(product.catalogueId,(catalogueCounts.get(product.catalogueId)??0)+1);
+    if(product.currentBundleProductId!==null)boundIds.add(product.currentBundleProductId);
+    for(const version of product.bundleVersions)boundIds.add(version.bundleProductId);
+  }
+  const draftOwners=new Map<number,CataloguePublicationJob[]>();
+  for(const entries of Array.from(jobs.byCatalogue.values()))for(const job of entries){
+    if(job.draftBundleProductId===null)continue;
+    const owners=draftOwners.get(job.draftBundleProductId)??[];owners.push(job);draftOwners.set(job.draftBundleProductId,owners);
+  }
+  const markedProviders=new Map<string,number[]>();
+  for(const provider of Array.from(providers.values())){
+    if(provider.deletedAt!=null||provider.deleted===true||typeof provider.description!=='string')continue;
+    const description=provider.description.replace(/\r\n/g,'\n');
+    if(description.split('TW-CATALOGUE-DRAFT').length!==2)continue;
+    const marker=description.match(/\n\[\[TW-CATALOGUE-DRAFT:([a-f0-9]{64})\]\]$/);
+    if(!marker)continue;
+    const ids=markedProviders.get(marker[1])??[];ids.push(provider.id);markedProviders.set(marker[1],ids);
+  }
+  for(const product of records){
+    if(catalogueCounts.get(product.catalogueId)!==1)continue;
+    const pending:number[]=[];
+    for(const job of jobs.byCatalogue.get(product.catalogueId)??[]){
+      const id=job.draftBundleProductId;
+      if(job.catalogueId!==product.catalogueId||!pendingPhases.has(job.phase)||!OPERATION.test(job.operationId)
+        ||!revision(id)||boundIds.has(id)||draftOwners.get(id)?.length!==1
+        ||job.previousBundleProductId!==product.currentBundleProductId)continue;
+      const matches=markedProviders.get(job.operationId);
+      if(matches?.length===1&&matches[0]===id)pending.push(id);
+    }
+    if(pending.length)result.set(product.catalogueId,pending.sort((a,b)=>a-b));
+  }
+  return result;
+}
+
 async function publicationJobIndex():Promise<PublicationJobIndex>{
   const byCatalogue=new Map<string,CataloguePublicationJob[]>();let uncertain=false;let names:string[]=[];
   if(REMOTE_DATA){try{for(const job of await listPublicationJobs()){const jobs=byCatalogue.get(job.catalogueId)??[];jobs.push(job);byCatalogue.set(job.catalogueId,jobs);}return {byCatalogue,uncertain};}catch{return {byCatalogue,uncertain:true};}}
@@ -78,8 +127,8 @@ async function publicationJobIndex():Promise<PublicationJobIndex>{
   for(const name of names){const operationId=name.slice(0,-5);if(!OPERATION.test(operationId))continue;try{const job=await readPublicationJob(operationId);if(!job)continue;const jobs=byCatalogue.get(job.catalogueId)??[];jobs.push(job);byCatalogue.set(job.catalogueId,jobs);}catch{uncertain=true;}}
   return {byCatalogue,uncertain};
 }
-async function providerProductIndex():Promise<Map<number,PublicationProviderProduct>|null>{
-  try{const response=await fetch(`${BUNDLE_API}/products?type=MERCHANDISE&limit=1000`,{headers:{accept:'application/json'},cache:'no-store'});if(!response.ok)return null;const payload=await response.json();const rows=object(payload)&&Array.isArray(payload.data)?payload.data:[];const products=rows.filter((item):item is PublicationProviderProduct=>object(item)&&revision(item.id));return new Map(products.map(product=>[product.id,product]));}catch{return null;}
+async function providerProductIndex():Promise<Map<number,IndexedProviderProduct>|null>{
+  try{const response=await fetch(`${BUNDLE_API}/products?type=MERCHANDISE&limit=1000`,{headers:{accept:'application/json'},cache:'no-store'});if(!response.ok)return null;const payload=await response.json();const rows=object(payload)&&Array.isArray(payload.data)?payload.data:[];const products=rows.filter((item):item is IndexedProviderProduct=>object(item)&&revision(item.id));return new Map(products.map(product=>[product.id,product]));}catch{return null;}
 }
 async function publicationChange(product:CatalogueProductRecord,jobs:PublicationJobIndex,providers:Map<number,PublicationProviderProduct>|null){
   const active=product.bundleVersions.filter(version=>version.retiredAt===null);
@@ -92,7 +141,8 @@ async function publicationChange(product:CatalogueProductRecord,jobs:Publication
 }
 async function listProducts(){
   const [records,jobs,providers]=await Promise.all([REMOTE_DATA?listCatalogueProducts():filenames(PRODUCT_DIRECTORY,/^[0-9a-f-]{36}\.json$/).then(async names=>{const rows:CatalogueProductRecord[]=[];for(const name of names){const id=name.slice(0,-5);if(!UUID.test(id))continue;const product=await readCatalogueProduct(id);if(product)rows.push(product);}return rows;}),publicationJobIndex(),providerProductIndex()]);const products:Array<CatalogueProductRecord&Row>=[];
-  for(const product of records)products.push({...await enrichAdminProduct(product),...await publicationChange(product,jobs,providers)});
+  const pendingDrafts=pendingPublicationDraftIds(records,jobs,providers);
+  for(const product of records)products.push({...await enrichAdminProduct(product),...await publicationChange(product,jobs,providers),pendingBundleProductIds:pendingDrafts.get(product.catalogueId)??[]});
   return products.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||String(a.catalogueId).localeCompare(String(b.catalogueId)));
 }
 async function latestPublication(catalogueId:string){

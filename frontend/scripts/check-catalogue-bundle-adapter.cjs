@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
+const { createHash } = require('node:crypto');
 const root = process.cwd();
 const file = path.join(root, 'src/lib/admin/catalogueBundleAdapter.server.ts');
 function load() {
@@ -11,13 +12,14 @@ function load() {
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 (async () => {
   const { createCatalogueBundleAdapter } = load();
-  const hash = 'a'.repeat(64), op = 'b'.repeat(64), suffix = `\n[[TW-CATALOGUE-DRAFT:${op}]]`, titleSuffix=' [TW-bbbbbbbb-a2]', canonicalTitle='M'.repeat(200), providerCleanTitle='M'.repeat(200-' [TW-bbbbbbbb-a2]'.length), providerSku='MUG-A-TW00000000V2';
+  const heroBytes=Buffer.from([137,80,78,71,13,10,26,10]),backBytes=Buffer.concat([heroBytes,Buffer.from([1])]);
+  const hash=createHash('sha256').update(heroBytes).digest('hex'),backHash=createHash('sha256').update(backBytes).digest('hex'), op = 'b'.repeat(64), suffix = `\n[[TW-CATALOGUE-DRAFT:${op}]]`, titleSuffix=' [TW-bbbbbbbb-a2]', canonicalTitle='M'.repeat(200), providerCleanTitle='M'.repeat(200-' [TW-bbbbbbbb-a2]'.length), providerSku='MUG-A-TW00000000V2';
   let product = null;
   const calls = [], hidden = [];
-  const job = {operationId:op,revision:2,catalogueId:'00000000-0000-4000-8000-000000000000',resolved:{images:{hero:9,back:8},options:{},values:{},variants:{}},bindings:[]};
+  const job = {operationId:op,revision:2,draftBundleProductId:7,phase:'building',catalogueId:'00000000-0000-4000-8000-000000000000',resolved:{images:{},options:{},values:{},variants:{}},bindings:[]};
   const media = [
     {mediaId:'hero',originalName:'hero.png',contentType:'image/png',order:0,sha256:hash},
-    {mediaId:'back',originalName:'back.png',contentType:'image/png',order:1,sha256:'c'.repeat(64)},
+    {mediaId:'back',originalName:'back.png',contentType:'image/png',order:1,sha256:backHash},
   ];
   const local = {
     readPublication: async operationId => operationId === op ? job : null,
@@ -36,6 +38,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   }
   const fetcher = async (url, init) => {
     const u = new URL(String(url)); calls.push([init.method, u.pathname, u.search, init.body]);
+    if(u.hostname==='oss-bucket.s3.us-east-2.amazonaws.com')return new Response(u.pathname==='/hero.png'?heroBytes:backBytes);
     if (u.pathname.endsWith('/products/upload')) {
       product = { id:7, title:String(init.body.get('title')), description:String(init.body.get('description')), type:String(init.body.get('type')), price:Number(init.body.get('price')), shippingCost:String(init.body.get('shippingCost')), weight:String(init.body.get('weight')), categories:[], tags:[], images:[], options:[], productVariants:[], deletedAt:null, isPreOrder:init.body.get('isPreOrder')==='true', requiresSimAssignment:init.body.get('requiresSimAssignment')==='true', tracksInventory:init.body.get('tracksInventory')==='true' };
       return json({ data:product }, 201);
@@ -47,10 +50,10 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
       return json({ success:true }, 201);
     }
     if (u.pathname.endsWith('/products/7/batch-update')) { Object.assign(product.productVariants[0], JSON.parse(init.body).variants[0]); return json({success:true},201); }
-    if (u.pathname.endsWith('/products/7/images/order')) return json({success:true});
+    if (u.pathname.endsWith('/products/7/images/order')) {for(const image of JSON.parse(init.body).images)product.images.find(row=>row.id===image.id).order=image.order;return json({success:true});}
     if (u.pathname.endsWith('/products/7') && init.method === 'PUT') {
       applyMetadata(init.body);
-      if (init.body.get('images')) product.images.push({id:product.images.length ? 8 : 9,url:product.images.length ? '/back.png' : '/hero.png'});
+      if (init.body.get('images')) product.images.push({id:product.images.length ? 8 : 9,order:product.images.length,url:'https://oss-bucket.s3.us-east-2.amazonaws.com/'+(product.images.length ? 'back.png' : 'hero.png')});
       return json({data:product});
     }
     if (u.pathname.endsWith('/products/6/soft-delete')) return json({success:true});
@@ -82,10 +85,11 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), { stat
   assert.equal(authoritativeDraft.draftOperationId, op);
   assert.equal(authoritativeDraft.draft, true); assert.equal(authoritativeDraft.published, false);
   // Full metadata image PUT preserves the raw marker and verifies it after each image.
-  await adapter.uploadImage(7,{key:'hero',name:'hero.png',contentType:'image/png',order:0,body:Buffer.from([137,80,78,71,13,10,26,10]),sha256:hash,operationId:op});
+  await adapter.uploadImage(7,{key:'hero',name:'hero.png',contentType:'image/png',order:0,body:heroBytes,sha256:hash,operationId:op});
   assert.equal(product.description, `Keeps warm${suffix}`);
   assert.equal(product.title, `${canonicalTitle.slice(0,200-titleSuffix.length)}${titleSuffix}`);
-  await adapter.uploadImage(7,{key:'back',name:'back.png',contentType:'image/png',order:1,body:Buffer.from([137,80,78,71,13,10,26,10,1]),sha256:'c'.repeat(64),operationId:op});
+  await adapter.uploadImage(7,{key:'back',name:'back.png',contentType:'image/png',order:1,body:backBytes,sha256:backHash,operationId:op});
+  job.resolved.images={hero:9,back:8};
   assert.equal(product.description, `Keeps warm${suffix}`);
   const compiled = await adapter.createCompiledVariants(7,{optionName:'Catalogue Variant',values:['CV-A'],hidden:true,autoGenerateSku:true,defaultInventory:0,operationId:op});
   assert.deepEqual(compiled,{optionId:10,valueIdByCode:{'CV-A':11},variantIdByCode:{'CV-A':12}});

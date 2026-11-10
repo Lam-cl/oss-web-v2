@@ -24,7 +24,6 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <style>{'#Assistant-Shadow-Host{visibility:hidden!important}'}</style>
-        <Script src="/js/tonewow-balam-bootstrap-20260907.js" strategy="beforeInteractive" />
       </head>
       <body><RouteChrome>{children}</RouteChrome>
       <SmartechInit />

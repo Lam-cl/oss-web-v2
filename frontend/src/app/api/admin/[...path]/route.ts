@@ -14,6 +14,8 @@ import { isKualaLumpurWorkingDay, malaysiaDate } from '@/lib/pickup';
 import { orderDeliveryOption, orderPickupDate } from '@/lib/admin/types';
 
 export const dynamic = 'force-dynamic';
+// SIM ranges can require hundreds of sequential provider lookups.
+export const maxDuration = 120;
 
 const rules: Array<{ pattern: RegExp; methods: string[] }> = [
   { pattern: /^products$/, methods: ['GET'] },

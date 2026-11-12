@@ -34,7 +34,7 @@ type RangeDraft = {
   startSerial: string;
   endSerial: string;
   status: "idle" | "validating" | "valid" | "error";
-  token?: string;
+  tokens?: string[];
   error?: string;
 };
 
@@ -142,7 +142,7 @@ export default function SimRangeAssignment({
               ...range,
               ...patch,
               status: patch.status || "idle",
-              token: patch.status === "valid" ? patch.token : undefined,
+              tokens: patch.status === "valid" ? patch.tokens : undefined,
               error: patch.error,
             }
           : range,
@@ -261,23 +261,32 @@ export default function SimRangeAssignment({
         );
         if (!prefix) throw new Error("Selected SIM prefix is unavailable.");
         try {
-          const result = await adminFetch<{
-            quantity: number;
-            assignmentToken: string;
-          }>(`orders/${orderId}/sim-range-validation`, {
-            method: "POST",
-            body: JSON.stringify({
-              orderItemId,
-              productCode,
-              prefixId: prefix.id,
-              simPrefix: prefix.prefix,
-              startSerial: range.startSerial,
-              endSerial: range.endSerial,
-            }),
-          });
+          const tokens: string[] = [];
+          const first = Number(range.startSerial.slice(0, 10));
+          const last = Number(range.endSerial.slice(0, 10));
+          // Bound each request independently, including on serverless hosts.
+          for (let start = first; start <= last; start += 100) {
+            const end = Math.min(start + 99, last);
+            const result = await adminFetch<{
+              quantity: number;
+              assignmentToken: string;
+            }>(`orders/${orderId}/sim-range-validation`, {
+              method: "POST",
+              signal: AbortSignal.timeout(120_000),
+              body: JSON.stringify({
+                orderItemId,
+                productCode,
+                prefixId: prefix.id,
+                simPrefix: prefix.prefix,
+                startSerial: start === first ? range.startSerial : String(start).padStart(10, "0"),
+                endSerial: end === last ? range.endSerial : String(end).padStart(10, "0"),
+              }),
+            });
+            tokens.push(result.assignmentToken);
+          }
           patchRange(orderItemId, range.id, {
             status: "valid",
-            token: result.assignmentToken,
+            tokens,
             error: undefined,
           });
         } catch (reason) {
@@ -303,7 +312,7 @@ export default function SimRangeAssignment({
 
   async function saveLine(orderItemId: number) {
     const ranges = rangesFor(orderItemId);
-    if (ranges.some((range) => range.status !== "valid" || !range.token)) {
+    if (ranges.some((range) => range.status !== "valid" || !range.tokens?.length)) {
       onError("Validate every SIM range before saving.");
       return;
     }
@@ -311,7 +320,7 @@ export default function SimRangeAssignment({
     try {
       await adminFetch(`orders/${orderId}/sim-range-assignments`, {
         method: "PUT",
-        body: JSON.stringify({ tokens: ranges.map((range) => range.token) }),
+        body: JSON.stringify({ tokens: ranges.flatMap((range) => range.tokens || []) }),
       });
       setRangesByItem((previous) => ({
         ...previous,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Script from 'next/script';
+import { flushSmartechQueue } from '@/lib/smartech';
 
 // Conversion landing pages (gateway redirects) send purchase-success events that
 // only retry for ~10s, so load Smartech early there; everywhere else defer it
@@ -25,6 +26,9 @@ export default function SmartechInit() {
         s('create', 'ADGMOT35CHFLVDHBJNIG50K96BI5GSDTBRLJVR0UB5OVUHE69NOG');
         s('register', 'ce33cbe52a8fcaf7a03e6d6a8ee12d54');
         s('identify', '');
+        // Replay events tracked before the script loaded. Done here (not in
+        // onLoad) so they are sent after create/register, as before.
+        flushSmartechQueue();
       }}
     />
   );

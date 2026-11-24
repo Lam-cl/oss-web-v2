@@ -1,12 +1,24 @@
 'use client';
 
+import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import Script from 'next/script';
 
+// Conversion landing pages (gateway redirects) send purchase-success events that
+// only retry for ~10s, so load Smartech early there; everywhere else defer it
+// until the page has finished loading.
+const EARLY_ROUTES = ['/payment/', '/thank-you'];
+
 export default function SmartechInit() {
+  const pathname = usePathname() || '/';
+  // Decided once from the landing URL; the script loads once per session.
+  const [strategy] = useState<'afterInteractive' | 'lazyOnload'>(() =>
+    EARLY_ROUTES.some(route => pathname.startsWith(route)) ? 'afterInteractive' : 'lazyOnload',
+  );
   return (
     <Script
       src="https://cdnt.netcoresmartech.com/smartechclient.js"
-      strategy="afterInteractive"
+      strategy={strategy}
       onReady={() => {
         const s = (window as any).smartech;
         if (!s) return;

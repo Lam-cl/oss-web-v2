@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -66,6 +66,17 @@ export default function MerchandiseDetailClient({ slug, initialProduct, catalogu
     setActiveImage('');
     setError('');
   }, [product?.id]);
+
+  // Live data can change the minimum order quantity after the server render: keep the quantity
+  // valid, and follow the new minimum if the shopper was still on the old one.
+  const previousMinimum = useRef(product.minimumOrderQuantity);
+  useEffect(() => {
+    const previous = previousMinimum.current;
+    const minimum = product.minimumOrderQuantity;
+    previousMinimum.current = minimum;
+    if (previous === minimum) return;
+    setQuantity((value) => (value < minimum || value === previous ? minimum : value));
+  }, [product.minimumOrderQuantity]);
 
   const selectedOption = product.options[optionIndex] || product.options[0];
   const availableSizes = selectedOption.sizes || product.sizes;

@@ -14,7 +14,7 @@ const route=compile('src/app/api/bundle/merchandise/route.ts',{
 });
 (async()=>{
  const response=await route.GET(),body=await response.json();
- assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
+ assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'public, s-maxage=15, stale-while-revalidate=60','short shared CDN cache only; the Bundle fetch itself stays no-store and checkout re-checks stock');
  assert.deepEqual(body.data.map(p=>p.id),[801],'Fee, hidden and setup draft items are not public');
  assert.deepEqual(body.data[0].productVariants,products[0].productVariants,'Live variant price and inventory are preserved');
  assert.equal(body.data[0].price,12,'Base price may differ from variant price');

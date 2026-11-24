@@ -153,7 +153,10 @@ assert(!JSON.stringify(publishedFallback).includes('[TW-1234abcd-a12]'));
 
 const section = fs.readFileSync('src/components/home/MerchandiseSection.tsx', 'utf8');
 const hook = fs.readFileSync('src/hooks/useMerchandiseProducts.ts', 'utf8');
-const detail = fs.readFileSync('src/app/merchandise/[slug]/page.tsx', 'utf8');
+// The detail route is a server page (cached public projection) plus a client component (live stock + cart).
+const detailPage = fs.readFileSync('src/app/merchandise/[slug]/page.tsx', 'utf8');
+const detail = fs.readFileSync('src/app/merchandise/[slug]/MerchandiseDetailClient.tsx', 'utf8');
+const detailResolver = fs.readFileSync('src/lib/merchandiseDetail.ts', 'utf8');
 const cartEditor = fs.readFileSync('src/components/merchandise/CartMerchandiseEditor.tsx', 'utf8');
 // Loader/adaptation ordering and hook reconciliation are exercised by the loading behavior test.
 require('node:child_process').execFileSync(process.execPath, ['scripts/check-merchandise-loading.cjs'], { stdio: 'pipe' });
@@ -161,7 +164,10 @@ assert(section.indexOf('<summary>Description</summary>') < section.indexOf('<sum
 assert(cartEditor.indexOf('<summary>Description</summary>') < cartEditor.indexOf('<summary>Product details</summary>'), 'cart editor must keep Product details below Description');
 assert(section.includes("new Set(merchandiseProducts.map((product) => product.category))"), 'OSS category tabs must derive from live Catalogue categories');
 assert(section.includes('product.category === activeCategory'), 'OSS category selection must filter the displayed products');
-assert(detail.includes('fetchCatalogueStorefrontProducts'), 'detail page must consume the public projection');
+assert(detailPage.includes('getPublicCatalogue()'), 'detail page must consume the public projection');
+assert(detailResolver.includes('adaptCatalogueStorefrontPayload('), 'detail page must adapt the projection with the storefront adapter');
+assert(detail.includes('resolveMerchandiseDetailProducts(') && detail.includes("fetch('/bundle/merchandise'"), 'detail client must re-resolve the projection with live Bundle stock');
+assert(!detail.includes('fetchCatalogueStorefrontProducts') && !detail.includes('CATALOGUE_STOREFRONT_ENDPOINT'), 'detail client must not refetch the catalogue');
 assert(cartEditor.includes('fetchCatalogueStorefrontProducts'), 'cart editor must resolve the public projection');
 for (const field of ['bundleProductId: product.apiProductId', 'bundleVariantId', 'availableQuantity']) {
   assert(detail.includes(field), `detail cart wiring missing ${field}`);

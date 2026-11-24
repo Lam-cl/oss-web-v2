@@ -21,6 +21,7 @@ async function main(){
    '@/lib/admin/orderMetadata.server':store,
    '@/lib/merchandiseCheckoutPolicy.server':{readMerchandiseCheckoutPolicy:async()=>({enabled:true,paymentOrigin:'https://api.gkash.my'})},
    '@/lib/cataloguePublicProjection.server':{readCataloguePublicProjection:async()=>({products:[{bundleProductId:1,combinations:[{variantId:2}],minimumOrderQuantity:1}]})},
+   '@/lib/catalogueCache.server':{getPublicCatalogue:async()=>({products:[{bundleProductId:1,combinations:[{variantId:2}],minimumOrderQuantity:1}],displayOrder:{revision:0,entries:[]}})},
    '@/lib/shippingSettings.server':{readShippingSettings:async()=>({})},
    '@/lib/shipping':{calculateCourierCharge:()=>({amount:10,unclassified:[]})},
    '@/lib/productSetup':{isProductSetupDraft:()=>false},

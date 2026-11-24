@@ -18,6 +18,8 @@ const stubs={
   '@/lib/pickup':{isKualaLumpurWorkingDay:()=>true,malaysiaDate:()=>'',minimumPickupDate:()=>'',pickupDateFromAddress:()=>''},
   '@/lib/admin/orderMetadata.server':{assertOrderMetadataReady:async()=>{},saveCheckoutMetadata:async()=>{}},
   '@/lib/cataloguePublicProjection.server':{readCataloguePublicProjection:async()=>{if(projection instanceof Error)throw projection;return projection}},
+  // The route now reads catalogue metadata through the shared cache; same data, same failure.
+  '@/lib/catalogueCache.server':{getPublicCatalogue:async()=>{if(projection instanceof Error)throw projection;return projection}},
   '@/data/merchandise':{mergeBundleMerchandiseProducts:()=>[{apiProductId:23,variantIds:{standard:18}}]},
 };
 new Function('exports','require','module','__filename','__dirname',output)(moduleValue.exports,id=>id in stubs?stubs[id]:require(id),moduleValue,file,path.dirname(file));

@@ -5,7 +5,7 @@ const ts = require('typescript');
 const root = process.cwd();
 const file = path.join(root, 'src/app/api/admin/catalogue-products/[id]/media-removals/[operationId]/route.ts');
 function compile(file, injected) {
-  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), ...injected };
+  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), '@/lib/catalogueCache.server': require('./helpers/catalogueCacheMock.cjs'), ...injected };
   const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
   new Function('exports','require','module','__filename','__dirname',output)(module.exports, id => id in injected ? injected[id] : require(id), module, file, path.dirname(file));

@@ -82,6 +82,8 @@ function loadRoute(file) {
     if (name === '@/lib/admin/catalogueMediaRoute.server') return policy;
     if (name === '@/lib/admin/catalogueMutationLock.server') return mutationLock;
     if (name === '@/lib/admin/catalogueAdminRoute.server') return adminRoute;
+    // Invalidation wrapper only: it runs the handler body unchanged, so lock order is unaffected.
+    if (name === '@/lib/catalogueCache.server') return require('./helpers/catalogueCacheMock.cjs');
     throw new Error(`Unexpected route dependency: ${name}`);
   }, loaded);
   return loaded.exports;

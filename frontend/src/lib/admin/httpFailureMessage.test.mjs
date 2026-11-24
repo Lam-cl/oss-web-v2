@@ -21,7 +21,7 @@ test('timeouts ask the admin to reload before retrying', () => {
 });
 
 test('other failures keep the HTTP status', () => {
-  assert.equal(httpFailureMessage(500), 'Save failed (HTTP 500).');
-  assert.equal(httpFailureMessage(502), 'Save failed (HTTP 502).');
-  assert.equal(httpFailureMessage(400, undefined), 'Save failed (HTTP 400).');
+  assert.equal(httpFailureMessage(500), 'Request failed (HTTP 500).');
+  assert.equal(httpFailureMessage(502), 'Request failed (HTTP 502).');
+  assert.equal(httpFailureMessage(400, undefined), 'Request failed (HTTP 400).');
 });

@@ -508,6 +508,11 @@ export default function UnifiedProductEditor({
     createdObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
     createdObjectUrls.current.clear();
   }, []);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const photos = useMemo(() => buildPhotoRows(model, existingPhotos, pendingPhotos), [model, existingPhotos, pendingPhotos]);
   // Photo compression is async; read the latest rows when it finishes, not the ones from when the picker fired.
   const photosRef = useRef(photos);
@@ -654,12 +659,17 @@ export default function UnifiedProductEditor({
     }
     setSubmitError(null);
     setPreparingPhotos(true);
-    let selected: File[];
+    const selected: File[] = [];
     try {
-      selected = await Promise.all(picked.map((file) => compressImageForUpload(file)));
+      // One at a time: decoding every photo at once can exceed iOS canvas memory and crash the tab.
+      for (const file of picked) {
+        selected.push(await compressImageForUpload(file));
+        if (!mountedRef.current) return;
+      }
     } finally {
-      setPreparingPhotos(false);
+      if (mountedRef.current) setPreparingPhotos(false);
     }
+    if (!mountedRef.current) return;
     // Leave room for the multipart envelope so the request stays under the 4 MB server limit.
     if (selected.some((file) => file.size > UPLOAD_MAX_BYTES - 16 * 1024)) {
       setSubmitError('Each photo must be 4 MB or smaller after resizing. Choose a smaller photo.');

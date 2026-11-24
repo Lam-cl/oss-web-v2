@@ -9,5 +9,8 @@
  */
 export function saveFailureMessage(problem: unknown): string {
   const message = problem instanceof Error ? problem.message.trim() : '';
-  return message ? `Save failed: ${message}` : 'Save failed. Please try again.';
+  if (!message) return 'Save failed. Please try again.';
+  // Already a complete save message; prefixing again would read "Save failed: Save failed …".
+  if (/^(?:Save failed|The product was created)/.test(message)) return message;
+  return `Save failed: ${message}`;
 }

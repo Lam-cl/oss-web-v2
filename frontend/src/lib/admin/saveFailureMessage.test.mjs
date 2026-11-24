@@ -22,3 +22,19 @@ test('blank or non-Error failures get a clear retry message', () => {
   assert.equal(saveFailureMessage('boom'), 'Save failed. Please try again.');
   assert.equal(saveFailureMessage(undefined), 'Save failed. Please try again.');
 });
+
+test('messages that are already complete are not prefixed twice', () => {
+  for (const reason of [
+    'Save failed (HTTP 500).',
+    'Save failed: Catalogue media changed. Reload before saving.',
+    'The product was created, but a photo could not be added: Request failed (HTTP 502). Reopen the product to finish it.',
+  ]) {
+    const shown = saveFailureMessage(new Error(reason));
+    assert.equal(shown, reason);
+    assert.ok(!/^Save failed: Save failed/.test(shown));
+  }
+});
+
+test('an HTTP failure without a server message gets a single prefix', () => {
+  assert.equal(saveFailureMessage(new Error('Request failed (HTTP 500).')), 'Save failed: Request failed (HTTP 500).');
+});

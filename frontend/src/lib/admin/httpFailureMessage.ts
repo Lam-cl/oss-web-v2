@@ -9,5 +9,5 @@ export function httpFailureMessage(status: number, payloadMessage?: string): str
   if (typeof payloadMessage === 'string' && payloadMessage.trim()) return payloadMessage;
   if (status === 413) return 'Photo is too large (max 4 MB). It was not saved.';
   if (status === 504 || status === 408) return 'The server timed out. Reload and check before retrying.';
-  return `Save failed (HTTP ${status}).`;
+  return `Request failed (HTTP ${status}).`;
 }

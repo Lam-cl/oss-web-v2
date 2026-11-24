@@ -22,6 +22,7 @@ import {
   type CatalogueVariantBindingRow,
 } from '@/lib/admin/catalogueVariantBindings';
 import { adminMediaUrl } from '@/lib/admin/mediaUrl';
+import { httpFailureMessage } from '@/lib/admin/httpFailureMessage';
 import { catalogueProviderRows } from '@/lib/admin/catalogueProductRows';
 
 import { useCatalogueProductEditor } from '@/hooks/useCatalogueProductEditor';
@@ -80,7 +81,7 @@ async function catalogueRequest<T>(path = '', init: RequestInit = {}): Promise<T
     window.location.assign(`/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     throw new Error('Your session has ended.');
   }
-  if (!response.ok) throw new Error(typeof payload.message === 'string' ? payload.message : 'The product could not be saved.');
+  if (!response.ok) throw new Error(httpFailureMessage(response.status, typeof payload.message === 'string' ? payload.message : undefined));
   return payload as T;
 }
 
@@ -244,7 +245,13 @@ function CreateCatalogueEditor({ availableCategories, onClose, onCreated }: {
           cache: 'no-store',
           credentials: 'same-origin',
         });
-        if (!response.ok) throw new Error('The product was created, but a photo could not be added. Reopen the product to finish it.');
+        if (!response.ok) {
+          const payload: unknown = await response.json().catch(() => null);
+          const payloadMessage = payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
+            ? payload.message
+            : undefined;
+          throw new Error(`The product was created, but a photo could not be added: ${httpFailureMessage(response.status, payloadMessage)} Reopen the product to finish it.`);
+        }
       }
       onCreated(product);
     } catch (problem) {

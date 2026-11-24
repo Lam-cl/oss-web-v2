@@ -5,7 +5,8 @@ import type { CatalogueMediaMetadata } from '@/lib/admin/catalogueMedia.server';
 import { readCatalogueAdoptionByBundle } from '@/lib/admin/catalogueAdoption.server';
 import { CatalogueMutationBusyError } from '@/lib/admin/catalogueMutationLock.server';
 
-const MULTIPART_MAX_BYTES = 11 * 1024 * 1024;
+// Vercel rejects serverless request bodies over 4.5 MB before the route runs; stay under it.
+const MULTIPART_MAX_BYTES = 4 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export function adminCatalogueMediaUrl(catalogueId: string, mediaId: string) {

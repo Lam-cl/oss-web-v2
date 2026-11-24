@@ -72,7 +72,7 @@ if (fs.existsSync(componentPath) && fs.existsSync(cssPath)) {
   assert(component.includes('mergeProductCategories(availableCategories)'), 'saved and preset categories share one case-insensitive list');
   assert(component.includes('selectedCategory'), 'existing custom category casing resolves to a visible dropdown option');
   assert(component.includes('URL.createObjectURL'), 'new photo files receive local previews');
-  assert(component.includes('10 * 1024 * 1024'), 'photo picker enforces the API 10 MB file limit');
+  assert(component.includes('UPLOAD_MAX_BYTES'), 'photo picker enforces the 4 MB upload limit (Vercel body cap)');
   assert(component.includes("value.retired ? 'Undo' : 'Hide'"), 'choice values use clear Hide and Undo wording');
   assert(!component.includes("'Retire'"), 'technical Retire wording is not user-facing');
   assert(component.includes('Add product photos'), 'photo upload has a visible accessible label');

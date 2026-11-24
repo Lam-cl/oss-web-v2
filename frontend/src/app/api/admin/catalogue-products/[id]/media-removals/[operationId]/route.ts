@@ -10,6 +10,7 @@ import {
   isValidCatalogueMediaId,
   readCatalogueMediaProduct,
 } from '@/lib/admin/catalogueMediaRoute.server';
+import { withPublicCatalogueInvalidation } from '@/lib/catalogueCache.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,13 +25,14 @@ export async function GET(request: NextRequest, { params }: Context) {
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.operationId)) return catalogueMediaBadRequest();
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    // Reconciliation may commit a removal, so treat this GET as a mutation for invalidation.
+    return await withPublicCatalogueInvalidation(async () => await withCatalogueMutationLock(params.id, async () => {
       const { error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const operation = await getCatalogueMediaRemoval(params.id, params.operationId);
       if (!operation) return new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
       return response(operation);
-    });
+    }));
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }
 
@@ -47,13 +49,13 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (!Array.isArray(mediaIds) || mediaIds.length === 0 || mediaIds.length > 100
     || mediaIds.some(mediaId => !isValidCatalogueMediaId(mediaId)) || new Set(mediaIds).size !== mediaIds.length) return catalogueMediaBadRequest();
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    return await withPublicCatalogueInvalidation(async () => await withCatalogueMutationLock(params.id, async () => {
       const { product, error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const simDenied = await activeSimMediaMutationError(product);
       if (simDenied) return simDenied;
       return response(await finalizeCatalogueMediaRemoval(params.id, params.operationId, mediaIds));
-    });
+    }));
   }
   catch (reason) { return catalogueMediaRequestError(reason); }
 }

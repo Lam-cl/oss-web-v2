@@ -6,6 +6,7 @@ import { readCatalogueAdoptionByBundle } from '@/lib/admin/catalogueAdoption.ser
 import { readVerifiedCatalogueMedia } from '@/lib/admin/catalogueMedia.server';
 import { readCataloguePublishedSnapshot, readCataloguePublishedSnapshotMedia, type CataloguePublishedProduct, type CataloguePublishedSnapshotManifest } from '@/lib/cataloguePublishedSnapshot.server';
 import { catalogueR2AssetUrl } from '@/lib/catalogueR2AssetPaths';
+import { mapInOrder } from '@/lib/cataloguePublicProjectionCore';
 
 const PRODUCT_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-products');
 const PUBLICATION_DIRECTORY = path.join(process.cwd(), '.data', 'catalogue-publications');
@@ -27,9 +28,7 @@ async function names(directory: string, pattern: RegExp) {
 async function publicationJobs() {
   if (REMOTE_DATA) return listPublicationJobs();
   const operationIds = await names(PUBLICATION_DIRECTORY, new RegExp(`^${OPERATION.source.slice(1, -1)}\\.json$`));
-  const jobs: CataloguePublicationJob[] = [];
-  for (const operationId of operationIds) { const job = await readPublicationJob(operationId); if (job) jobs.push(job); }
-  return jobs;
+  return mapInOrder(operationIds, operationId => readPublicationJob(operationId));
 }
 function activeVersion(product: CatalogueProductRecord) {
   const active = product.bundleVersions.filter(version => version.retiredAt === null);
@@ -66,12 +65,11 @@ async function ordinarySnapshot(product: CatalogueProductRecord, jobs: Catalogue
 
 export async function readCataloguePublicProjection(): Promise<{ products: CataloguePublishedProduct[] }> {
   const [records, jobs] = await Promise.all([
-    REMOTE_DATA ? listCatalogueProducts() : names(PRODUCT_DIRECTORY, new RegExp(`^${UUID.source.slice(1, -1)}\\.json$`)).then(async ids => { const rows: CatalogueProductRecord[] = []; for (const id of ids) { const product = await readCatalogueProduct(id); if (product) rows.push(product); } return rows; }), publicationJobs(),
+    REMOTE_DATA ? listCatalogueProducts() : names(PRODUCT_DIRECTORY, new RegExp(`^${UUID.source.slice(1, -1)}\\.json$`)).then(ids => mapInOrder(ids, id => readCatalogueProduct(id))), publicationJobs(),
   ]);
-  const products: CataloguePublishedProduct[] = [];
-  for (const product of records) {
-    const catalogueId = product.catalogueId;
-    if (!product || product.status !== 'published') continue;
+  // Per-product reads are independent; run them concurrently but keep the record order.
+  const products = await mapInOrder(records, async (product): Promise<CataloguePublishedProduct | null> => {
+    if (!product || product.status !== 'published') return null;
     const adoption = positive(product.currentBundleProductId) ? await readCatalogueAdoptionByBundle(product.currentBundleProductId) : null;
     if (adoption?.status === 'active') {
       const version = product.bundleVersions[0];
@@ -86,13 +84,13 @@ export async function readCataloguePublicProjection(): Promise<{ products: Catal
         && projection.bundleProductId === adoption.bundleProductId) {
         const publicProjection = structuredClone(projection);
         if (adoption.managementProfile?.domain === 'SIM') publicProjection.details.category = 'SIM Card';
-        products.push(withOptimizedImages(publicProjection, adoption.mediaHashes));
+        return withOptimizedImages(publicProjection, adoption.mediaHashes);
       }
-      continue;
+      return null;
     }
     const snapshot = await ordinarySnapshot(product, jobs);
-    if (snapshot) products.push(withOptimizedImages(structuredClone(snapshot.product), snapshot.media));
-  }
+    return snapshot ? withOptimizedImages(structuredClone(snapshot.product), snapshot.media) : null;
+  });
   const payload = { products };
   if (Buffer.byteLength(JSON.stringify(payload)) > MAX_RESPONSE_BYTES) throw new Error('Catalogue public projection response limit exceeded.');
   return payload;

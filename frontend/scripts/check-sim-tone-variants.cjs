@@ -195,7 +195,7 @@ function seedPartial(migration,h,phase='provider-mutating',extra=false){
   assert.match(cli,/options\/\$\{optionId\}.*method: 'PUT'/s);
   assert.match(cli,/products\/\$\{productId\}\/variants.*method: 'POST'/s);
 
-  for (const file of ['src/app/merchandise/[slug]/page.tsx', 'src/components/home/MerchandiseSection.tsx']) {
+  for (const file of ['src/app/merchandise/[slug]/MerchandiseDetailClient.tsx', 'src/components/home/MerchandiseSection.tsx']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     assert(!/networkChoiceRequired|\^network\$/i.test(source), `${file} must not model Tone labels as networks`);
     assert(source.includes('options.length > 1'), `${file} must require explicit selection only when multiple ordinary Variants exist`);

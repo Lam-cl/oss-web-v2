@@ -25,7 +25,9 @@ assert(adminRoute.includes('image-colors'), 'authenticated product image-color r
 assert(adminRoute.includes('saveProductImageColors'), 'image-color save handler missing');
 assert(adminRoute.includes('hidden-option-values'), 'hidden option-value endpoint missing');
 assert(adminRoute.includes('saveProductHiddenOptionValues'), 'hidden option-value save handler missing');
-const publicRoute = fs.readFileSync(path.join(root, 'src/app/api/bundle/merchandise/route.ts'), 'utf8');
+// The visibility filter moved into a shared helper used by the route and the product page.
+const publicRoute = fs.readFileSync(path.join(root, 'src/app/api/bundle/merchandise/route.ts'), 'utf8').includes('visibleBundleMerchandise(data, imageColors)')
+  ? fs.readFileSync(path.join(root, 'src/lib/bundleMerchandise.ts'), 'utf8') : '';
 assert(publicRoute.includes('hiddenOptionValues'), 'storefront payload must exclude locally hidden option values');
 const drawer = fs.readFileSync(path.join(root, 'src/components/admin/ProductDrawer.tsx'), 'utf8');
 assert(drawer.includes('Assign color'), 'saved image color selector missing');

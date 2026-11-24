@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 type DataEnvelope<T> = { data: T };
 
 export class ToneWowDataApiError extends Error {
@@ -8,14 +10,25 @@ export function dataApiEnabled() {
   return Boolean(process.env.TONEWOW_DATA_API_URL?.trim() && process.env.TONEWOW_DATA_API_TOKEN?.trim());
 }
 
+// Reads made inside `withCachedDataApiReads` (used only by the unstable_cache'd public catalogue)
+// omit `cache: 'no-store'`. In Next 14.2 a `no-store` fetch during static generation/ISR throws a
+// DynamicServerError, even inside unstable_cache, which would force the calling page dynamic.
+// Without the option, unstable_cache's `fetchCache: 'force-no-store'` scope still keeps each
+// individual fetch out of the Data Cache; only the unstable_cache result is cached.
+const cachedReadScope = new AsyncLocalStorage<boolean>();
+export function withCachedDataApiReads<T>(read: () => Promise<T>): Promise<T> {
+  return cachedReadScope.run(true, read);
+}
+
 export async function dataApiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const base = process.env.TONEWOW_DATA_API_URL?.trim().replace(/\/$/, '');
   const token = process.env.TONEWOW_DATA_API_TOKEN?.trim();
   if (!base || !token) throw new ToneWowDataApiError('ToneWow Data API is not configured.', 503, 'NOT_CONFIGURED');
+  const cachedRead = cachedReadScope.getStore() === true && (init.method || 'GET').toUpperCase() === 'GET';
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: { accept: 'application/json', authorization: `Bearer ${token}`, ...init.headers },
-    cache: 'no-store',
+    ...(cachedRead ? {} : { cache: 'no-store' as const }),
     signal: init.signal || AbortSignal.timeout(10_000),
   });
   const payload = await response.json().catch(() => null) as DataEnvelope<T> | { error?: { code?: string; message?: string } } | null;

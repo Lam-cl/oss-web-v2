@@ -7,7 +7,7 @@ const path = require('node:path');
 const ts = require('typescript');
 const root = process.cwd();
 function compile(rel, injected = {}) {
-  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), ...injected };
+  injected = { '@/lib/admin/catalogueMutationLock.server': require('./helpers/catalogueMutationLockMock.cjs'), '@/lib/cataloguePublicProjectionCore': require('./helpers/compileTsModule.cjs')('src/lib/cataloguePublicProjectionCore.ts'), '@/lib/catalogueCache.server': require('./helpers/catalogueCacheMock.cjs'), ...injected };
   if (rel !== 'src/lib/catalogueR2AssetPaths.ts' && !injected['@/lib/catalogueR2AssetPaths']) injected['@/lib/catalogueR2AssetPaths'] = compile('src/lib/catalogueR2AssetPaths.ts');
   const file = path.join(root, rel);
   const out = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
@@ -140,6 +140,7 @@ const next = { NextResponse:{ json:(body,init={})=>response(body,init.status||20
   const route=compile(routeFile,{'next/server':next,'@/lib/admin/catalogueAdminRoute.server':routeHelper});
   const request=({auth=true,sameOrigin=true,body={revision:7}}={})=>{const r=new Request('https://admin.test/x',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});r.auth=auth;r.sameOrigin=sameOrigin;return r};
   assert.equal((await route.POST(request({auth:false}),{params:{id:f.catalogueId}})).status,401); assert.equal((await route.POST(request({sameOrigin:false}),{params:{id:f.catalogueId}})).status,403); assert.equal((await route.POST(request(),{params:{id:f.catalogueId}})).status,200); assert.deepEqual(calls,[[f.catalogueId,{revision:7}]]);
+  assert.equal(require('./helpers/catalogueCacheMock.cjs').invalidations.length,1,'an attempted archive invalidates the public catalogue; rejected auth does not');
   const alias=await fsp.readFile(path.join(root,aliasFile),'utf8'); assert.match(alias,/export\s*\{\s*POST\s*\}/); assert(alias.includes('@/app/api/admin/catalogue-products/[id]/archive/route'));
   assert.doesNotMatch(await fsp.readFile(path.join(root,helperFile),'utf8'),/handle\.readFile\(/,'archive reads must stay chunk-bounded');
   console.log('Catalogue archive check passed');

@@ -11,6 +11,7 @@ import {
   readBoundedCatalogueMediaForm,
   readCatalogueMediaProduct,
 } from '@/lib/admin/catalogueMediaRoute.server';
+import { withPublicCatalogueInvalidation } from '@/lib/catalogueCache.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (!Number.isSafeInteger(numericOrder)) return catalogueMediaBadRequest();
 
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    return await withPublicCatalogueInvalidation(async () => await withCatalogueMutationLock(params.id, async () => {
       const { product, error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const simDenied = await activeSimMediaMutationError(product);
@@ -65,6 +66,6 @@ export async function POST(request: NextRequest, { params }: Context) {
       status: 201,
       headers: { 'cache-control': 'no-store' },
       });
-    });
+    }));
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }

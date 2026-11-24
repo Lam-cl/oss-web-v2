@@ -62,7 +62,9 @@ assert.equal(merchandise.getMerchandiseGalleryIndexForOption(mapped, 0), 0);
 assert.equal(merchandise.getMerchandiseGalleryIndexForOption(mapped, 1), 2);
 assert.equal(merchandise.getMerchandiseOptionIndexForImage(mapped, 'image-4'), 1);
 
-const publicRoute = fs.readFileSync('src/app/api/bundle/merchandise/route.ts', 'utf8');
+// The visibility filter moved into a shared helper used by the route and the product page.
+const publicRoute = fs.readFileSync('src/app/api/bundle/merchandise/route.ts', 'utf8').includes('visibleBundleMerchandise(data, imageColors)')
+  ? fs.readFileSync('src/lib/bundleMerchandise.ts', 'utf8') : '';
 assert(publicRoute.includes('imageColorAssignments'), 'public merchandise response must include local assignments');
 const mainGallery = fs.readFileSync('src/components/home/MerchandiseSection.tsx', 'utf8');
 assert(mainGallery.includes('return getProductGallery(product)'), 'main storefront must keep the full product gallery visible');

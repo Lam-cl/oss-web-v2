@@ -90,6 +90,7 @@ function load(file) {
     '@/lib/admin/catalogueMedia.server': { readVerifiedCatalogueMedia: async () => { throw new Error('ordinary snapshot must not read mutable media'); } },
     '@/lib/admin/catalogueAdoption.server': { readCatalogueAdoptionByBundle: async () => null },
     '@/lib/cataloguePublishedSnapshot.server': { readCataloguePublishedSnapshot: async id => id === operationId ? structuredClone(snapshot) : null, readCataloguePublishedSnapshotMedia: async () => null },
+    '@/lib/cataloguePublicProjectionCore': require('./helpers/compileTsModule.cjs')('src/lib/cataloguePublicProjectionCore.ts'),
     '@/lib/catalogueR2AssetPaths': { catalogueR2AssetUrl: (id, sha, variant) => `https://tonewow-assets.xifuhalim.com/catalogue/v1/${id}/${sha}/${variant}.webp` },
   };
   new Function('exports', 'require', 'module', '__filename', '__dirname', output)(module.exports, id => stubs[id] || require(id), module, file, path.dirname(file));
@@ -116,7 +117,11 @@ function load(file) {
   assert.deepEqual(await projection.readCataloguePublicProjection(), { products: [snapshotProduct] }, 'later draft edits cannot mutate the immutable snapshot');
 
   const route = fs.readFileSync('src/app/api/catalogue-products/route.ts', 'utf8');
-  assert.match(route, /readCataloguePublicProjection/);
+  // The route serves the projection through the shared unstable_cache wrapper (published products only).
+  assert.match(route, /getPublicCatalogue\(\)/);
+  const cacheSource = fs.readFileSync('src/lib/catalogueCache.server.ts', 'utf8');
+  assert.match(cacheSource, /readCataloguePublicProjection\(\)/);
+  assert.match(route, /public, s-maxage=30, stale-while-revalidate=300/);
   assert.match(route, /cache-control['"]?\s*:\s*['"]no-store/i);
   assert.doesNotMatch(route, /getAdminSession|BUNDLE_API|fetch\s*\(/);
   console.log('Catalogue public projection check passed');

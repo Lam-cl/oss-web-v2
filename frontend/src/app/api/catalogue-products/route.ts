@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readCataloguePublicProjection, readCataloguePublicSnapshotMedia } from '@/lib/cataloguePublicProjection.server';
-import { readMerchandiseOrder } from '@/lib/merchandiseOrder.server';
+import { readCataloguePublicSnapshotMedia } from '@/lib/cataloguePublicProjection.server';
+import { getPublicCatalogue } from '@/lib/catalogueCache.server';
 
-export const dynamic = 'force-dynamic';
+// Not `force-dynamic`: the handler reads `request.nextUrl.searchParams`, which already makes it
+// dynamic per request, while the catalogue itself comes from the shared unstable_cache entry.
 export const runtime = 'nodejs';
+const PUBLIC_CATALOGUE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300';
 
 export async function GET(request: NextRequest) {
   const catalogueId = request.nextUrl.searchParams.get('catalogueId');
@@ -21,11 +23,7 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-    const [catalogue, displayOrder] = await Promise.all([
-      readCataloguePublicProjection(),
-      readMerchandiseOrder().catch(() => ({ revision: 0, entries: [] })),
-    ]);
-    return NextResponse.json({ ...catalogue, displayOrder }, { headers: { 'cache-control': 'no-store' } });
+    return NextResponse.json(await getPublicCatalogue(), { headers: { 'cache-control': PUBLIC_CATALOGUE_CACHE_CONTROL } });
   } catch {
     return catalogueId !== null || mediaId !== null
       ? new Response(null, { status: 404 })

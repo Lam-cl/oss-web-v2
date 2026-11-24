@@ -18,6 +18,7 @@ function load(){const file=path.resolve('src/lib/cataloguePublicProjection.serve
 '@/lib/admin/catalogueMedia.server':{readVerifiedCatalogueMedia:async()=>{throw new Error('ordinary snapshot must not read mutable media')}},
 '@/lib/admin/catalogueAdoption.server':{readCatalogueAdoptionByBundle:async()=>null},
 '@/lib/cataloguePublishedSnapshot.server':{readCataloguePublishedSnapshot:async id=>structuredClone(snapshots.get(id)||null),readCataloguePublishedSnapshotMedia:async(id,wanted)=>id===operationId&&wanted===mediaId?{...snapshots.get(id).media[0],body}:null},
+'@/lib/cataloguePublicProjectionCore':require('./helpers/compileTsModule.cjs')('src/lib/cataloguePublicProjectionCore.ts'),
 '@/lib/catalogueR2AssetPaths':{catalogueR2AssetUrl:(id,sha,variant)=>`https://tonewow-assets.xifuhalim.com/catalogue/v1/${id}/${sha}/${variant}.webp`},
 };new Function('exports','require','module','__filename','__dirname',out)(m.exports,id=>stubs[id]||require(id),m,file,path.dirname(file));return m.exports;}
 (async()=>{const projection=load();

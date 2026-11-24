@@ -13,7 +13,7 @@ import {
   assertOrderMetadataReady,
   saveCheckoutMetadata,
 } from "@/lib/admin/orderMetadata.server";
-import { readCataloguePublicProjection } from "@/lib/cataloguePublicProjection.server";
+import { getPublicCatalogue } from "@/lib/catalogueCache.server";
 import { mergeBundleMerchandiseProducts, type BundleMerchandiseProduct } from "@/data/merchandise";
 import { readMerchandiseCheckoutPolicy } from "@/lib/merchandiseCheckoutPolicy.server";
 import { isAllowedMerchandisePaymentUrl } from "@/lib/merchandiseCheckoutPolicy";
@@ -132,6 +132,11 @@ export async function calculateExpectedAmount(
   deliveryOption: string,
   shippingState: string,
 ) {
+  // Catalogue metadata (slug, category, pre-order flag, variant set, minimum quantity) comes
+  // from the shared public catalogue cache and is read alongside the Bundle fetch. Prices and
+  // stock always come from the fresh, uncached Bundle response below.
+  const catalogueRead = getPublicCatalogue();
+  catalogueRead.catch(() => { /* awaited below; avoids an unhandled rejection on early throw */ });
   const response = await fetch(
     `${BUNDLE_API}/products?type=MERCHANDISE&limit=100`,
     {
@@ -147,7 +152,7 @@ export async function calculateExpectedAmount(
     : [];
   const productMap = new Map(products.map((product) => [product.id, product]));
   const projectedProducts = new Map(
-    (await readCataloguePublicProjection()).products
+    (await catalogueRead).products
       .map((product) => [
         product.bundleProductId,
         {

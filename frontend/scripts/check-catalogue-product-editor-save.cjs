@@ -7,7 +7,9 @@ const root = path.resolve(__dirname, '..');
 const file = path.join(root, 'src/hooks/useCatalogueProductEditor.ts');
 const output = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
 const loaded = new Module(file, module); loaded.filename=file; loaded.paths=Module._nodeModulePaths(path.dirname(file));
-const originalLoad=Module._load; Module._load=(request,parent,isMain)=>request==='react'?{useCallback(){},useEffect(){},useMemo(factory){return factory()},useState(){}}:originalLoad.call(Module,request,parent,isMain);
+const loadLocal=(relative)=>{const f=path.join(root,relative);const m=new Module(f,module);m.filename=f;m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText,f);return m.exports;};
+const localStubs={'@/lib/admin/httpFailureMessage':loadLocal('src/lib/admin/httpFailureMessage.ts')};
+const originalLoad=Module._load; Module._load=(request,parent,isMain)=>request==='react'?{useCallback(){},useEffect(){},useMemo(factory){return factory()},useState(){}}:Object.prototype.hasOwnProperty.call(localStubs,request)?localStubs[request]:originalLoad.call(Module,request,parent,isMain);
 try{loaded._compile(output,file)}finally{Module._load=originalLoad}
 const ids = {
   product:'39a00000-0000-4000-8000-000000000039', a:'49a00000-0000-4000-8000-000000000049',

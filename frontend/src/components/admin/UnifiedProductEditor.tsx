@@ -718,7 +718,7 @@ export default function UnifiedProductEditor({
       createdObjectUrls.current.clear();
     } catch (problem) {
       // Server save failed: show the real reason (revision conflict, media
-      // changed, timeout, API message) instead of the generic validation banner.
+      // changed, timeout, server message) instead of the generic validation banner.
       setSubmitError(saveFailureMessage(problem));
     }
   };

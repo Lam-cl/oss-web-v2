@@ -40,10 +40,14 @@ const normalizer = loadTypescript(normalizerPath);
 const productDescription = loadTypescript(productDescriptionPath);
 const catalogueVariantBindings = loadTypescript(catalogueVariantBindingsPath);
 const mediaUrl = loadTypescript(mediaUrlPath);
+const saveFailureMessage = loadTypescript(path.join(root, 'src/lib/admin/saveFailureMessage.ts'));
+const compressImageForUpload = loadTypescript(path.join(root, 'src/lib/admin/compressImageForUpload.ts'));
 const component = loadTypescript(componentPath, {
   '@/lib/admin/productEditor': normalizer,
   '@/lib/admin/catalogueVariantBindings': catalogueVariantBindings,
   '@/lib/admin/mediaUrl': mediaUrl,
+  '@/lib/admin/saveFailureMessage': saveFailureMessage,
+  '@/lib/admin/compressImageForUpload': compressImageForUpload,
   '@/lib/productDescription': productDescription,
   react: {
     useEffect() {},

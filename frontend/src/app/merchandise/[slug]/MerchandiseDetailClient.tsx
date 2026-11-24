@@ -3,42 +3,59 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { getMerchandiseGalleryIndexForOption, getMerchandiseOptionIndexForImage, getMerchandiseProduct, getMerchandiseVariantId, getMerchandiseVariantPurchaseLimit, merchandiseVariantKey, type MerchandiseProduct } from '@/data/merchandise';
-import { useMerchandiseProducts } from '@/hooks/useMerchandiseProducts';
-import { fetchCatalogueStorefrontProducts } from '@/lib/catalogueStorefront';
+import { useRouter } from 'next/navigation';
+import { getMerchandiseGalleryIndexForOption, getMerchandiseOptionIndexForImage, getMerchandiseVariantId, getMerchandiseVariantPurchaseLimit, mergeBundleMerchandiseProducts, merchandiseVariantKey, type BundleMerchandiseProduct, type MerchandiseProduct } from '@/data/merchandise';
+import { resolveMerchandiseDetailProducts } from '@/lib/merchandiseDetail';
 import { minimumOrderError } from '@/lib/minimumOrderQuantity';
 import { formatRM } from '@/lib/utils';
 import { useCartStore } from '@/store/cartStore';
 
-export default function MerchandiseDetailPage() {
-  const params = useParams<{ slug: string }>();
+type MerchandiseDetailClientProps = {
+  slug: string;
+  /** Product resolved on the server from the cached catalogue (no live stock yet). */
+  initialProduct: MerchandiseProduct;
+  /** Raw published catalogue record for this slug, re-adapted here once live stock arrives. */
+  catalogueRecord: Record<string, unknown> | null;
+};
+
+export default function MerchandiseDetailClient({ slug, initialProduct, catalogueRecord }: MerchandiseDetailClientProps) {
   const router = useRouter();
-  const { products: stagingProducts, loading } = useMerchandiseProducts();
-  const [catalogueProducts, setCatalogueProducts] = useState<MerchandiseProduct[] | null>(null);
-  const products = catalogueProducts || stagingProducts;
-  const product = useMemo(
-    () => products.find((item) => item.slug === params.slug) || getMerchandiseProduct(params.slug),
-    [params.slug, products],
+  // Live Bundle stock/pre-order data; null until `/bundle/merchandise` answers. The catalogue
+  // itself comes from the server render and is not refetched here.
+  const [liveProducts, setLiveProducts] = useState<MerchandiseProduct[] | null>(null);
+  const stockReady = liveProducts !== null;
+  const resolved = useMemo(
+    () => liveProducts ? resolveMerchandiseDetailProducts(slug, catalogueRecord, liveProducts) : null,
+    [slug, catalogueRecord, liveProducts],
   );
+  const product = resolved?.product || initialProduct;
   const addItem = useCartStore((state) => state.addItem);
+  const reconcileMerchandiseCatalog = useCartStore((state) => state.reconcileMerchandiseCatalog);
   const [optionIndex, setOptionIndex] = useState(0);
   const variantChoiceRequired = Boolean(product && /^variant$/i.test(product.optionLabel || '') && product.options.length > 1);
   const [optionExplicitlySelected, setOptionExplicitlySelected] = useState(!variantChoiceRequired);
   const [selectedSize, setSelectedSize] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(initialProduct.minimumOrderQuantity);
   const [activeImage, setActiveImage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (loading) return;
-    let active = true;
-    setCatalogueProducts(null);
-    fetchCatalogueStorefrontProducts(stagingProducts).then((nextProducts) => {
-      if (active) setCatalogueProducts(nextProducts);
-    });
-    return () => { active = false; };
-  }, [loading, stagingProducts]);
+    const controller = new AbortController();
+    fetch('/bundle/merchandise', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.data)) throw new Error('Unable to load merchandise');
+        const nextProducts = mergeBundleMerchandiseProducts(result.data as BundleMerchandiseProduct[]);
+        if (controller.signal.aborted) return;
+        setLiveProducts(nextProducts);
+        reconcileMerchandiseCatalog(resolveMerchandiseDetailProducts(slug, catalogueRecord, nextProducts).products);
+      })
+      .catch((loadError) => {
+        // Same as before: without live stock the product shows with no purchasable stock.
+        if (!controller.signal.aborted && (loadError as Error).name !== 'AbortError') setLiveProducts([]);
+      });
+    return () => controller.abort();
+  }, [slug, catalogueRecord, reconcileMerchandiseCatalog]);
 
   useEffect(() => {
     if (!product) return;
@@ -49,15 +66,6 @@ export default function MerchandiseDetailPage() {
     setActiveImage('');
     setError('');
   }, [product?.id]);
-
-  if (!product) {
-    return (
-      <div className="container merch-not-found">
-        <h1>Merchandise not found</h1>
-        <Link href="/">← Back to shop</Link>
-      </div>
-    );
-  }
 
   const selectedOption = product.options[optionIndex] || product.options[0];
   const availableSizes = selectedOption.sizes || product.sizes;
@@ -89,6 +97,10 @@ export default function MerchandiseDetailPage() {
   };
 
   const handleAddToCart = () => {
+    if (!stockReady) {
+      setError('Checking live stock. Please try again in a moment.');
+      return;
+    }
     if (product.soldOut) {
       setError('This item is currently unavailable.');
       return;
@@ -145,7 +157,7 @@ export default function MerchandiseDetailPage() {
       <div className="merch-detail-grid">
         <section className="merch-detail-media" aria-label={`${product.name} images`}>
           <div className="merch-detail-main-image">
-            <Image src={selectedImage} alt={`${product.name} ${selectedOption.name}`} fill priority sizes="(max-width: 900px) 100vw, 55vw" />
+            <Image src={selectedImage} alt={`${product.name} ${selectedOption.name}`} fill priority unoptimized sizes="(max-width: 900px) 100vw, 55vw" />
           </div>
           {gallery.length > 1 && (
             <div className="merch-detail-thumbnails">
@@ -157,7 +169,7 @@ export default function MerchandiseDetailPage() {
                   onClick={() => handleImageChange(image)}
                   aria-label={`View image ${index + 1}`}
                 >
-                  <Image src={image} alt="" fill sizes="88px" />
+                  <Image src={image} alt="" fill unoptimized sizes="88px" />
                 </button>
               ))}
             </div>
@@ -166,7 +178,7 @@ export default function MerchandiseDetailPage() {
 
         <section className="merch-detail-panel">
           <h1>{product.name}</h1>
-          {product.isPreOrder && <div className="merch-stock-status">Unlimited (pre-order)</div>}
+          {stockReady && product.isPreOrder && <div className="merch-stock-status">Unlimited (pre-order)</div>}
           {product.unitLabel && <div className="merch-unit-label">{product.unitLabel}</div>}
 
           {product.options.length > 1 && (
@@ -220,8 +232,8 @@ export default function MerchandiseDetailPage() {
           )}
 
           <div className="merch-detail-price">{formatRM(variantPrice)}</div>
-          {product.soldOut && <div className="merch-stock-status">Sold out</div>}
-          {product.soldOut ? (
+          {stockReady && product.soldOut && <div className="merch-stock-status">Sold out</div>}
+          {stockReady && product.soldOut ? (
             <div className="merch-purchase-row merch-purchase-row--unavailable">
               <button
                 type="button"
@@ -234,12 +246,12 @@ export default function MerchandiseDetailPage() {
           ) : (
             <div className="merch-purchase-row">
               <div className="merch-quantity" aria-label="Quantity">
-                <button type="button" onClick={() => setQuantity((value) => Math.max(product.minimumOrderQuantity, value - 1))}>−</button>
+                <button type="button" disabled={!stockReady} onClick={() => setQuantity((value) => Math.max(product.minimumOrderQuantity, value - 1))}>−</button>
                 <span>{quantity}</span>
-                <button type="button" onClick={() => setQuantity((value) => Math.min(availableQuantity, value + 1))}>+</button>
+                <button type="button" disabled={!stockReady} onClick={() => setQuantity((value) => Math.min(availableQuantity, value + 1))}>+</button>
               </div>
-              <button type="button" className="btn btn-primary merch-add-button" onClick={handleAddToCart}>
-                Add to Cart · {formatRM(variantPrice * quantity)}
+              <button type="button" className="btn btn-primary merch-add-button" disabled={!stockReady} onClick={handleAddToCart}>
+                {stockReady ? <>Add to Cart · {formatRM(variantPrice * quantity)}</> : 'Checking stock…'}
               </button>
             </div>
           )}

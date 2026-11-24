@@ -11,6 +11,7 @@ import {
   publicCatalogueMedia,
   readCatalogueMediaProduct,
 } from '@/lib/admin/catalogueMediaRoute.server';
+import { invalidatePublicCatalogueOnSuccess } from '@/lib/catalogueCache.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const assignment = (patch as { assignment?: unknown }).assignment;
 
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    return invalidatePublicCatalogueOnSuccess(await withCatalogueMutationLock(params.id, async () => {
       const { product, error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const simDenied = await activeSimMediaMutationError(product);
@@ -56,7 +57,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
       if (Object.prototype.hasOwnProperty.call(patch, 'assignment') && !isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
       const media = await updateCatalogueMedia(params.id, params.mediaId, patch as { order?: number; assignment?: string });
       return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
-    });
+    }));
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }
 
@@ -65,13 +66,13 @@ export async function DELETE(request: NextRequest, { params }: Context) {
   if (denied) return denied;
   if (!isValidCatalogueMediaId(params.mediaId)) return catalogueMediaBadRequest();
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    return invalidatePublicCatalogueOnSuccess(await withCatalogueMutationLock(params.id, async () => {
       const { product, error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const simDenied = await activeSimMediaMutationError(product);
       if (simDenied) return simDenied;
       const media = await removeCatalogueMedia(params.id, params.mediaId);
       return NextResponse.json({ media: publicCatalogueMedia(media) }, { headers: { 'cache-control': 'no-store' } });
-    });
+    }));
   } catch (reason) { return catalogueMediaRequestError(reason); }
 }

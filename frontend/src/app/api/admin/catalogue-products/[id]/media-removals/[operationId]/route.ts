@@ -10,6 +10,7 @@ import {
   isValidCatalogueMediaId,
   readCatalogueMediaProduct,
 } from '@/lib/admin/catalogueMediaRoute.server';
+import { invalidatePublicCatalogueOnSuccess } from '@/lib/catalogueCache.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,13 +48,13 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (!Array.isArray(mediaIds) || mediaIds.length === 0 || mediaIds.length > 100
     || mediaIds.some(mediaId => !isValidCatalogueMediaId(mediaId)) || new Set(mediaIds).size !== mediaIds.length) return catalogueMediaBadRequest();
   try {
-    return await withCatalogueMutationLock(params.id, async () => {
+    return invalidatePublicCatalogueOnSuccess(await withCatalogueMutationLock(params.id, async () => {
       const { product, error } = await readCatalogueMediaProduct(params.id);
       if (error) return error;
       const simDenied = await activeSimMediaMutationError(product);
       if (simDenied) return simDenied;
       return response(await finalizeCatalogueMediaRemoval(params.id, params.operationId, mediaIds));
-    });
+    }));
   }
   catch (reason) { return catalogueMediaRequestError(reason); }
 }

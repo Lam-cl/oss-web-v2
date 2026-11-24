@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/style.css';
 import { useCartStore } from '@/store/cartStore';
 import { initiateBundleGuestPayment } from '@/lib/api';
 import { formatRM } from '@/lib/utils';

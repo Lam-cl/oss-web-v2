@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Montserrat } from 'next/font/google';
 import Script from 'next/script';
-import 'react-day-picker/style.css';
 import './globals.css';
 import './merchandise-parity.css';
 import RouteChrome from '@/components/layout/RouteChrome';

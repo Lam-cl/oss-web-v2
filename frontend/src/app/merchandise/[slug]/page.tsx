@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { getMerchandiseProduct } from '@/data/merchandise';
 import { getPublicCatalogue } from '@/lib/catalogueCache.server';
-import { catalogueRecordForSlug, catalogueSlugs, resolveMerchandiseDetailProducts } from '@/lib/merchandiseDetail';
+import { readLiveBundleMerchandiseProducts } from '@/lib/bundleMerchandiseRead.server';
+import { catalogueRecordForSlug, resolveMerchandiseDetailPage } from '@/lib/merchandiseDetail';
 import { absoluteSiteUrl } from '@/lib/siteUrl';
 import MerchandiseDetailClient from './MerchandiseDetailClient';
 
@@ -28,17 +29,15 @@ const resolveProduct = cache(async (slug: string) => {
     if (!getMerchandiseProduct(slug)) throw reason;
   }
   const catalogueRecord = catalogue ? catalogueRecordForSlug(catalogue, slug) : null;
-  const { product } = resolveMerchandiseDetailProducts(slug, catalogueRecord, []);
-  return product ? { product, catalogueRecord } : null;
+  // Falls back to an uncached live Bundle read for legacy Bundle-only products before answering
+  // 404; if that read fails this throws, so no 404 is cached for a product that may exist.
+  return resolveMerchandiseDetailPage(slug, catalogueRecord, readLiveBundleMerchandiseProducts);
 });
 
-export async function generateStaticParams() {
-  try {
-    return catalogueSlugs(await getPublicCatalogue()).map((slug) => ({ slug }));
-  } catch {
-    // Catalogue unavailable at build time: render every product on first request instead.
-    return [];
-  }
+// No build-time prerendering: a Data API hiccup during `next build` must not fail the deploy.
+// With dynamicParams each product renders on first request and is then ISR-cached.
+export function generateStaticParams() {
+  return [];
 }
 
 function metadataDescription(text: string) {

@@ -31,3 +31,20 @@ export function resolveMerchandiseDetailProducts(
   const products = adaptCatalogueStorefrontPayload({ products: catalogueRecord ? [catalogueRecord] : [] }, liveProducts);
   return { product: products.find((item) => item.slug === slug) || getMerchandiseProduct(slug) || null, products };
 }
+
+/**
+ * Server-side resolution for /merchandise/[slug]: catalogue record first, then the static list,
+ * then a fresh live Bundle read for legacy Bundle-only products (which the storefront and checkout
+ * still sell). Returns null only when the live read succeeded and the slug is absent; a failed
+ * read rejects, so the caller never caches a 404 for a product that may exist.
+ */
+export async function resolveMerchandiseDetailPage(
+  slug: string,
+  catalogueRecord: Row | null,
+  readLiveProducts: () => Promise<MerchandiseProduct[]>,
+): Promise<{ product: MerchandiseProduct; catalogueRecord: Row | null } | null> {
+  const { product } = resolveMerchandiseDetailProducts(slug, catalogueRecord, []);
+  if (product) return { product, catalogueRecord };
+  const legacy = resolveMerchandiseDetailProducts(slug, null, await readLiveProducts()).product;
+  return legacy ? { product: legacy, catalogueRecord: null } : null;
+}

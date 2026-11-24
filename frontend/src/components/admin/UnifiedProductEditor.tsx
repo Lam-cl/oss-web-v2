@@ -11,6 +11,7 @@ import {
 import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
 import { adminMediaUrl } from '@/lib/admin/mediaUrl';
 import { saveFailureMessage } from '@/lib/admin/saveFailureMessage';
+import { compressImageForUpload, UPLOAD_MAX_BYTES } from '@/lib/admin/compressImageForUpload';
 import styles from './UnifiedProductEditor.module.css';
 
 export type UnifiedProductEditorExistingPhoto = {
@@ -480,6 +481,7 @@ export default function UnifiedProductEditor({
   const initialProductContent = parseProductDescription(model.details.description);
   const [choiceDrafts, setChoiceDrafts] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [preparingPhotos, setPreparingPhotos] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState(initialProductContent.description);
   const [productDetailsDraft, setProductDetailsDraft] = useState(initialProductContent.details.join('\n'));
   const [emptyNumericFields, setEmptyNumericFields] = useState<Set<string>>(() => new Set());
@@ -507,6 +509,9 @@ export default function UnifiedProductEditor({
     createdObjectUrls.current.clear();
   }, []);
   const photos = useMemo(() => buildPhotoRows(model, existingPhotos, pendingPhotos), [model, existingPhotos, pendingPhotos]);
+  // Photo compression is async; read the latest rows when it finishes, not the ones from when the picker fired.
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   const visiblePhotos = visiblePhotoRows(photos);
   const removedPhotos = photos.filter((photo) => photo.removed);
   const previewPhoto = visiblePhotos[0];
@@ -639,22 +644,30 @@ export default function UnifiedProductEditor({
     }
     patchPhoto(photo.key, { removed: true });
   };
-  const addPhotoFiles = (files: FileList | null) => {
-    if (!files?.length) return;
+  const addPhotoFiles = async (files: File[]) => {
+    if (!files.length) return;
     const supported = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    const selected = Array.from(files);
-    if (selected.some((file) => !supported.has(file.type))) {
+    const picked = files;
+    if (picked.some((file) => !supported.has(file.type))) {
       setSubmitError('Choose JPG, PNG, or WebP photos.');
       return;
     }
-    if (selected.some((file) => file.size > 10 * 1024 * 1024)) {
-      setSubmitError('Each photo must be 10 MB or smaller.');
+    setSubmitError(null);
+    setPreparingPhotos(true);
+    let selected: File[];
+    try {
+      selected = await Promise.all(picked.map((file) => compressImageForUpload(file)));
+    } finally {
+      setPreparingPhotos(false);
+    }
+    // Leave room for the multipart envelope so the request stays under the 4 MB server limit.
+    if (selected.some((file) => file.size > UPLOAD_MAX_BYTES - 16 * 1024)) {
+      setSubmitError('Each photo must be 4 MB or smaller after resizing. Choose a smaller photo.');
       return;
     }
-    setSubmitError(null);
     emitPhotos([
-      ...photos,
-      ...selected.map((file) => {
+      ...photosRef.current,
+      ...selected.map((file, index) => {
         const url = URL.createObjectURL(file);
         createdObjectUrls.current.add(url);
         return {
@@ -662,7 +675,7 @@ export default function UnifiedProductEditor({
           kind: 'pending' as const,
           file,
           url,
-          alt: file.name.replace(/\.[^.]+$/, ''),
+          alt: picked[index].name.replace(/\.[^.]+$/, ''),
           assignment: 'all' as const,
           removed: false,
         };
@@ -754,9 +767,9 @@ export default function UnifiedProductEditor({
           </div>}
 
           {simManaged ? null : <label className={styles.photoUpload}>
-            <span><strong>Add product photos</strong><small>JPG, PNG, or WebP · up to 10 MB each</small></span>
+            <span><strong>Add product photos</strong><small>{preparingPhotos ? 'Preparing photos…' : 'JPG, PNG, or WebP · large photos are resized automatically'}</small></span>
             <span aria-hidden="true">Choose photos</span>
-            <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(event) => { addPhotoFiles(event.target.files); event.target.value = ''; }} />
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={preparingPhotos} onChange={(event) => { const files = event.target.files ? Array.from(event.target.files) : []; event.target.value = ''; void addPhotoFiles(files); }} />
           </label>}
           <div className={styles.photoGrid} aria-label="Ordered visible product photos">
             {visiblePhotos.length === 0 && <p className={styles.empty}>Add your cover photo and any choice-specific photos here.</p>}
@@ -826,7 +839,7 @@ export default function UnifiedProductEditor({
 
       <footer className={styles.saveBar}>
         <div aria-live="polite" aria-atomic="true">{liveError ? <p className={styles.error}>{liveError}</p> : <p className={styles.neutralHelper}>{saveMode === 'local-draft' ? 'Changes are saved to this catalogue draft only. The SIM workflow is not updated.' : 'Changes stay here until you save.'}</p>}</div>
-        <div><button className={styles.cancelButton} type="button" onClick={onCancel} disabled={saving}>Cancel</button><button className={styles.saveButton} type="submit" disabled={saving || Boolean(validationError)}>{saving ? savingLabel : saveLabel}</button></div>
+        <div><button className={styles.cancelButton} type="button" onClick={onCancel} disabled={saving}>Cancel</button><button className={styles.saveButton} type="submit" disabled={saving || preparingPhotos || Boolean(validationError)}>{saving ? savingLabel : saveLabel}</button></div>
       </footer>
     </form>
   );

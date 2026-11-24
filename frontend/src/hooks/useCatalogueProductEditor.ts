@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UnifiedProductEditorSaveIntent } from '@/components/admin/UnifiedProductEditor';
 import type { ProductEditorSpec } from '@/lib/admin/productEditor';
+import { httpFailureMessage } from '@/lib/admin/httpFailureMessage';
 
 export type CatalogueProduct = {
   catalogueId: string;
@@ -46,10 +47,10 @@ async function readJson<T>(fetcher: Fetcher, path: string, init: RequestInit): P
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
+    const payloadMessage = payload && typeof payload === 'object' && 'message' in payload && typeof payload.message === 'string'
       ? payload.message
-      : 'The catalogue product could not be saved.';
-    throw new CatalogueEditorApiError(message, response.status);
+      : undefined;
+    throw new CatalogueEditorApiError(httpFailureMessage(response.status, payloadMessage), response.status);
   }
   return payload as T;
 }

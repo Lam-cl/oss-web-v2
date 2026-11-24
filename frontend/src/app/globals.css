@@ -7401,3 +7401,18 @@ body.sim-choice-modal-open .referral-floating-widget {
     border-radius: 50%;
   }
 }
+
+/* ============= Route enter transition (PageTransition.tsx) =============
+   Same motion as the former framer-motion version: slide up from 100vh,
+   0.7s, expo-out cubic-bezier(0.16, 1, 0.3, 1). fill-mode "backwards" so no
+   transform is left behind once the animation ends (framer set transform:none). */
+@keyframes page-transition-enter {
+  from { transform: translateY(100vh); }
+  to { transform: translateY(0); }
+}
+.page-transition-enter {
+  animation: page-transition-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-enter { animation: none; }
+}

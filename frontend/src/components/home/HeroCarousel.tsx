@@ -40,6 +40,8 @@ export default function HeroCarousel({ banners }: Props) {
             width: HERO_WIDTH,
             height: HERO_HEIGHT,
             sizes: '100vw',
+            // Banners carry text; 85 keeps it crisp (default 75 softens small type).
+            quality: 85,
             // Only the first slide is the LCP candidate; the rest load lazily.
             priority: index === 0,
           };

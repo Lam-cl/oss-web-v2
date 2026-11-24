@@ -10,6 +10,7 @@ import {
 } from '@/lib/admin/catalogueVariantBindings';
 import { formatProductDescription, parseProductDescription } from '@/lib/productDescription';
 import { adminMediaUrl } from '@/lib/admin/mediaUrl';
+import { saveFailureMessage } from '@/lib/admin/saveFailureMessage';
 import styles from './UnifiedProductEditor.module.css';
 
 export type UnifiedProductEditorExistingPhoto = {
@@ -679,14 +680,23 @@ export default function UnifiedProductEditor({
       setSubmitError('The SIM image is locked read-only for this release and cannot be changed.');
       return;
     }
+    let intent: ReturnType<typeof buildSaveIntent>;
     try {
-      const intent = buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged);
+      intent = buildSaveIntent(model, photos, normalizeProductEditorSpec, !simManaged);
       intent.inventoryChanges = model.details.isPreOrder ? [] : catalogueInventoryChanges(intent.spec.combinations, touchedInventory, liveInventory);
+    } catch (problem) {
+      // Local validation: translate field errors into friendly guidance.
+      setSubmitError(friendlySpecError(problem));
+      return;
+    }
+    try {
       await onSave(intent);
       createdObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
       createdObjectUrls.current.clear();
     } catch (problem) {
-      setSubmitError(friendlySpecError(problem));
+      // Server save failed: show the real reason (revision conflict, media
+      // changed, timeout, API message) instead of the generic validation banner.
+      setSubmitError(saveFailureMessage(problem));
     }
   };
   const liveError = submitError || error || validationError;

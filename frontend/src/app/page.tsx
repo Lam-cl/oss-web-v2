@@ -5,6 +5,10 @@ import { getSettings, type AppSettings } from '@/lib/api';
 import { isDevicesEnabled, isMerchandiseEnabled } from '@/lib/features';
 import type { Banner } from '@/types';
 
+// mobile_image intentionally equals desktop_image: the *-mobile-v2 / mbg-*-mobile
+// files in public/images/banners belong to the previous (Malay, 750x400) campaign
+// and do not match the current MBG/CASHBACK/INSURANCE/ESIM artwork. next/image
+// serves a small resized WebP/AVIF on mobile from the same source instead.
 const FALLBACK_BANNERS: Banner[] = [
   { id: 1, title: 'Banner 1', desktop_image: '/images/banners/MBG.png', mobile_image: '/images/banners/MBG.png', sort_order: 1 },
   { id: 2, title: 'Banner 2', desktop_image: '/images/banners/CASHBACK.png', mobile_image: '/images/banners/CASHBACK.png', sort_order: 2 },

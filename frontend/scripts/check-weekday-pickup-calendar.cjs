@@ -4,7 +4,7 @@ const page=fs.readFileSync('src/app/checkout/page.tsx','utf8');
 const layout=fs.readFileSync('src/app/layout.tsx','utf8');
 const css=['src/app/globals.css','src/app/merchandise-parity.css'].map(file=>fs.readFileSync(file,'utf8')).join('\n');
 assert.match(pkg.dependencies?.['react-day-picker']||'',/^\^?10\.0\.1$/,'react-day-picker 10.0.1 missing');
-assert.equal(layout.includes("import 'react-day-picker/style.css';"),true,'DayPicker base CSS missing');
+assert.equal(page.includes("import 'react-day-picker/style.css';"),true,'DayPicker base CSS missing (scoped to the checkout page)');
 assert.equal(page.includes("import { DayPicker } from 'react-day-picker';"),true,'DayPicker import missing');
 assert.equal(page.includes("const [pickupCalendarOpen, setPickupCalendarOpen] = useState(false);"),true,'calendar state missing');
 assert.equal(page.includes('aria-haspopup="dialog"'),true,'calendar trigger accessibility missing');

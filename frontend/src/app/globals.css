@@ -8,7 +8,7 @@
    Header/Footer ref: tonewow.com/Prepaid_Plans
    ============================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap');
+/* Montserrat is self-hosted via next/font in app/layout.tsx (exposes --font-montserrat). */
 
 :root {
   /* Brand Colors */
@@ -53,7 +53,7 @@
   --btn-radius: 50px;
 
   /* Typography */
-  --font: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font: var(--font-montserrat, 'Montserrat'), -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* ============= Referral QR Generator ============= */

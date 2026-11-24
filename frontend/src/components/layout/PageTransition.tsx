@@ -1,7 +1,13 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion';
+
+// LazyMotion + m keeps the same animations as motion.div but ships only the
+// domAnimation feature bundle on the shared layout path.
+// Not `strict`: page content rendered inside (ReferralCapture, SIMSection,
+// sim/purchase) still uses <motion.*>, which strict mode turns into a dev-time
+// invariant error. Switch those to `m` before enabling strict.
 
 export default function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,8 +26,9 @@ export default function PageTransition({ children }: { children: React.ReactNode
   return (
     /* overflow:hidden prevents horizontal bleed during slide */
     <div style={{ overflow: 'hidden', position: 'relative' }}>
+      <LazyMotion features={domAnimation}>
       <AnimatePresence mode="popLayout" initial={false}>
-        <motion.div
+        <m.div
           key={pathname}
           initial={{ y: '100vh' }}
           animate={{
@@ -46,8 +53,9 @@ export default function PageTransition({ children }: { children: React.ReactNode
           }}
         >
           {children}
-        </motion.div>
+        </m.div>
       </AnimatePresence>
+      </LazyMotion>
     </div>
   );
 }

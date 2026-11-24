@@ -5,20 +5,43 @@ declare global {
   }
 }
 
+// Smartech loads lazily (lazyOnload), so calls made before it is ready are
+// queued in memory and replayed in order by flushSmartechQueue(). The cap keeps
+// the earliest calls (identify/contact usually come first) and drops the rest.
+export const SMARTECH_QUEUE_LIMIT = 50;
+const pendingCalls: unknown[][] = [];
+
+/** Replays queued calls in order once window.smartech exists. Safe on the server. */
+export function flushSmartechQueue(): void {
+  if (typeof window === 'undefined') return;
+  const smartech = window.smartech;
+  if (!smartech) return;
+  while (pendingCalls.length > 0) {
+    const args = pendingCalls.shift()!;
+    smartech(...args);
+  }
+}
+
+function callSmartech(...args: unknown[]): void {
+  if (typeof window === 'undefined') return; // SSR: nothing to track
+  flushSmartechQueue();
+  if (window.smartech) {
+    window.smartech(...args);
+    return;
+  }
+  if (pendingCalls.length < SMARTECH_QUEUE_LIMIT) pendingCalls.push(args);
+}
+
 export function smartechDispatch(event: string, payload: Record<string, any>) {
-     
-  if (typeof window === 'undefined' || !window.smartech) return;
-  window.smartech('dispatch', event, payload);
+  callSmartech('dispatch', event, payload);
 }
 
 export function smartechIdentify(id: string) {
-  if (typeof window === 'undefined' || !window.smartech) return;
-  window.smartech('identify', id);
+  callSmartech('identify', id);
 }
 
 export function smartechContact(listId: string, data: Record<string, any>) {
-  if (typeof window === 'undefined' || !window.smartech) return;
-  window.smartech('contact', listId, data);
+  callSmartech('contact', listId, data);
 }
 
 export type SimOrderData = {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { catalogueAdminError, catalogueAdminRoute, readBoundedCatalogueJson, readCatalogueAdminSession } from '@/lib/admin/catalogueAdminRoute.server';
-import { invalidatePublicCatalogueOnSuccess } from '@/lib/catalogueCache.server';
+import { withPublicCatalogueInvalidation } from '@/lib/catalogueCache.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const { session, error } = await readCatalogueAdminSession(request, true);
   if (error) return error;
   try {
-    return invalidatePublicCatalogueOnSuccess(NextResponse.json(await catalogueAdminRoute.updateInventory(params.id, await readBoundedCatalogueJson(request), session!.token), { headers: { 'cache-control': 'no-store' } }));
+    return await withPublicCatalogueInvalidation(async () => NextResponse.json(await catalogueAdminRoute.updateInventory(params.id, await readBoundedCatalogueJson(request), session!.token), { headers: { 'cache-control': 'no-store' } }));
   } catch (reason) {
     return catalogueAdminError(reason);
   }

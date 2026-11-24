@@ -12,23 +12,39 @@ export const CATALOGUE_REVALIDATE_SECONDS = 300;
  * entry is safe. Invalidated by `invalidatePublicCatalogue()` after admin writes, otherwise
  * refreshed every 5 minutes (stale-while-revalidate).
  */
-export const getPublicCatalogue = unstable_cache(
-  async () => withCachedDataApiReads(async () => {
+async function loadPublicCatalogue() {
+  return withCachedDataApiReads(async () => {
     const [catalogue, displayOrder] = await Promise.all([
       readCataloguePublicProjection(),
       readMerchandiseOrder().catch(() => ({ revision: 0, entries: [] })),
     ]);
     return { ...catalogue, displayOrder };
-  }),
+  });
+}
+
+const cachedPublicCatalogue = unstable_cache(
+  loadPublicCatalogue,
   ['catalogue-public-v1'],
   { revalidate: CATALOGUE_REVALIDATE_SECONDS, tags: [CATALOGUE_TAG] },
 );
 
+const NO_INCREMENTAL_CACHE = 'Invariant: incrementalCache missing in unstable_cache';
+
+export async function getPublicCatalogue(): Promise<Awaited<ReturnType<typeof loadPublicCatalogue>>> {
+  try {
+    return await cachedPublicCatalogue();
+  } catch (reason) {
+    // Outside a Next server (scripts, node harnesses) there is no incremental cache; read directly.
+    if (reason instanceof Error && reason.message.startsWith(NO_INCREMENTAL_CACHE)) return loadPublicCatalogue();
+    throw reason;
+  }
+}
+
 export type PublicCatalogue = Awaited<ReturnType<typeof getPublicCatalogue>>;
 
 /**
- * Drops the cached public catalogue and the pages built from it. Call only after a write has
- * succeeded. Never throws: a failed invalidation must not fail the admin write (the cache
+ * Drops the cached public catalogue and the pages built from it. Call after every attempted
+ * admin write. Never throws: a failed invalidation must not fail the admin write (the cache
  * still expires on its own after CATALOGUE_REVALIDATE_SECONDS).
  */
 export function invalidatePublicCatalogue() {
@@ -43,8 +59,13 @@ export function invalidatePublicCatalogue() {
   }
 }
 
-/** Invalidates the public catalogue when `response` is a success, then returns it unchanged. */
-export function invalidatePublicCatalogueOnSuccess<T extends Response>(response: T): T {
-  if (response.ok) invalidatePublicCatalogue();
-  return response;
+/**
+ * Runs an admin catalogue mutation and always invalidates the public catalogue afterwards,
+ * whether it succeeded, failed or threw: a write can commit and then fail a later step (e.g.
+ * publish succeeding before a follow-up step throws), so success alone is not a safe signal.
+ * Invalidation itself never throws, so it cannot change the mutation's response or error.
+ */
+export async function withPublicCatalogueInvalidation<T>(mutation: () => Promise<T>): Promise<T> {
+  try { return await mutation(); }
+  finally { invalidatePublicCatalogue(); }
 }

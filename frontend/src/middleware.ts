@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ADMIN_GATE_COOKIE, hasActiveAdminGateCookie } from '@/lib/admin/session';
 
-export const runtime = 'nodejs';
+// Next 14.2 always compiles middleware for the edge runtime; a `runtime`
+// export here is ignored, so none is declared.
 
 async function readPostedToken(req: NextRequest): Promise<string> {
   try {
@@ -20,12 +21,18 @@ async function readPostedToken(req: NextRequest): Promise<string> {
 
 export async function middleware(req: NextRequest) {
   const { pathname, search, searchParams } = req.nextUrl;
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set('x-oss-public-origin', req.nextUrl.origin);
-  const withOrigin = (res: NextResponse) => {
-    res.headers.set('x-oss-public-origin', req.nextUrl.origin);
-    return res;
-  };
+
+  // Nothing in this app reads x-oss-public-origin. It is still forwarded on the
+  // external rewrites (next.config.mjs) because the upstream services are not in
+  // this repo and may read it.
+  if (
+    pathname === '/api-proxy' || pathname.startsWith('/api-proxy/')
+    || pathname === '/oss-nest-proxy' || pathname.startsWith('/oss-nest-proxy/')
+  ) {
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set('x-oss-public-origin', req.nextUrl.origin);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
 
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     const login = pathname === '/admin/login';
@@ -45,10 +52,10 @@ export async function middleware(req: NextRequest) {
       url.search = '';
       return NextResponse.redirect(url);
     }
-    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    const response = NextResponse.next();
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
     response.headers.set('Cache-Control', 'private, no-store, max-age=0');
-    return withOrigin(response);
+    return response;
   }
 
   const merchandiseEnabled = process.env.NEXT_PUBLIC_ENABLE_MERCHANDISE?.trim().toLowerCase() === 'true';
@@ -72,7 +79,7 @@ export async function middleware(req: NextRequest) {
       url.pathname = '/';
       url.search = '';
       url.hash = 'shop';
-      return withOrigin(NextResponse.redirect(url, 307));
+      return NextResponse.redirect(url, 307);
     }
   }
 
@@ -82,7 +89,7 @@ export async function middleware(req: NextRequest) {
     (searchParams.has('dataPlanID') || ['superlite', 'superliteplus'].includes(searchParams.get('simID') || ''))
   ) {
     const token = process.env.DIRECT_CHECKOUT_TOKEN;
-    if (!token) return NextResponse.next({ request: { headers: requestHeaders } });
+    if (!token) return NextResponse.next();
 
     if (req.method === 'POST') {
       const postedToken = await readPostedToken(req);
@@ -95,10 +102,10 @@ export async function middleware(req: NextRequest) {
         url.searchParams.set('simID', simID);
         const res = NextResponse.redirect(url, 303);
         res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 1800 });
-        return withOrigin(res);
+        return res;
       }
       url.searchParams.delete('simID');
-      return withOrigin(NextResponse.redirect(url, 303));
+      return NextResponse.redirect(url, 303);
     }
 
     const authHeader = req.headers.get('authorization');
@@ -110,20 +117,42 @@ export async function middleware(req: NextRequest) {
       url.searchParams.delete('dataPlanID');
       url.searchParams.delete('simID');
       url.searchParams.delete('token');
-      return withOrigin(NextResponse.redirect(url));
+      return NextResponse.redirect(url);
     }
     if (queryToken === token) {
       const url = req.nextUrl.clone();
       url.searchParams.delete('token');
       const res = NextResponse.redirect(url);
       res.cookies.set('dc_token', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 1800 });
-      return withOrigin(res);
+      return res;
     }
   }
 
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  return NextResponse.next();
 }
 
+// Only the paths the branches above act on. Next needs literal strings here
+// (it reads them at build time); middleware.test.mjs checks the coverage.
+// `/x/:path*` also matches `/x` itself.
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  matcher: [
+    // x-oss-public-origin forwarding on external rewrites
+    '/api-proxy/:path*',
+    '/oss-nest-proxy/:path*',
+    // admin navigation guard and no-store/noindex headers
+    '/admin/:path*',
+    // merchandise flag gating (pages)
+    '/merchandise/:path*',
+    '/checkout/:path*',
+    // merchandise flag gating (APIs)
+    '/bundle/checkout',
+    '/api/bundle/checkout',
+    '/bundle/merchandise',
+    '/api/bundle/merchandise',
+    '/catalogue-products-api/:path*',
+    '/api/catalogue-products/:path*',
+    '/shipping-settings-api/:path*',
+    // direct checkout token protection
+    '/sim/purchase',
+  ],
 };

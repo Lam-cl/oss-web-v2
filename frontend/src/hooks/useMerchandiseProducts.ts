@@ -5,6 +5,8 @@ import type { MerchandiseProduct } from '@/data/merchandise';
 import { loadMerchandiseProducts, merchandiseBootstrapProducts, merchandiseDisplayCache } from '@/lib/loadMerchandiseProducts';
 import { useCartStore } from '@/store/cartStore';
 
+const MERCHANDISE_POLL_INTERVAL_MS = 120_000;
+
 export function useMerchandiseProducts({ displayCache = false } = {}) {
   const [products, setProducts] = useState<MerchandiseProduct[]>(displayCache ? merchandiseBootstrapProducts : []);
   const [loading, setLoading] = useState(true);
@@ -48,8 +50,9 @@ export function useMerchandiseProducts({ displayCache = false } = {}) {
     }
 
     void loadProducts(requestVersion > 0);
+    // Background tabs never poll; focus still refreshes immediately.
     const refresh = () => { if (document.visibilityState === 'visible') void loadProducts(); };
-    const timer = displayCache ? window.setInterval(refresh, 30_000) : undefined;
+    const timer = displayCache ? window.setInterval(refresh, MERCHANDISE_POLL_INTERVAL_MS) : undefined;
     if (displayCache) window.addEventListener('focus', refresh);
     return () => {
       active = false;

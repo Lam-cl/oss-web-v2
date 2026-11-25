@@ -159,7 +159,7 @@ try {
       }
       return upload(id,u);
     };
-    await assert.rejects(()=>run(f,input),/digest readback mismatch/);
+    await assert.rejects(()=>run(f,input),/was not stored by the shop provider\. Upload error: Invocation stopped before second upload/);
     const saved=await store.readPublicationJob(op,f.directory),firstId=f.products.get(40).images[0].id;
     assert.deepEqual(saved.resolved.images,{front:firstId});
     const restarted=new FakeBundle(f.directory);restarted.products=f.products;restarted.nextProduct=f.nextProduct;restarted.ids=[...f.ids];

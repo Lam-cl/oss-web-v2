@@ -3,8 +3,8 @@
  *
  * Vercel rejects serverless request bodies over 4.5 MB before the route runs,
  * so photos larger than ~3.5 MB or wider/taller than 2000 px are redrawn to a
- * 2000 px longest side and re-encoded as WebP, or as JPEG where the browser
- * cannot encode WebP (Safari returns PNG from toBlob('image/webp')). Small
+ * 2000 px longest side and re-encoded as JPEG (never WebP: the shop
+ * provider cannot publish WebP; the server also converts WebP uploads). Small
  * images, non-raster types and any failure (decode, canvas, toBlob) return the
  * original file unchanged. This function never throws.
  */
@@ -17,7 +17,7 @@ const QUALITIES = [0.85, 0.75, 0.65];
 const RASTER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 type Decoded = { source: CanvasImageSource; width: number; height: number; release: () => void };
-type OutputType = 'image/webp' | 'image/jpeg';
+type OutputType = 'image/jpeg';
 
 async function decodeBitmap(file: File): Promise<ImageBitmap> {
   try {
@@ -102,19 +102,14 @@ export async function compressImageForUpload(file: File): Promise<File> {
       canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(width * scale));
       canvas.height = Math.max(1, Math.round(height * scale));
-      if (!draw(canvas, decoded, false)) return file;
-
-      let type: OutputType = 'image/webp';
-      let blob = await encode(canvas, type);
-      if (!blob) {
-        // Safari cannot encode WebP; fall back to JPEG.
-        type = 'image/jpeg';
-        if (file.type === 'image/png' && !draw(canvas, decoded, true)) return file;
-        blob = await encode(canvas, type);
-      }
+      // Always JPEG: the shop provider cannot publish WebP photos. White
+      // background so transparent PNG/WebP areas do not turn black.
+      if (!draw(canvas, decoded, true)) return file;
+      const type: OutputType = 'image/jpeg';
+      const blob = await encode(canvas, type);
       if (!blob || blob.size >= file.size) return file;
       const base = file.name.replace(/\.[^.]+$/, '') || 'photo';
-      const name = `${base}${type === 'image/webp' ? '.webp' : '.jpg'}`;
+      const name = `${base}.jpg`;
       return new File([blob], name, { type, lastModified: file.lastModified });
     } finally {
       if (canvas) {

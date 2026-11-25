@@ -84,6 +84,8 @@ function loadRoute(file) {
     if (name === '@/lib/admin/catalogueAdminRoute.server') return adminRoute;
     // Invalidation wrapper only: it runs the handler body unchanged, so lock order is unaffected.
     if (name === '@/lib/catalogueCache.server') return require('./helpers/catalogueCacheMock.cjs');
+    // WebP-to-JPEG conversion runs before the lock; pass uploads through unchanged here.
+    if (name === '@/lib/admin/catalogueUploadImage.server') return { normalizeCatalogueUploadImage: async (input) => input, CatalogueUploadImageError: class extends Error { status = 400; } };
     throw new Error(`Unexpected route dependency: ${name}`);
   }, loaded);
   return loaded.exports;

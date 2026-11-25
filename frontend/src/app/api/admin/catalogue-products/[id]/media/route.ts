@@ -12,6 +12,7 @@ import {
   readCatalogueMediaProduct,
 } from '@/lib/admin/catalogueMediaRoute.server';
 import { withPublicCatalogueInvalidation } from '@/lib/catalogueCache.server';
+import { CatalogueUploadImageError, normalizeCatalogueUploadImage, type CatalogueUploadImage } from '@/lib/admin/catalogueUploadImage.server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,6 +48,17 @@ export async function POST(request: NextRequest, { params }: Context) {
     || typeof assignment !== 'string') return catalogueMediaBadRequest();
   const numericOrder = Number(order);
   if (!Number.isSafeInteger(numericOrder)) return catalogueMediaBadRequest();
+  let upload: CatalogueUploadImage;
+  try {
+    upload = await normalizeCatalogueUploadImage({
+      name: (file as File).name,
+      type: file.type as CatalogueUploadImage['type'],
+      body: file,
+    });
+  } catch (reason) {
+    if (reason instanceof CatalogueUploadImageError) return NextResponse.json({ message: reason.message }, { status: reason.status, headers: { 'cache-control': 'no-store' } });
+    return catalogueMediaRequestError(reason);
+  }
 
   try {
     return await withPublicCatalogueInvalidation(async () => await withCatalogueMutationLock(params.id, async () => {
@@ -56,9 +68,9 @@ export async function POST(request: NextRequest, { params }: Context) {
       if (simDenied) return simDenied;
       if (!isActiveCatalogueMediaAssignment(product, assignment)) return catalogueMediaBadRequest();
       const media = await addCatalogueMedia(params.id, {
-      name: (file as File).name,
-      type: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
-      body: file,
+      name: upload.name,
+      type: upload.type,
+      body: upload.body,
       order: numericOrder,
       assignment,
       });

@@ -45,6 +45,18 @@ const idOf=(v:unknown)=>{const id=unwrap(v).id;if(!positive(id))throw new Catalo
 
 const imageRows=(p:Row)=>rows(p.images), optionRows=(p:Row)=>rows(p.options), variantRows=(p:Row)=>rows(p.productVariants);
 const digestOf=(r:Row)=>['sha256','digest','checksum','storageDigest'].map(k=>r[k]).find(x=>typeof x==='string') as string|undefined;
+/** Names the photo and the real reason, instead of a generic digest mismatch. */
+export function imageReadbackFailure(u:{key:string;name:string;order:number;contentType:string;sha256:string},image:Row|undefined,uploadError:unknown){
+  const photo=`Photo "${u.name.slice(0,60)}"`;
+  const summary=!image?`${photo} was not stored by the shop provider.`
+    :!positive(image.id)?`${photo} has no provider image ID after upload.`
+    :image.order!==u.order?`${photo} is in position ${String(image.order).slice(0,12)} at the provider, expected ${u.order}.`
+    :image.contentType!==u.contentType?`${photo} was stored as ${String(image.contentType).slice(0,40)}, expected ${u.contentType}.`
+    :`${photo} bytes at the provider differ from the uploaded file (digest mismatch).`;
+  // The admin error response keeps messages of at most 240 characters; trim the cause to fit.
+  const room=240-summary.length-' Upload error: '.length;
+  return uploadError instanceof Error&&uploadError.message&&room>20?`${summary} Upload error: ${uploadError.message.slice(0,room)}`:summary;
+}
 const publishQueues=new Map<string,Promise<void>>();
 
 function enqueue<T>(key:string,action:()=>Promise<T>){const prior=publishQueues.get(key)??Promise.resolve();const run=prior.then(action);const tail=run.then(()=>undefined,()=>undefined);publishQueues.set(key,tail);return run.finally(()=>{if(publishQueues.get(key)===tail)publishQueues.delete(key);});}
@@ -141,13 +153,14 @@ async function runPublication(request:CataloguePublishRequest,d:CataloguePublish
       if(!job.completedSteps.some(x=>x.name==='images-resolved')){
         const resolved:Record<string,number>={...job.resolved.images};
         for(const u of uploads){
-          let image=imageRows(current).find(x=>x.uploadKey===u.key),attestation:{imageId:number;sha256:string}|undefined;
+          let image=imageRows(current).find(x=>x.uploadKey===u.key),attestation:{imageId:number;sha256:string}|undefined,uploadError:unknown;
           if(!image||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256){
-            try{attestation=await d.uploadImage(id,{...u,operationId:op});}catch{/* Authoritative readback decides whether the upload committed. */}
+            // Authoritative readback decides whether the upload committed; keep the error to explain a failed readback.
+            try{attestation=await d.uploadImage(id,{...u,operationId:op});}catch(error){uploadError=error;}
             current=await read(d,id,`image ${u.key}`);
             image=imageRows(current).find(x=>x.uploadKey===u.key);
           }
-          if(!image||!positive(image.id)||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256)throw new CataloguePublishError(`Image ${u.key} storage digest readback mismatch.`,502,id);
+          if(!image||!positive(image.id)||image.order!==u.order||image.contentType!==u.contentType||digestOf(image)!==u.sha256)throw new CataloguePublishError(imageReadbackFailure(u,image,uploadError),502,id);
           if(attestation&&(!positive(attestation.imageId)||attestation.sha256!==u.sha256||image.id!==attestation.imageId))throw new CataloguePublishError(`Image ${u.key} callback attestation mismatch.`,502,id);
           resolved[u.key]=image.id;
           // Persist every verified image before starting the next provider PUT.

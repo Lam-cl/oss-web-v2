@@ -278,6 +278,10 @@ const catalogueAdminActions={
     if(product.currentBundleProductId!==null){const live=await activeCatalogueInventory(id,token),byTuple=new Map(live.rows.map(row=>[JSON.stringify(row.valueKeys),row]));publishModel={...product.model,combinations:product.model.combinations.map(combination=>{const current=byTuple.get(JSON.stringify(combination.valueKeys));return current?{...combination,inventory:current.inventory}:combination;})};}
     const publicationProduct={...product,model:publishModel};
     const metadata=await listCatalogueMedia(id);const uploads:Array<CataloguePreparedImageUpload&{body:Uint8Array}>=[];
+    // The shop provider has never accepted a WebP photo (Nov 2026: PIXEL TAPIR publish failed at the first WebP image).
+    // New uploads are converted to JPEG on arrival; stop here, before a draft exists, for photos stored earlier as WebP.
+    const webp=metadata.find(item=>item.contentType==='image/webp');
+    if(webp)throw new CatalogueAdminRouteError(`Photo "${webp.originalName.slice(0,60)}" is a WebP file, which the shop cannot publish. Remove it and upload it again; it will be converted to JPEG. Product was not published.`,400);
     for(const item of metadata.sort((a,b)=>a.order-b.order)){
       const media=await readVerifiedCatalogueMedia(id,item.mediaId);
       try { await ensureCatalogueR2Assets({catalogueId:id,sha256:media.sha256,body:media.body}); }

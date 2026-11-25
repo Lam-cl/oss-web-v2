@@ -178,6 +178,15 @@ async function activeCatalogueInventory(id:string,token:string):Promise<Catalogu
   return {bundleProductId:product.currentBundleProductId,rows,providerVariants};
 }
 async function requireProduct(id:string){ensureId(id);const product=await readCatalogueProduct(id);if(!product)throw new CatalogueAdminRouteError('Catalogue product was not found.',404);return product;}
+// Same normalisation as catalogueProduct.server normalizeSlug. The storefront resolves /merchandise/[slug],
+// the cart and shipping groups by slug, so two live products with one slug make one of them unreachable
+// (Nov 2026: ESTR Shirt was saved with PIXEL TAPIR's slug).
+function slugKey(value:unknown){return typeof value==='string'?value.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''):'';}
+async function assertSlugAvailable(slug:unknown,selfId:string|null){
+  const wanted=slugKey(slug);if(!wanted)return;
+  const owner=(await listCatalogueProducts()).find(item=>item.catalogueId!==selfId&&item.slug===wanted);
+  if(owner)throw new CatalogueAdminRouteError(`Slug "${wanted.slice(0,60)}" is already used by "${String(owner.model?.details?.title||'another product').slice(0,60)}". Choose a different slug.`,409);
+}
 async function activeAdoption(product:CatalogueProductRecord){if(product.currentBundleProductId===null)return null;const adoption=await readCatalogueAdoptionByBundle(product.currentBundleProductId);return adoption?.status==='active'&&adoption.catalogueId===product.catalogueId?adoption:null;}
 async function enrichAdminProduct(product:CatalogueProductRecord){return enrichCatalogueProductWithAdoption(product,await activeAdoption(product)) as CatalogueProductRecord&Row;}
 function bundleRow(value:unknown):Row|null {const unwrapped=object(value)&&'data' in value?value.data:value;return object(unwrapped)?unwrapped:null;}
@@ -212,8 +221,8 @@ const catalogueAdminActions={
       return {bundleProductId:after.bundleProductId,inventory:after.rows,reconciled:mutationFailed};
     });
   },
-  async create(body:unknown){if(!object(body)||!exact(body,['model','slug']))invalid('Exact model and slug fields are required.');return {product:await createCatalogueProduct(body.model,body.slug)};},
-  async update(id:string,body:unknown){ensureId(id);if(!object(body)||!exact(body,['model','revision','slug'])||!revision(body.revision))invalid('Exact positive revision, model and slug fields are required.');const existing=await requireProduct(id);if(existing.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);const model=body.model as CatalogueProductRecord['model'],slug=body.slug as string;return {product:await updateCatalogueProduct(id,body.revision,record=>({...record,model,slug}))};},
+  async create(body:unknown){if(!object(body)||!exact(body,['model','slug']))invalid('Exact model and slug fields are required.');await assertSlugAvailable(body.slug,null);return {product:await createCatalogueProduct(body.model,body.slug)};},
+  async update(id:string,body:unknown){ensureId(id);if(!object(body)||!exact(body,['model','revision','slug'])||!revision(body.revision))invalid('Exact positive revision, model and slug fields are required.');const existing=await requireProduct(id);if(existing.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);const model=body.model as CatalogueProductRecord['model'],slug=body.slug as string;if(slugKey(slug)!==existing.slug)await assertSlugAvailable(slug,id);return {product:await updateCatalogueProduct(id,body.revision,record=>({...record,model,slug}))};},
   async archive(id:string,body:unknown){
     ensureId(id);if(!object(body)||!exact(body,['revision'])||!revision(body.revision))invalid('An exact positive revision is required.');
     const product=await requireProduct(id);if(product.revision!==body.revision)throw new CatalogueAdminRouteError('Catalogue product revision conflict.',409);
